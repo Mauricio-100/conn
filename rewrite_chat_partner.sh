@@ -1,0 +1,1 @@
+sed -i 's/import androidx.compose.material.icons.automirrored.filled.ArrowForward/import androidx.compose.material.icons.automirrored.filled.ArrowForward\nimport androidx.compose.material.icons.filled.Mic\nimport androidx.compose.animation.core.*\nimport androidx.compose.ui.draw.scale/g' app/src/main/java/com/example/ui/screens/MessagesScreen.kt

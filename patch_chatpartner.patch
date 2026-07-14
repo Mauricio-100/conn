@@ -1,0 +1,115 @@
+--- app/src/main/java/com/example/ui/screens/MessagesScreen.kt
++++ app/src/main/java/com/example/ui/screens/MessagesScreen.kt
+@@ -82,23 +82,75 @@
+ @Composable
+ fun ChatPartnerItem(user: User, onClick: () -> Unit) {
++    // Mock status logic based on user ID for demonstration
++    val isOnline = user.id.hashCode() % 2 == 0
++    val isTyping = user.id.hashCode() % 3 == 0
++    val isRecordingVoice = user.id.hashCode() % 5 == 0 && !isTyping
++    val isRead = user.id.hashCode() % 7 == 0
++
++    val infiniteTransition = rememberInfiniteTransition()
++    val typingAlpha by infiniteTransition.animateFloat(
++        initialValue = 0.2f,
++        targetValue = 1f,
++        animationSpec = infiniteRepeatable(
++            animation = tween(800, easing = LinearEasing),
++            repeatMode = RepeatMode.Reverse
++        )
++    )
++    val micScale by infiniteTransition.animateFloat(
++        initialValue = 0.8f,
++        targetValue = 1.2f,
++        animationSpec = infiniteRepeatable(
++            animation = tween(500, easing = FastOutSlowInEasing),
++            repeatMode = RepeatMode.Reverse
++        )
++    )
++
+     Row(
+         modifier = Modifier
+             .fillMaxWidth()
+             .clickable { onClick() }
+             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
+             .padding(16.dp),
+         verticalAlignment = Alignment.CenterVertically
+     ) {
+         Box(
+             modifier = Modifier
+                 .size(48.dp)
+                 .clip(CircleShape)
+                 .background(MaterialTheme.colorScheme.primary),
+             contentAlignment = Alignment.Center
+         ) {
+             Text(
+                 text = user.username.firstOrNull()?.toString()?.uppercase() ?: "?",
+                 color = Color.White,
+                 fontWeight = FontWeight.Bold
+             )
++            if (isOnline) {
++                Box(
++                    modifier = Modifier
++                        .size(12.dp)
++                        .align(Alignment.BottomEnd)
++                        .background(Color.Green, CircleShape)
++                )
++            }
+         }
+         Spacer(modifier = Modifier.width(16.dp))
+         Column(modifier = Modifier.weight(1f)) {
+             Row(verticalAlignment = Alignment.CenterVertically) {
+                 Text(
+                     text = user.username,
+                     fontWeight = FontWeight.Bold,
+                     color = MaterialTheme.colorScheme.onSurface
+                 )
+                 if (user.isVerified) {
+                     Spacer(modifier = Modifier.width(4.dp))
+                     VerificationBadge(userName = user.username)
+                 }
++                Spacer(modifier = Modifier.width(4.dp))
++                if (isOnline) {
++                    Text("!!", color = Color.Green, fontWeight = FontWeight.Bold)
++                } else {
++                    Text("!", color = Color.Gray, fontWeight = FontWeight.Bold)
++                }
+             }
+-            Text(
+-                text = "Tap to view conversation",
+-                style = MaterialTheme.typography.bodySmall,
+-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+-            )
++            Row(verticalAlignment = Alignment.CenterVertically) {
++                if (isRead) {
++                    Text("!! ", color = Color(0xFF2196F3), fontWeight = FontWeight.Bold, fontSize = 12.sp)
++                }
++                if (isTyping) {
++                    Text(
++                        text = "°•°•°?",
++                        color = MaterialTheme.colorScheme.primary.copy(alpha = typingAlpha),
++                        style = MaterialTheme.typography.bodySmall
++                    )
++                } else if (isRecordingVoice) {
++                    Icon(
++                        imageVector = Icons.Default.Mic,
++                        contentDescription = "Recording",
++                        tint = MaterialTheme.colorScheme.primary,
++                        modifier = Modifier.size(16.dp).scale(micScale)
++                    )
++                } else {
++                    Text(
++                        text = "Tap to view conversation",
++                        style = MaterialTheme.typography.bodySmall,
++                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
++                    )
++                }
++            }
+         }
+         Icon(
+             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+             contentDescription = null,
+             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+         )
+     }
+ }

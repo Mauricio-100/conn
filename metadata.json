@@ -1,0 +1,6 @@
+{
+  "name": "IDDET",
+  "description": "A social network for sharing markdown actfiles with images, following giants, and advanced search.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
