@@ -93,7 +93,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                         horizontalArrangement = Arrangement.Start
                     ) {
                         Image(
-                            painter = painterResource(id = com.example.R.drawable.iddet_cat_logo_1783909130023),
+                            painter = painterResource(id = com.example.R.drawable.ic_cat_logo),
                             contentDescription = "IDDET Logo",
                             modifier = Modifier
                                 .size(32.dp)
