@@ -84,7 +84,7 @@ object NotificationHelper {
             }
 
             // Determine small icon
-            val smallIconRes = R.drawable.ic_launcher_foreground
+            val smallIconRes = R.drawable.ic_notification
 
             // Build beautiful custom notification
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
