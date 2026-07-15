@@ -438,6 +438,8 @@ fun ConversationItem(conv: ConversationNetwork, onClick: () -> Unit) {
                             "🎤 Message vocal"
                         } else if (conv.last_message?.startsWith("[Voice Message](voice://") == true) {
                             "🎤 Message vocal"
+                        } else if (conv.last_message?.startsWith("/") == true || conv.last_message?.contains("recording") == true) {
+                            "🎤 Message vocal"
                         } else {
                             conv.last_message ?: ""
                         }

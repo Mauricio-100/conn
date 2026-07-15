@@ -64,6 +64,15 @@ fun MainScreen(viewModel: IddetViewModel) {
     val notifications by viewModel.notifications.collectAsState(initial = emptyList())
     val unreadCount = notifications.count { !it.isRead }
 
+    LaunchedEffect(currentUser?.id) {
+        val uid = currentUser?.id
+        if (uid != null) {
+            com.example.utils.WebSocketManager.connect(uid)
+        } else {
+            com.example.utils.WebSocketManager.disconnect()
+        }
+    }
+
     var communitiesExpanded by remember { mutableStateOf(currentSelectedCategory != null) }
     LaunchedEffect(currentSelectedCategory) {
         if (currentSelectedCategory != null) {
@@ -456,7 +465,8 @@ fun MainScreen(viewModel: IddetViewModel) {
                         Triple("Rechercher", "search", Icons.Outlined.Search),
                         Triple("Discussions", "messages", Icons.Outlined.Message),
                         Triple("Mon Profil", "profile", Icons.Outlined.Person),
-                        Triple("Historique Actf", "history", Icons.Outlined.History)
+                        Triple("Historique Actf", "history", Icons.Outlined.History),
+                        Triple("Paramètres", "settings", Icons.Outlined.Settings)
                     )
                     
                     drawerItems.forEach { (label, route, icon) ->
@@ -610,6 +620,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                 }
                 composable("notifications") { NotificationsScreen(viewModel, navController) }
                 composable("history") { HistoryScreen(viewModel, navController) }
+                composable("settings") { SettingsScreen(viewModel, navController) }
             }
         }
     }

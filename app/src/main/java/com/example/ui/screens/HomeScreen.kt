@@ -60,6 +60,11 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
     val feedTab by viewModel.feedTab.collectAsStateWithLifecycle()
     val showComposer by viewModel.showComposer.collectAsStateWithLifecycle()
     val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsStateWithLifecycle()
+    val allCategories by viewModel.allCategories.collectAsStateWithLifecycle()
+    
+    LaunchedEffect(Unit) {
+        viewModel.loadCategories()
+    }
     
     val activeActfiles = remember(feedTab, actfiles, followedActfiles, preferredCategory, selectedCategoryFilter) {
         val baseList = when (feedTab) {
@@ -236,6 +241,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
         
         if (showComposer) {
             ActfileComposer(
+                allCategories = allCategories,
                 onDismiss = { viewModel.setShowComposer(false) },
                 onPublish = { content, tags, category ->
                     viewModel.publishActfile(content, tags, category)
@@ -249,14 +255,26 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActfileComposer(
+    allCategories: List<String>,
     onDismiss: () -> Unit,
     onPublish: (String, String, String?) -> Unit
 ) {
     var content by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("@(fun)") }
+    
+    val categoriesToUse = if (allCategories.isNotEmpty()) allCategories else listOf("Fun", "Amour", "Motivation", "Tech", "Sport", "Musique", "Actu", "Business", "Spiritualité", "Autres")
+    
+    var selectedCategory by remember { mutableStateOf("Autres") }
     var showCategoryPickerByPublish by remember { mutableStateOf(false) }
-    val selectedCatInfo = com.example.ui.components.getCategoryById(selectedCategory)
+    
+    val selectedCatInfoRaw = com.example.ui.components.getCategoryById(selectedCategory)
+    val selectedCatInfo = selectedCatInfoRaw ?: com.example.ui.components.CategoryInfo(
+        id = selectedCategory,
+        name = selectedCategory,
+        emoji = "🏷️",
+        description = "Catégorie $selectedCategory",
+        color = MaterialTheme.colorScheme.primary
+    )
     
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -294,10 +312,10 @@ fun ActfileComposer(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background((selectedCatInfo?.color ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.15f)),
+                        .background(selectedCatInfo.color.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(selectedCatInfo?.emoji ?: "🎭", fontSize = 16.sp)
+                    Text(selectedCatInfo.emoji, fontSize = 16.sp)
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -307,10 +325,10 @@ fun ActfileComposer(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "${selectedCatInfo?.name ?: "Fun"} (${selectedCategory})",
+                        text = selectedCatInfo.name,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        color = selectedCatInfo?.color ?: MaterialTheme.colorScheme.primary
+                        color = selectedCatInfo.color
                     )
                 }
                 Icon(
@@ -346,7 +364,6 @@ fun ActfileComposer(
         }
         
         if (showCategoryPickerByPublish) {
-            val categories = com.example.ui.components.APP_CATEGORIES
             AlertDialog(
                 onDismissRequest = { showCategoryPickerByPublish = false },
                 title = {
@@ -363,18 +380,26 @@ fun ActfileComposer(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            items(categories) { cat ->
-                                val isSelected = cat.id == selectedCategory
+                            items(categoriesToUse) { catName ->
+                                val catInfoRaw = com.example.ui.components.getCategoryById(catName)
+                                val catInfo = catInfoRaw ?: com.example.ui.components.CategoryInfo(
+                                    id = catName,
+                                    name = catName,
+                                    emoji = "🏷️",
+                                    description = "Catégorie $catName",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                val isSelected = catName == selectedCategory
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(
-                                            if (isSelected) cat.color.copy(alpha = 0.15f) 
+                                            if (isSelected) catInfo.color.copy(alpha = 0.15f) 
                                             else Color.Transparent
                                         )
                                         .clickable {
-                                            selectedCategory = cat.id
+                                            selectedCategory = catName
                                             showCategoryPickerByPublish = false
                                         }
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -384,21 +409,21 @@ fun ActfileComposer(
                                         modifier = Modifier
                                             .size(36.dp)
                                             .clip(CircleShape)
-                                            .background(cat.color.copy(alpha = 0.2f)),
+                                            .background(catInfo.color.copy(alpha = 0.2f)),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(cat.emoji, fontSize = 18.sp)
+                                        Text(catInfo.emoji, fontSize = 18.sp)
                                     }
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "${cat.name} (${cat.id})",
+                                            text = catInfo.name,
                                             style = MaterialTheme.typography.bodyLarge,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isSelected) cat.color else MaterialTheme.colorScheme.onSurface
+                                            color = if (isSelected) catInfo.color else MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
-                                            text = cat.description,
+                                            text = catInfo.description,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1
@@ -408,7 +433,7 @@ fun ActfileComposer(
                                         Icon(
                                             imageVector = androidx.compose.material.icons.Icons.Default.Check,
                                             contentDescription = "Sélectionné",
-                                            tint = cat.color,
+                                            tint = catInfo.color,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }

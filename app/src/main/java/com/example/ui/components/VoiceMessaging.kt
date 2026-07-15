@@ -32,7 +32,21 @@ fun VoiceMessagePlayer(
     modifier: Modifier = Modifier,
     isMine: Boolean = false
 ) {
-    val voiceData = remember(content) { parseVoiceMessage(content) } ?: return
+    val voiceData = remember(content) {
+        if (isVoiceMessage(content)) {
+            parseVoiceMessage(content) ?: VoiceMessageData(5, List(15) { 0.4f })
+        } else {
+            // Generate stable deterministic wave for real URLs / local paths
+            val hash = content.hashCode()
+            val random = java.util.Random(hash.toLong())
+            val duration = 8 + random.nextInt(12) // Mock duration 8-20s
+            val amplitudes = List(18) {
+                0.15f + 0.85f * random.nextFloat()
+            }
+            VoiceMessageData(duration, amplitudes)
+        }
+    }
+
     var isPlaying by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
 
@@ -40,6 +54,7 @@ fun VoiceMessagePlayer(
     DisposableEffect(content) {
         onDispose {
             com.example.utils.VoiceSynthPlayer.stop()
+            com.example.utils.RealAudioPlayer.stop()
         }
     }
 
@@ -55,7 +70,7 @@ fun VoiceMessagePlayer(
     val displayTime = remember(progress) {
         val totalSec = voiceData.durationSeconds
         val currentSec = (progress * totalSec).toInt()
-        val remainingSec = totalSec - currentSec
+        val remainingSec = (totalSec - currentSec).coerceAtLeast(0)
         val minutes = remainingSec / 60
         val seconds = remainingSec % 60
         String.format("%d:%02d", minutes, seconds)
@@ -70,21 +85,42 @@ fun VoiceMessagePlayer(
         // Play / Pause Button
         IconButton(
             onClick = {
+                val isRealAudio = !isVoiceMessage(content)
                 if (isPlaying) {
-                    com.example.utils.VoiceSynthPlayer.stop()
+                    if (isRealAudio) {
+                        com.example.utils.RealAudioPlayer.pause()
+                    } else {
+                        com.example.utils.VoiceSynthPlayer.stop()
+                    }
                     isPlaying = false
                     progress = 0f
                 } else {
                     isPlaying = true
-                    com.example.utils.VoiceSynthPlayer.play(
-                        amplitudes = voiceData.amplitudes,
-                        durationSeconds = voiceData.durationSeconds,
-                        onProgress = { p -> progress = p },
-                        onFinished = {
-                            isPlaying = false
-                            progress = 0f
-                        }
-                    )
+                    if (isRealAudio) {
+                        com.example.utils.RealAudioPlayer.play(content, object : com.example.utils.RealAudioPlayer.PlaybackListener {
+                            override fun onProgress(p: Float, currentMs: Int, durationMs: Int) {
+                                progress = p
+                            }
+                            override fun onFinished() {
+                                isPlaying = false
+                                progress = 0f
+                            }
+                            override fun onError(error: String) {
+                                isPlaying = false
+                                progress = 0f
+                            }
+                        })
+                    } else {
+                        com.example.utils.VoiceSynthPlayer.play(
+                            amplitudes = voiceData.amplitudes,
+                            durationSeconds = voiceData.durationSeconds,
+                            onProgress = { p -> progress = p },
+                            onFinished = {
+                                isPlaying = false
+                                progress = 0f
+                            }
+                        )
+                    }
                 }
             },
             modifier = Modifier
@@ -114,7 +150,7 @@ fun VoiceMessagePlayer(
                         val ratio = (offset.x / size.width).coerceIn(0f, 1f)
                         progress = ratio
                         if (!isPlaying) {
-                            // If paused, just seek
+                            // seek
                         }
                     }
                 }
@@ -155,17 +191,33 @@ fun VoiceMessagePlayer(
 
 /**
  * Compact, highly polished voice recorder bar.
- * Handles recording animation, volume fluctuation simulation, and returns voice markdown on complete.
+ * Handles native audio recording using MediaRecorder and returns either the recorded File or simulated voice markdown.
  */
 @Composable
 fun VoiceRecorderUI(
     onCancel: () -> Unit,
-    onSendVoice: (String) -> Unit,
+    onSendVoice: ((String) -> Unit)? = null,
+    onSendVoiceFile: ((java.io.File) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val recorderManager = remember { com.example.utils.AudioRecorderManager(context) }
     var durationSeconds by remember { mutableStateOf(0) }
     var isRecording by remember { mutableStateOf(true) }
     val recordAmplitudes = remember { mutableStateListOf<Float>() }
+
+    // Start native recording on composition
+    LaunchedEffect(Unit) {
+        recorderManager.startRecording()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (isRecording) {
+                recorderManager.cancelRecording()
+            }
+        }
+    }
     
     // Pulse animation for recording dot
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -238,7 +290,6 @@ fun VoiceRecorderUI(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Fill with placeholder or current amplitudes
             val activeAmps = if (recordAmplitudes.isEmpty()) {
                 List(15) { 0.15f }
             } else {
@@ -261,6 +312,7 @@ fun VoiceRecorderUI(
         IconButton(
             onClick = {
                 isRecording = false
+                recorderManager.cancelRecording()
                 onCancel()
             },
             modifier = Modifier.size(32.dp)
@@ -278,15 +330,27 @@ fun VoiceRecorderUI(
         IconButton(
             onClick = {
                 isRecording = false
-                val finalAmps = if (recordAmplitudes.isEmpty()) {
-                    List(22) { (0.2f + 0.8f * kotlin.math.sin(it.toFloat() / 4.5f).coerceIn(0.1f, 1f)) }
+                if (onSendVoiceFile != null) {
+                    val file = recorderManager.stopRecording()
+                    if (file != null) {
+                        onSendVoiceFile(file)
+                    } else {
+                        onCancel()
+                    }
+                } else if (onSendVoice != null) {
+                    recorderManager.cancelRecording()
+                    val finalAmps = if (recordAmplitudes.isEmpty()) {
+                        List(22) { (0.2f + 0.8f * kotlin.math.sin(it.toFloat() / 4.5f).coerceIn(0.1f, 1f)) }
+                    } else {
+                        recordAmplitudes.toList()
+                    }
+                    val ampsString = finalAmps.map { String.format("%.2f", it) }.joinToString(",")
+                    val finalDuration = if (durationSeconds == 0) 3 else durationSeconds
+                    val voiceMarkdown = "[Voice Message](voice://duration=$finalDuration&amplitudes=$ampsString)"
+                    onSendVoice(voiceMarkdown)
                 } else {
-                    recordAmplitudes.toList()
+                    onCancel()
                 }
-                val ampsString = finalAmps.map { String.format("%.2f", it) }.joinToString(",")
-                val finalDuration = if (durationSeconds == 0) 3 else durationSeconds
-                val voiceMarkdown = "[Voice Message](voice://duration=$finalDuration&amplitudes=$ampsString)"
-                onSendVoice(voiceMarkdown)
             },
             modifier = Modifier
                 .size(32.dp)

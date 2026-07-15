@@ -2,42 +2,57 @@ package com.example.ui.theme
 
 import android.app.Activity
 import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
-    primary = VerseauCyan,
-    secondary = VerseauCyan,
-    tertiary = RedBadge,
-    background = VerseauBlue,
-    surface = VerseauBlueVariant,
-    onPrimary = VerseauBlue,
-    onSecondary = VerseauBlue,
-    onTertiary = TextWhite,
-    onBackground = TextWhite,
-    onSurface = TextWhite
-)
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = true, // Force dark theme for IDDET
+    appTheme: AppTheme = AppTheme.DEFAULT,
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = DarkColorScheme
+    val scheme = appTheme.toColorScheme()
+    val colorScheme = if (scheme.isDark) {
+        darkColorScheme(
+            primary = scheme.primary,
+            secondary = scheme.secondary,
+            tertiary = scheme.tertiary,
+            background = scheme.background,
+            surface = scheme.surface,
+            onPrimary = scheme.onPrimary,
+            onSecondary = scheme.onSecondary,
+            onTertiary = scheme.onTertiary,
+            onBackground = scheme.onBackground,
+            onSurface = scheme.onSurface
+        )
+    } else {
+        lightColorScheme(
+            primary = scheme.primary,
+            secondary = scheme.secondary,
+            tertiary = scheme.tertiary,
+            background = scheme.background,
+            surface = scheme.surface,
+            onPrimary = scheme.onPrimary,
+            onSecondary = scheme.onSecondary,
+            onTertiary = scheme.onTertiary,
+            onBackground = scheme.onBackground,
+            onSurface = scheme.onSurface
+        )
+    }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
             window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !scheme.isDark
         }
     }
 

@@ -76,29 +76,42 @@ object NotificationHelper {
             }
             val pendingIntent = PendingIntent.getActivity(context, idHash, intent, flags)
 
-            // Generate/Load large icon (avatar)
-            val largeIcon = if (!avatarUrl.isNullOrEmpty()) {
+            // Generate/Load large icon (app logo on the right as requested)
+            val appLogo = getAppLogoBitmap(context)
+
+            // Generate avatar for MessagingStyle if it's a social interaction
+            val avatarIcon = if (!avatarUrl.isNullOrEmpty()) {
                 downloadAvatarOrPlaceholder(avatarUrl, senderName ?: "?")
             } else {
                 generatePlaceholderAvatar(senderName ?: "?")
             }
 
-            // Determine small icon
+            // Determine small icon (silhouette for status bar)
             val smallIconRes = R.drawable.ic_notification
+
+            // Use MessagingStyle for social interactions (likes, comments, follows, messages)
+            val user = androidx.core.app.Person.Builder()
+                .setName(senderName ?: "Quelqu'un")
+                .setIcon(androidx.core.graphics.drawable.IconCompat.createWithBitmap(avatarIcon))
+                .build()
+
+            val style = NotificationCompat.MessagingStyle(user)
+                .addMessage(text, System.currentTimeMillis(), user)
+                .setConversationTitle(title)
 
             // Build beautiful custom notification
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(smallIconRes)
-                .setLargeIcon(largeIcon)
+                .setLargeIcon(appLogo) // App logo on the right as requested
                 .setContentTitle(title)
                 .setContentText(text)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                .setColor(Color.parseColor("#1877F2")) // Beautiful Facebook Blue branding color
+                .setStyle(style)
+                .setColor(Color.parseColor("#DC2626")) // CMO Red branding color
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setDefaults(NotificationCompat.DEFAULT_LIGHTS or NotificationCompat.DEFAULT_VIBRATE) // No standard system default sound
-                .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setSubText("S-3 CMO")
 
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -107,6 +120,15 @@ object NotificationHelper {
             // Play cute kitten meow sound!
             CatSoundPlayer.playCuteMeow()
         }
+    }
+
+    private fun getAppLogoBitmap(context: Context): Bitmap? {
+        val drawable = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_cat_logo) ?: return null
+        val bitmap = Bitmap.createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
 
     private fun downloadAvatarOrPlaceholder(avatarUrl: String, senderName: String): Bitmap {

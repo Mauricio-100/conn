@@ -82,6 +82,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     // Safe check
     if (currentUser == null) return
     val user = currentUser!!
+    val scope = rememberCoroutineScope()
     
     val userActfiles by viewModel.getUserActfiles(user.id).collectAsStateWithLifecycle(initialValue = emptyList())
     
@@ -91,13 +92,90 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     var isRefreshing by remember { mutableStateOf(false) }
     
     var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploading by remember { mutableStateOf(false) }
+    var localPreviewUri by remember { mutableStateOf<Uri?>(null) }
+
+    fun compressAndResizeImage(context: android.content.Context, uri: Uri): File? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+            inputStream.close()
+            if (bitmap == null) return null
+            
+            val maxDimension = 800
+            val width = bitmap.width
+            val height = bitmap.height
+            val (newWidth, newHeight) = if (width > height) {
+                val ratio = width.toFloat() / height.toFloat()
+                if (width > maxDimension) {
+                    Pair(maxDimension, (maxDimension / ratio).toInt())
+                } else {
+                    Pair(width, height)
+                }
+            } else {
+                val ratio = height.toFloat() / width.toFloat()
+                if (height > maxDimension) {
+                    Pair((maxDimension / ratio).toInt(), maxDimension)
+                } else {
+                    Pair(width, height)
+                }
+            }
+            
+            val scaledBitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+            val cacheDir = context.cacheDir
+            val file = File(cacheDir, "compressed_avatar_${System.currentTimeMillis()}.jpg")
+            val outStream = java.io.FileOutputStream(file)
+            scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, outStream)
+            outStream.flush()
+            outStream.close()
+            file
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    fun onImageSelected(uri: Uri) {
+        localPreviewUri = uri
+        isUploading = true
+        scope.launch {
+            try {
+                val compressedFile = compressAndResizeImage(context, uri)
+                if (compressedFile == null) {
+                    Toast.makeText(context, "Erreur lors de la compression de l'image", Toast.LENGTH_SHORT).show()
+                    isUploading = false
+                    localPreviewUri = null
+                    return@launch
+                }
+                
+                viewModel.updateProfileWithImage(
+                    avatarFile = compressedFile,
+                    bio = user.bio,
+                    phoneNumber = user.phoneNumber,
+                    onSuccess = {
+                        isUploading = false
+                        localPreviewUri = null
+                        Toast.makeText(context, "Photo de profil mise à jour !", Toast.LENGTH_SHORT).show()
+                    },
+                    onError = { error ->
+                        isUploading = false
+                        localPreviewUri = null
+                        Toast.makeText(context, "Échec de l'upload : $error", Toast.LENGTH_LONG).show()
+                    }
+                )
+            } catch (e: Exception) {
+                isUploading = false
+                localPreviewUri = null
+                Toast.makeText(context, "Erreur: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
             if (uri != null) {
-                viewModel.updateProfile(avatarUrl = uri.toString(), bio = user.bio, privacySetting = user.privacySetting)
-                Toast.makeText(context, "Photo mise à jour !", Toast.LENGTH_SHORT).show()
+                onImageSelected(uri)
             }
         }
     )
@@ -106,8 +184,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
         contract = ActivityResultContracts.TakePicture(),
         onResult = { success ->
             if (success && capturedImageUri != null) {
-                viewModel.updateProfile(avatarUrl = capturedImageUri.toString(), bio = user.bio, privacySetting = user.privacySetting)
-                Toast.makeText(context, "Photo prise et mise à jour !", Toast.LENGTH_SHORT).show()
+                onImageSelected(capturedImageUri!!)
             }
         }
     )
@@ -137,7 +214,6 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     )
     
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
-    val scope = rememberCoroutineScope()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -279,12 +355,14 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                             .clickable { showImageOptions = true },
                         contentAlignment = Alignment.Center
                     ) {
-                        if (!user.avatarUrl.isNullOrBlank()) {
+                        val imageModel = localPreviewUri ?: user.avatarUrl
+                        if (imageModel != null && (imageModel is Uri || (imageModel is String && imageModel.isNotBlank()))) {
                             AsyncImage(
-                                model = user.avatarUrl,
+                                model = imageModel,
                                 contentDescription = "Profile Picture",
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
+                                contentScale = ContentScale.Crop,
+                                error = coil.compose.rememberAsyncImagePainter(model = null)
                             )
                         } else {
                             Text(
@@ -295,19 +373,33 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                             )
                         }
                         
-                        // Edit overlay
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.BottomCenter
-                        ) {
-                            Icon(
-                                Icons.Default.PhotoCamera,
-                                contentDescription = "Change Photo",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp).padding(bottom = 4.dp)
-                            )
+                        if (isUploading) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.4f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+                        } else {
+                            // Edit overlay
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.BottomCenter
+                            ) {
+                                Icon(
+                                    Icons.Default.PhotoCamera,
+                                    contentDescription = "Change Photo",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp).padding(bottom = 4.dp)
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))

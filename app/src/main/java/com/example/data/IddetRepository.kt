@@ -5,11 +5,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.async
+import com.example.ui.theme.AppTheme
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.DelicateCoroutinesApi
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 
 class IddetRepository(
     private val userDao: UserDao,
@@ -24,6 +29,14 @@ class IddetRepository(
     private val _currentUser = MutableStateFlow<User?>(null)
     val currentUser: StateFlow<User?> = _currentUser
     
+    private val _selectedTheme = MutableStateFlow(AppTheme.valueOf(prefs.getString("selected_theme", AppTheme.DEFAULT.name) ?: AppTheme.DEFAULT.name))
+    val selectedTheme: StateFlow<AppTheme> = _selectedTheme.asStateFlow()
+
+    fun setSelectedTheme(theme: AppTheme) {
+        _selectedTheme.value = theme
+        prefs.edit().putString("selected_theme", theme.name).apply()
+    }
+
     private var currentToken: String? = prefs.getString("auth_token", null)
     private val viewedActfiles = mutableSetOf<String>()
 
@@ -45,7 +58,7 @@ class IddetRepository(
                             followingCount = profile.following_count,
                             followersCount = profile.followers_count
                         ) ?: User(
-                            id = profile.id,
+                            id = profile.id ?: savedUserId ?: "",
                             username = profile.username,
                             passwordHash = "mocked",
                             avatarUrl = profile.avatar_url,
@@ -83,7 +96,7 @@ class IddetRepository(
                     )
                 } else {
                     User(
-                        id = profile.id,
+                        id = profile.id ?: userId,
                         username = profile.username,
                         passwordHash = "mocked",
                         avatarUrl = profile.avatar_url,
@@ -122,7 +135,7 @@ class IddetRepository(
     suspend fun refreshActfiles() {
         try {
             val header = currentToken?.let { "Bearer $it" }
-            val netActfiles = RetrofitClient.apiService.getActfiles(header)
+            val netActfiles = RetrofitClient.apiService.getActfiles(header).shuffled()
             
             val actfilesWithComments = coroutineScope {
                 val deferreds = netActfiles.map { net ->
@@ -200,7 +213,7 @@ class IddetRepository(
             prefs.edit().putString("auth_token", currentToken).apply()
             
             val profile = RetrofitClient.apiService.getMyProfile("Bearer $currentToken")
-            val existing = userDao.getUserById(profile.id)
+            val existing = userDao.getUserById(profile.id ?: "")
             val user = if (existing != null) {
                 existing.copy(
                     username = profile.username,
@@ -212,7 +225,7 @@ class IddetRepository(
                 )
             } else {
                 User(
-                    id = profile.id,
+                    id = profile.id ?: "",
                     username = profile.username,
                     passwordHash = "mocked",
                     avatarUrl = profile.avatar_url,
@@ -285,6 +298,54 @@ class IddetRepository(
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    suspend fun updateProfileWithImage(
+        avatarFile: java.io.File?,
+        bio: String?,
+        phoneNumber: String?
+    ): UserProfileNetwork {
+        val token = currentToken ?: throw Exception("Not logged in")
+        
+        val avatarPart = if (avatarFile != null) {
+            val mediaType = "image/jpeg".toMediaType()
+            val requestFile = avatarFile.asRequestBody(mediaType)
+            MultipartBody.Part.createFormData("avatar", avatarFile.name, requestFile)
+        } else null
+        
+        val bioBody = if (bio != null) {
+            bio.toRequestBody("text/plain".toMediaType())
+        } else null
+        
+        val phoneBody = if (phoneNumber != null) {
+            phoneNumber.toRequestBody("text/plain".toMediaType())
+        } else null
+        
+        val profile = RetrofitClient.apiService.updateProfileMultipart(
+            token = "Bearer $token",
+            avatar = avatarPart,
+            bio = bioBody,
+            phoneNumber = phoneBody
+        )
+        
+        val user = _currentUser.value
+        if (user != null) {
+            val updatedUser = user.copy(
+                username = profile.username,
+                avatarUrl = profile.avatar_url,
+                bio = profile.bio ?: user.bio,
+                isVerified = profile.is_verified,
+                email = profile.email ?: user.email,
+                phoneNumber = profile.phone_number ?: user.phoneNumber,
+                zodiacSign = profile.zodiac_sign ?: user.zodiacSign,
+                followersCount = profile.followers_count,
+                followingCount = profile.following_count
+            )
+            userDao.insertUser(updatedUser)
+            _currentUser.value = updatedUser
+        }
+        
+        return profile
     }
 
     fun logout() {
@@ -561,7 +622,7 @@ class IddetRepository(
                         )
                     } else {
                         User(
-                            id = res.id,
+                            id = res.id ?: userId,
                             username = res.username,
                             passwordHash = "mocked",
                             avatarUrl = res.avatar_url,
@@ -582,6 +643,77 @@ class IddetRepository(
 
     private val _conversations = MutableStateFlow<List<ConversationNetwork>>(emptyList())
     val conversations: StateFlow<List<ConversationNetwork>> = _conversations.asStateFlow()
+
+    fun updateConversationLastMessage(otherUserId: String, content: String, type: String = "text", isIncoming: Boolean = false, senderUsername: String? = null) {
+        val current = _conversations.value.toMutableList()
+        val index = current.indexOfFirst { it.user_id == otherUserId }
+        val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.getDefault()).format(java.util.Date())
+        val displayContent = if (type.startsWith("audio")) {
+            if (content.startsWith("http") || content.startsWith("/") || content.startsWith("[Voice Message]")) {
+                content
+            } else {
+                "[Voice Message](voice://duration=5&amplitudes=0.5)"
+            }
+        } else {
+            content
+        }
+        
+        if (index != -1) {
+            val existing = current.removeAt(index)
+            val updated = existing.copy(
+                last_message = displayContent,
+                last_message_time = nowIso,
+                unread_count = if (isIncoming) (existing.unread_count ?: 0) + 1 else existing.unread_count
+            )
+            current.add(0, updated)
+        } else {
+            val newConv = ConversationNetwork(
+                id = "temp_conv_${otherUserId}",
+                user_id = otherUserId,
+                username = senderUsername ?: "Utilisateur",
+                avatar_url = null,
+                last_message = displayContent,
+                last_message_time = nowIso,
+                unread_count = if (isIncoming) 1 else 0,
+                is_online = true
+            )
+            current.add(0, newConv)
+        }
+        _conversations.value = current
+    }
+
+    suspend fun getCategories(): List<String> {
+        return try {
+            RetrofitClient.apiService.getCategories().categories
+        } catch (e: Exception) {
+            e.printStackTrace()
+            listOf("Fun", "Amour", "Motivation", "Tech", "Sport", "Musique", "Actu", "Business", "Spiritualité", "Autres")
+        }
+    }
+
+    suspend fun getMyPreferredCategories(): List<String> {
+        val token = currentToken ?: return emptyList()
+        return try {
+            RetrofitClient.apiService.getMyPreferredCategories("Bearer $token").preferred_categories
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun updatePreferredCategories(categories: List<String>): List<String> {
+        val token = currentToken ?: return emptyList()
+        return try {
+            val response = RetrofitClient.apiService.updatePreferredCategories(
+                token = "Bearer $token",
+                body = UpdateCategoriesRequest(categories = categories)
+            )
+            response.preferred_categories
+        } catch (e: Exception) {
+            e.printStackTrace()
+            categories
+        }
+    }
 
     suspend fun refreshConversations() {
         val userId = _currentUser.value?.id ?: return
@@ -688,6 +820,14 @@ class IddetRepository(
             val myId = _currentUser.value?.id ?: return
             messageDao.insertMessage(Message(senderId = myId, receiverId = receiverId, content = content, type = type))
         }
+    }
+
+    suspend fun insertMessageLocal(message: Message) {
+        messageDao.insertMessage(message)
+    }
+
+    suspend fun deleteMessageLocal(id: String) {
+        messageDao.deleteMessage(id)
     }
 
     suspend fun verifyCurrentUser() {
@@ -824,17 +964,25 @@ class IddetRepository(
                         
                         val title = when (notif.type) {
                             "like" -> "💖 Utilité partagée !"
-                            "comment" -> "💬 Nouveau commentaire"
-                            "follow" -> "🎉 Nouvel abonné"
-                            "message" -> "💬 Message reçu"
-                            else -> "🔔 Nouvelle activité"
+                            "comment" -> "💬 Nouvelle interaction"
+                            "follow" -> "🎉 Nouveau membre dans votre réseau"
+                            "message" -> "📩 Message privé reçu"
+                            else -> "🔔 Notification S-3 CMO"
+                        }
+
+                        val descriptiveText = when (notif.type) {
+                            "like" -> "${notif.fromUsername} a aimé votre fichier d'acte."
+                            "comment" -> "${notif.fromUsername} a commenté : ${notif.message}"
+                            "follow" -> "${notif.fromUsername} s'est abonné à votre profil."
+                            "message" -> "Nouveau message de ${notif.fromUsername}."
+                            else -> notif.message
                         }
 
                         com.example.utils.NotificationHelper.showSystemNotification(
                             context = context,
                             notificationId = notif.id,
                             title = title,
-                            text = notif.message,
+                            text = descriptiveText,
                             route = route,
                             avatarUrl = notif.fromAvatar,
                             senderName = notif.fromUsername

@@ -54,7 +54,7 @@ interface ActfileDao {
         SELECT a.id, a.userId, u.username, u.avatarUrl, u.isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category 
         FROM actfiles a 
         INNER JOIN users u ON a.userId = u.id 
-        ORDER BY a.createdAt DESC
+        ORDER BY RANDOM()
     """)
     fun getAllActfilesWithUser(): Flow<List<ActfileWithUser>>
 
@@ -128,6 +128,9 @@ interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: Message)
 
+    @Query("DELETE FROM messages WHERE id = :id")
+    suspend fun deleteMessage(id: String)
+
     @Query("SELECT * FROM messages WHERE (senderId = :user1 AND receiverId = :user2) OR (senderId = :user2 AND receiverId = :user1) ORDER BY createdAt ASC")
     fun getMessagesBetween(user1: String, user2: String): Flow<List<Message>>
 }
@@ -151,7 +154,7 @@ interface FollowDao {
         FROM actfiles a 
         INNER JOIN users u ON a.userId = u.id 
         WHERE a.userId IN (SELECT followingId FROM follows WHERE followerId = :followerId) OR a.userId = :followerId
-        ORDER BY a.createdAt DESC
+        ORDER BY RANDOM()
     """)
     fun getFollowedActfiles(followerId: String): Flow<List<ActfileWithUser>>
 }

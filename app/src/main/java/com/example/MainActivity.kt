@@ -22,6 +22,7 @@ import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.MainScreen
 import com.example.ui.screens.SplashScreen
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.AppTheme
 
 class MainActivity : ComponentActivity() {
     private var crashError by mutableStateOf<String?>(null)
@@ -72,7 +73,10 @@ class MainActivity : ComponentActivity() {
             }
 
             setContent {
-                MyApplicationTheme {
+                val viewModel: IddetViewModel = viewModel(factory = factory)
+                val appTheme by viewModel.selectedTheme.collectAsState()
+                
+                MyApplicationTheme(appTheme = appTheme) {
                     if (crashError != null) {
                         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp, 64.dp)) {
                             Text("APP CRASHED", color = Color.Red)
@@ -84,7 +88,6 @@ class MainActivity : ComponentActivity() {
                         if (showSplash) {
                             SplashScreen(onTimeout = { showSplash = false })
                         } else {
-                            val viewModel: IddetViewModel = viewModel(factory = factory)
                             val currentUser by viewModel.currentUser.collectAsState()
                             
                             if (currentUser == null) {
@@ -99,7 +102,7 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             crashError = android.util.Log.getStackTraceString(e)
             setContent {
-                MyApplicationTheme {
+                MyApplicationTheme(appTheme = AppTheme.DEFAULT) {
                     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp, 64.dp)) {
                         Text("APP INITIALIZATION FAILED", color = Color.Red)
                         Text(crashError ?: "", color = Color.Black)

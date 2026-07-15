@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -216,8 +217,8 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
                         ) {
                             VoiceRecorderUI(
                                 onCancel = { isRecordingMode = false },
-                                onSendVoice = { voiceContent ->
-                                    viewModel.sendMessage(userId, voiceContent, type = "audio")
+                                onSendVoiceFile = { file ->
+                                    viewModel.sendVoiceMessage(userId, file)
                                     isRecordingMode = false
                                 },
                                 modifier = Modifier.padding(8.dp)
@@ -347,7 +348,7 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
                 
                 itemsIndexed(messages, key = { _, msg -> msg.id }) { index, msg ->
                     val isMine = msg.senderId == myUser!!.id
-                    val isAudio = msg.type == "audio" || (msg.content.startsWith("http") && msg.content.contains("voice_messages"))
+                    val isAudio = msg.type == "audio" || msg.type == "audio_sending" || msg.type == "audio_error" || (msg.content.startsWith("http") && msg.content.contains("voice_messages"))
                     
                     // Show date header if the day changes
                     val showDateHeader = if (index == 0) {
@@ -385,7 +386,48 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
                                 Column(modifier = Modifier.padding(2.dp)) {
                                     if (isAudio) {
                                         Box(modifier = Modifier.padding(4.dp)) {
-                                            VoiceMessagePlayer(content = msg.content, isMine = isMine)
+                                            when (msg.type) {
+                                                "audio_sending" -> {
+                                                    Row(
+                                                        modifier = Modifier.padding(8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        CircularProgressIndicator(
+                                                            modifier = Modifier.size(16.dp),
+                                                            strokeWidth = 2.dp,
+                                                            color = if (isMine) Color.White else MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = "Envoi du message vocal...",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = if (isMine) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+                                                "audio_error" -> {
+                                                    Row(
+                                                        modifier = Modifier.padding(8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Error,
+                                                            contentDescription = "Erreur",
+                                                            tint = MaterialTheme.colorScheme.error,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = "Échec de l'envoi",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.error
+                                                        )
+                                                    }
+                                                }
+                                                else -> {
+                                                    VoiceMessagePlayer(content = msg.content, isMine = isMine)
+                                                }
+                                            }
                                         }
                                     } else {
                                         MarkdownActfile(

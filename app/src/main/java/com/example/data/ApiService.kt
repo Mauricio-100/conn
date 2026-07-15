@@ -9,10 +9,20 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.Field
+import retrofit2.http.Multipart
+import retrofit2.http.PUT
+import retrofit2.http.Part
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 
 data class RegisterRequest(val username: String, val password: String? = null)
 data class UserResponse(val id: String?, val username: String, val email: String?, val avatar_url: String?, val created_at: String?)
 data class TokenResponse(val access_token: String, val token_type: String)
+
+data class CategoriesResponse(val categories: List<String>)
+data class PreferredCategoriesResponse(val preferred_categories: List<String>)
+data class UpdateCategoriesRequest(val categories: List<String>)
+data class UpdateCategoriesResponse(val status: String, val preferred_categories: List<String>)
 
 data class ActfileNetwork(
     val id: String,
@@ -32,15 +42,20 @@ data class ActfileNetwork(
 data class PublishActfileRequest(val content: String, val category: String? = null)
 
 data class UserProfileNetwork(
-    val id: String,
+    val id: String? = null,
     val username: String,
     val avatar_url: String?,
     val bio: String?,
-    val is_verified: Boolean,
-    val followers_count: Int,
-    val following_count: Int,
-    val videos_count: Int,
-    val is_online: Boolean
+    val is_verified: Boolean = false,
+    val followers_count: Int = 0,
+    val following_count: Int = 0,
+    val videos_count: Int = 0,
+    val is_online: Boolean = false,
+    val email: String? = null,
+    val phone_number: String? = null,
+    val zodiac_sign: String? = null,
+    val created_at: String? = null,
+    val last_seen: String? = null
 )
 
 data class SearchResult(
@@ -193,6 +208,15 @@ interface ApiService {
         @retrofit2.http.Header("Authorization") token: String?
     ): UserProfileNetwork
 
+    @Multipart
+    @PUT("/api/users/me")
+    suspend fun updateProfileMultipart(
+        @retrofit2.http.Header("Authorization") token: String,
+        @Part avatar: MultipartBody.Part? = null,
+        @Part("bio") bio: RequestBody? = null,
+        @Part("phone_number") phoneNumber: RequestBody? = null
+    ): UserProfileNetwork
+
     @retrofit2.http.GET("/api/users/{id}")
     suspend fun getUserProfile(
         @retrofit2.http.Header("Authorization") token: String?,
@@ -239,6 +263,20 @@ interface ApiService {
     suspend fun getNotifications(
         @retrofit2.http.Header("Authorization") token: String?
     ): List<NotificationNetwork>
+
+    @retrofit2.http.GET("/api/categories")
+    suspend fun getCategories(): CategoriesResponse
+
+    @retrofit2.http.GET("/api/users/me/categories")
+    suspend fun getMyPreferredCategories(
+        @retrofit2.http.Header("Authorization") token: String
+    ): PreferredCategoriesResponse
+
+    @retrofit2.http.PUT("/api/users/me/categories")
+    suspend fun updatePreferredCategories(
+        @retrofit2.http.Header("Authorization") token: String,
+        @Body body: UpdateCategoriesRequest
+    ): UpdateCategoriesResponse
 }
 
 object RetrofitClient {

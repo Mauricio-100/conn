@@ -16,6 +16,12 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
 
     val currentUser: StateFlow<User?> = repository.currentUser
     
+    val selectedTheme: StateFlow<com.example.ui.theme.AppTheme> = repository.selectedTheme
+
+    fun setSelectedTheme(theme: com.example.ui.theme.AppTheme) {
+        repository.setSelectedTheme(theme)
+    }
+
     private val _showComposer = MutableStateFlow(false)
     val showComposer: StateFlow<Boolean> = _showComposer.asStateFlow()
 
@@ -35,6 +41,33 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
 
     fun setSelectedCategoryFilter(category: String?) {
         _selectedCategoryFilter.value = category
+    }
+
+    private val _allCategories = MutableStateFlow<List<String>>(emptyList())
+    val allCategories: StateFlow<List<String>> = _allCategories.asStateFlow()
+
+    private val _preferredCategories = MutableStateFlow<List<String>>(emptyList())
+    val preferredCategories: StateFlow<List<String>> = _preferredCategories.asStateFlow()
+
+    fun loadCategories() {
+        viewModelScope.launch {
+            if (_allCategories.value.isEmpty()) {
+                _allCategories.value = repository.getCategories()
+            }
+            _preferredCategories.value = repository.getMyPreferredCategories()
+        }
+    }
+
+    fun savePreferredCategories(categoriesList: List<String>, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val updated = repository.updatePreferredCategories(categoriesList)
+                _preferredCategories.value = updated
+                onSuccess()
+            } catch (e: Exception) {
+                onError(e.message ?: "Une erreur est survenue")
+            }
+        }
     }
     
     val actfiles = repository.getAllActfiles().stateIn(
@@ -75,6 +108,89 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
                     e.printStackTrace()
                 }
                 kotlinx.coroutines.delay(15000)
+            }
+        }
+        viewModelScope.launch {
+            com.example.utils.WebSocketManager.events.collect { event ->
+                when (event) {
+                    is com.example.utils.WebSocketEvent.NewMessage -> {
+                        val parsedTime = try {
+                            val cleanTimestamp = event.timestamp.substringBefore(".")
+                            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault()).parse(cleanTimestamp)?.time ?: System.currentTimeMillis()
+                        } catch (e: Exception) {
+                            System.currentTimeMillis()
+                        }
+                        val incomingMsg = Message(
+                            id = event.messageId,
+                            senderId = event.senderId,
+                            receiverId = currentUser.value?.id ?: "",
+                            content = event.content,
+                            type = event.msgType,
+                            isRead = false,
+                            createdAt = parsedTime
+                        )
+                        repository.insertMessageLocal(incomingMsg)
+                        repository.updateConversationLastMessage(
+                            otherUserId = event.senderId,
+                            content = event.content,
+                            type = event.msgType,
+                            isIncoming = true,
+                            senderUsername = event.senderUsername
+                        )
+                    }
+                    is com.example.utils.WebSocketEvent.MessageSent -> {
+                        val myId = currentUser.value?.id ?: ""
+                        val targetReceiverId = lastSendingReceiverId ?: ""
+                        
+                        try {
+                            val currentMessages = repository.getMessagesWith(targetReceiverId).first()
+                            currentMessages.forEach { msg ->
+                                if (msg.type == "audio_sending" || msg.type == "audio_error") {
+                                    repository.deleteMessageLocal(msg.id)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                        
+                        val confirmedMsg = Message(
+                            id = event.messageId,
+                            senderId = myId,
+                            receiverId = targetReceiverId,
+                            content = event.content,
+                            type = event.msgType,
+                            isRead = false,
+                            createdAt = System.currentTimeMillis()
+                        )
+                        repository.insertMessageLocal(confirmedMsg)
+                        repository.updateConversationLastMessage(
+                            otherUserId = targetReceiverId,
+                            content = event.content,
+                            type = event.msgType,
+                            isIncoming = false
+                        )
+                    }
+                    is com.example.utils.WebSocketEvent.Error -> {
+                        val targetReceiverId = lastSendingReceiverId ?: ""
+                        try {
+                            val currentMessages = repository.getMessagesWith(targetReceiverId).first()
+                            currentMessages.forEach { msg ->
+                                if (msg.type == "audio_sending") {
+                                    repository.insertMessageLocal(msg.copy(type = "audio_error"))
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                        repository.updateConversationLastMessage(
+                            otherUserId = targetReceiverId,
+                            content = "Échec de l'envoi",
+                            type = "audio_error",
+                            isIncoming = false
+                        )
+                    }
+                    else -> {}
+                }
             }
         }
     }
@@ -182,6 +298,24 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         }
     }
 
+    fun updateProfileWithImage(
+        avatarFile: java.io.File?,
+        bio: String?,
+        phoneNumber: String?,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                repository.updateProfileWithImage(avatarFile, bio, phoneNumber)
+                onSuccess()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onError(e.message ?: "Erreur de mise à jour du profil")
+            }
+        }
+    }
+
     suspend fun getUserByUsername(username: String): User? {
         return repository.getUserByUsername(username)
     }
@@ -241,6 +375,65 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     fun refreshConversations() {
         viewModelScope.launch {
             repository.refreshConversations()
+        }
+    }
+
+    private var lastSendingReceiverId: String? = null
+
+    fun sendVoiceMessage(receiverId: String, file: java.io.File) {
+        lastSendingReceiverId = receiverId
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val myId = currentUser.value?.id ?: return@launch
+            val username = currentUser.value?.username ?: "Utilisateur"
+            
+            // Insert temporary local sending message
+            val tempId = "temp_voice_" + java.util.UUID.randomUUID().toString()
+            val tempMsg = Message(
+                id = tempId,
+                senderId = myId,
+                receiverId = receiverId,
+                content = file.absolutePath, // Local path for immediate visual feedback / play
+                type = "audio_sending",
+                createdAt = System.currentTimeMillis()
+            )
+            repository.insertMessageLocal(tempMsg)
+            repository.updateConversationLastMessage(
+                otherUserId = receiverId,
+                content = "Envoi d'un message vocal...",
+                type = "audio_sending",
+                isIncoming = false
+            )
+            
+            try {
+                val bytes = file.readBytes()
+                val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                
+                val success = com.example.utils.WebSocketManager.sendVoiceMessage(receiverId, b64, username)
+                if (!success) {
+                    repository.insertMessageLocal(tempMsg.copy(type = "audio_error"))
+                    repository.updateConversationLastMessage(
+                        otherUserId = receiverId,
+                        content = "Échec de l'envoi",
+                        type = "audio_error",
+                        isIncoming = false
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                repository.insertMessageLocal(tempMsg.copy(type = "audio_error"))
+                repository.updateConversationLastMessage(
+                    otherUserId = receiverId,
+                    content = "Échec de l'envoi",
+                    type = "audio_error",
+                    isIncoming = false
+                )
+            } finally {
+                try {
+                    file.delete()
+                } catch (ex: Exception) {
+                    ex.printStackTrace()
+                }
+            }
         }
     }
 

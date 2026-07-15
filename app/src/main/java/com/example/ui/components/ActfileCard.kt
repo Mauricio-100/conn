@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.material.icons.outlined.Share
@@ -26,6 +27,8 @@ import coil.compose.AsyncImage
 import com.example.ui.components.MarkdownActfile
 import com.example.ui.components.VerificationBadge
 import com.example.data.ActfileWithUser
+import com.example.utils.TranslationHelper
+import kotlinx.coroutines.launch
 
 @Composable
 fun ActfileCard(
@@ -41,6 +44,11 @@ fun ActfileCard(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var showShareDialog by remember { mutableStateOf(false) }
+
+    var translatedContent by remember { mutableStateOf<String?>(null) }
+    var isTranslating by remember { mutableStateOf(false) }
+    var translationError by remember { mutableStateOf<String?>(null) }
+    var targetLanguage by remember { mutableStateOf<String?>(null) }
 
     // Increment view when the card is composed (simple simulation)
     LaunchedEffect(actfile.id) {
@@ -177,9 +185,96 @@ fun ActfileCard(
             
             Spacer(modifier = Modifier.height(10.dp))
             
+            if (isTranslating) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Traduction en cours...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            } else if (translationError != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = translationError ?: "Erreur de traduction",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Masquer",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.clickable { translationError = null }
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            } else if (translatedContent != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Translate,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Traduit en $targetLanguage",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        text = "Voir l'original",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { 
+                            translatedContent = null 
+                            targetLanguage = null
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            
             // Post Content
             MarkdownActfile(
-                content = actfile.content,
+                content = translatedContent ?: actfile.content,
                 compactOpenGraph = false,
                 onMentionClick = onMentionClick
             )
@@ -286,6 +381,68 @@ fun ActfileCard(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
+                    }
+
+                    // Translate / Traduire with Dropdown
+                    var menuExpanded by remember { mutableStateOf(false) }
+                    val coroutineScope = rememberCoroutineScope()
+
+                    Box {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { menuExpanded = true }
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Translate,
+                                contentDescription = "Traduire",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Traduire",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            val languages = listOf(
+                                "Français" to "French",
+                                "Español" to "Spanish",
+                                "Português" to "Portuguese",
+                                "Italiano" to "Italian",
+                                "English" to "English"
+                            )
+                            languages.forEach { (displayName, geminiName) ->
+                                DropdownMenuItem(
+                                    text = { Text(displayName) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        isTranslating = true
+                                        translationError = null
+                                        coroutineScope.launch {
+                                            try {
+                                                val translated = TranslationHelper.translateText(actfile.content, geminiName)
+                                                translatedContent = translated
+                                                targetLanguage = displayName
+                                            } catch (e: Exception) {
+                                                translationError = e.message ?: "Une erreur est survenue lors de la traduction."
+                                            } finally {
+                                                isTranslating = false
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
