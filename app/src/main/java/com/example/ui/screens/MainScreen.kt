@@ -450,6 +450,86 @@ fun MainScreen(viewModel: IddetViewModel) {
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    // SECTION: TRADUCTION
+                    Text(
+                        text = "TRADUCTION",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
+                    )
+
+                    val targetLanguage by viewModel.targetLanguage.collectAsState()
+                    var languageExpanded by remember { mutableStateOf(false) }
+
+                    Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
+                        OutlinedCard(
+                            onClick = { languageExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.outlinedCardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Translate,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        "Langue cible",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        targetLanguage,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.weight(1f))
+                                Icon(
+                                    if (languageExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = languageExpanded,
+                            onDismissRequest = { languageExpanded = false },
+                            modifier = Modifier
+                                .fillMaxWidth(0.8f)
+                                .heightIn(max = 400.dp)
+                                .background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            com.example.utils.TranslationHelper.supportedLanguages.forEach { lang ->
+                                DropdownMenuItem(
+                                    text = { Text(lang, style = MaterialTheme.typography.bodyMedium) },
+                                    onClick = {
+                                        viewModel.setTargetLanguage(lang)
+                                        languageExpanded = false
+                                    },
+                                    leadingIcon = {
+                                        if (lang == targetLanguage) {
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 8.dp))
 
                     // SECTION: NAVIGATION PRINCIPALE
                     Text(

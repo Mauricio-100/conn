@@ -133,10 +133,12 @@ fun HistoryScreen(viewModel: IddetViewModel, navController: NavController) {
                 ) {
                     items(listToDisplay, key = { it.id }) { actfile ->
                         val isMine = actfile.userId == currentUserId
+                        val targetLanguage by viewModel.targetLanguage.collectAsState()
                         ActfileCard(
                             actfile = actfile,
                             onLike = { viewModel.likeActfile(it) },
                             onView = { viewModel.incrementView(it) },
+                            targetLanguageName = targetLanguage,
                             onUserClick = { userId ->
                                 if (userId == currentUserId) {
                                     navController.navigate("profile")

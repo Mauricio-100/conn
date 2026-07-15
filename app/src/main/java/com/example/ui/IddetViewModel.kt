@@ -22,6 +22,12 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         repository.setSelectedTheme(theme)
     }
 
+    val targetLanguage: StateFlow<String> = repository.targetLanguage
+
+    fun setTargetLanguage(language: String) {
+        repository.setTargetLanguage(language)
+    }
+
     private val _showComposer = MutableStateFlow(false)
     val showComposer: StateFlow<Boolean> = _showComposer.asStateFlow()
 

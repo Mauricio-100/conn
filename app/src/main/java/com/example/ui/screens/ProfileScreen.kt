@@ -821,10 +821,12 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
             
             items(userActfiles, key = { it.id }) { actfile ->
                 Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
                     ActfileCard(
                         actfile = actfile,
                         onLike = { viewModel.likeActfile(it) },
                         onView = { viewModel.incrementView(it) },
+                        targetLanguageName = targetLanguage,
                         onUserClick = {}, // It's me
                         onComment = { navController.navigate("discussion/$it") },
                         onDelete = { viewModel.deleteActfile(it) },

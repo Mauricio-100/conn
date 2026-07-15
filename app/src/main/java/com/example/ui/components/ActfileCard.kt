@@ -37,6 +37,7 @@ fun ActfileCard(
     onView: (String) -> Unit,
     onUserClick: (String) -> Unit,
     onComment: (String) -> Unit,
+    targetLanguageName: String = "French",
     onDelete: ((String) -> Unit)? = null,
     onMentionClick: ((String) -> Unit)? = null,
     onCategoryClick: ((String) -> Unit)? = null,
@@ -48,7 +49,9 @@ fun ActfileCard(
     var translatedContent by remember { mutableStateOf<String?>(null) }
     var isTranslating by remember { mutableStateOf(false) }
     var translationError by remember { mutableStateOf<String?>(null) }
-    var targetLanguage by remember { mutableStateOf<String?>(null) }
+    var currentTranslatedTo by remember { mutableStateOf<String?>(null) }
+
+    val coroutineScope = rememberCoroutineScope()
 
     // Increment view when the card is composed (simple simulation)
     LaunchedEffect(actfile.id) {
@@ -250,7 +253,7 @@ fun ActfileCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Traduit en $targetLanguage",
+                            text = "Traduit en $currentTranslatedTo",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.Bold
@@ -265,7 +268,7 @@ fun ActfileCard(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.clickable { 
                             translatedContent = null 
-                            targetLanguage = null
+                            currentTranslatedTo = null
                         }
                     )
                 }
@@ -383,66 +386,41 @@ fun ActfileCard(
                         )
                     }
 
-                    // Translate / Traduire with Dropdown
-                    var menuExpanded by remember { mutableStateOf(false) }
-                    val coroutineScope = rememberCoroutineScope()
-
-                    Box {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { menuExpanded = true }
-                                .padding(horizontal = 6.dp, vertical = 4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Translate,
-                                contentDescription = "Traduire",
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Traduire",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
-                        ) {
-                            val languages = listOf(
-                                "Français" to "French",
-                                "Español" to "Spanish",
-                                "Português" to "Portuguese",
-                                "Italiano" to "Italian",
-                                "English" to "English"
-                            )
-                            languages.forEach { (displayName, geminiName) ->
-                                DropdownMenuItem(
-                                    text = { Text(displayName) },
-                                    onClick = {
-                                        menuExpanded = false
-                                        isTranslating = true
-                                        translationError = null
-                                        coroutineScope.launch {
-                                            try {
-                                                val translated = TranslationHelper.translateText(actfile.content, geminiName)
-                                                translatedContent = translated
-                                                targetLanguage = displayName
-                                            } catch (e: Exception) {
-                                                translationError = e.message ?: "Une erreur est survenue lors de la traduction."
-                                            } finally {
-                                                isTranslating = false
-                                            }
-                                        }
+                    // Translate / Traduire button
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                isTranslating = true
+                                translationError = null
+                                coroutineScope.launch {
+                                    try {
+                                        val translated = TranslationHelper.translateText(actfile.content, targetLanguageName)
+                                        translatedContent = translated
+                                        currentTranslatedTo = targetLanguageName
+                                    } catch (e: Exception) {
+                                        translationError = e.message ?: "Erreur lors de la traduction."
+                                    } finally {
+                                        isTranslating = false
                                     }
-                                )
+                                }
                             }
-                        }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Translate,
+                            contentDescription = "Traduire",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Traduire",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }

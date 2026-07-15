@@ -15,7 +15,7 @@ android {
   compileSdk = 35
 
   defaultConfig {
-    applicationId = "com.aistudio.socialnetwork.abcde"
+    applicationId = "com.aistudio.iddet.zqwpx"
     minSdk = 24
     targetSdk = 35
     versionCode = 1

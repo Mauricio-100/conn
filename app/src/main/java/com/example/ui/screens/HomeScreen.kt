@@ -191,10 +191,12 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
 
                 items(activeActfiles, key = { it.id }) { actfile ->
                     val isMine = actfile.userId == currentUser?.id
+                    val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
                     ActfileCard(
                         actfile = actfile,
                         onLike = { viewModel.likeActfile(it) },
                         onView = { viewModel.incrementView(it) },
+                        targetLanguageName = targetLanguage,
                         onUserClick = {
                             val currentUserId = viewModel.currentUser.value?.id
                             if (it == currentUserId) {

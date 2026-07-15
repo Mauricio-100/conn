@@ -12,24 +12,36 @@ object TranslationHelper {
     private val translator = Translator()
 
     /**
-     * Translates a given text to the target language name (e.g. "French", "Spanish", "Portuguese", "Italian").
-     * Uses the free Google Translate library (therealbush/translator).
+     * List of supported languages provided by the engine.
+     */
+    val supportedLanguages: List<String> by lazy {
+        Language.values().map { it.name.lowercase().capitalize() }.sorted()
+    }
+
+    /**
+     * Translates a given text to the target language name.
      */
     suspend fun translateText(text: String, targetLanguageName: String): String = withContext(Dispatchers.IO) {
         try {
-            // Map common language names to codes if needed
             val lang = try {
-                Language(targetLanguageName.lowercase())
+                // Find matching language by name or code
+                Language.values().find { it.name.equals(targetLanguageName, ignoreCase = true) } 
+                    ?: Language.values().find { it.toString().equals(targetLanguageName, ignoreCase = true) }
+                    ?: Language.ENGLISH
             } catch (e: Exception) {
-                // Fallback to English if target not found
                 Language.ENGLISH
             }
 
             val result = translator.translate(text, lang, Language.AUTO)
             return@withContext result.translatedText
         } catch (e: Exception) {
-            Log.e(TAG, "Translation error with free library", e)
+            Log.e(TAG, "Translation error", e)
             throw e
         }
     }
+}
+
+// Helper extension for capitalization
+private fun String.capitalize(): String {
+    return this.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
 }

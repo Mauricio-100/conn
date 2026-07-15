@@ -32,9 +32,17 @@ class IddetRepository(
     private val _selectedTheme = MutableStateFlow(AppTheme.valueOf(prefs.getString("selected_theme", AppTheme.DEFAULT.name) ?: AppTheme.DEFAULT.name))
     val selectedTheme: StateFlow<AppTheme> = _selectedTheme.asStateFlow()
 
+    private val _targetLanguage = MutableStateFlow(prefs.getString("target_language", "French") ?: "French")
+    val targetLanguage: StateFlow<String> = _targetLanguage.asStateFlow()
+
     fun setSelectedTheme(theme: AppTheme) {
         _selectedTheme.value = theme
         prefs.edit().putString("selected_theme", theme.name).apply()
+    }
+
+    fun setTargetLanguage(language: String) {
+        _targetLanguage.value = language
+        prefs.edit().putString("target_language", language).apply()
     }
 
     private var currentToken: String? = prefs.getString("auth_token", null)

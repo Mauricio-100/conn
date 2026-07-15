@@ -326,10 +326,12 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                     modifier = Modifier.weight(1f)
                 ) {
                     items(userActfiles, key = { it.id }) { actfile ->
+                        val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
                         ActfileCard(
                             actfile = actfile,
                             onLike = { viewModel.likeActfile(it) },
                             onView = { viewModel.incrementView(it) },
+                            targetLanguageName = targetLanguage,
                             onUserClick = {}, // Already on this user's profile
                             onComment = { navController.navigate("discussion/$it") },
                             onMentionClick = { username ->

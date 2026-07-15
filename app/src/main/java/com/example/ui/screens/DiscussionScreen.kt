@@ -44,6 +44,13 @@ fun DiscussionScreen(
     var replyText by remember { mutableStateOf("") }
     var isPreviewMode by remember { mutableStateOf(false) }
 
+    var translatedContent by remember { mutableStateOf<String?>(null) }
+    var isTranslating by remember { mutableStateOf(false) }
+    var translationError by remember { mutableStateOf<String?>(null) }
+    var currentTranslatedTo by remember { mutableStateOf<String?>(null) }
+    val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
+    val coroutineScope = rememberCoroutineScope()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -168,11 +175,49 @@ fun DiscussionScreen(
                                 Spacer(modifier = Modifier.height(16.dp))
                                 
                                 // Content
-                                val scope = rememberCoroutineScope()
+                                if (isTranslating) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Traduction...", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                } else if (translationError != null) {
+                                    Text(
+                                        text = translationError!!,
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                } else if (translatedContent != null) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            "Traduit en $currentTranslatedTo",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            "Original",
+                                            style = MaterialTheme.typography.labelSmall.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.clickable { 
+                                                translatedContent = null
+                                                currentTranslatedTo = null
+                                            }
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
+
                                 MarkdownActfile(
-                                    content = post.content,
+                                    content = translatedContent ?: post.content,
                                     onMentionClick = { username ->
-                                        scope.launch {
+                                        coroutineScope.launch {
                                             val u = viewModel.getUserByUsername(username)
                                             if (u != null) {
                                                 navController.navigate("profile/${u.id}")
@@ -227,6 +272,23 @@ fun DiscussionScreen(
                                     }
                                     
                                     Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = {
+                                            isTranslating = true
+                                            translationError = null
+                                            coroutineScope.launch {
+                                                try {
+                                                    val result = com.example.utils.TranslationHelper.translateText(post.content, targetLanguage)
+                                                    translatedContent = result
+                                                    currentTranslatedTo = targetLanguage
+                                                } catch (e: Exception) {
+                                                    translationError = "Erreur"
+                                                } finally {
+                                                    isTranslating = false
+                                                }
+                                            }
+                                        }) {
+                                            Icon(Icons.Default.Translate, contentDescription = "Traduire", tint = MaterialTheme.colorScheme.primary)
+                                        }
                                         IconButton(onClick = { viewModel.likeActfile(post.id) }) {
                                             Icon(
                                                 imageVector = Icons.Default.Favorite,
