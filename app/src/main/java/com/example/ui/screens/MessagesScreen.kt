@@ -15,6 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.animation.core.*
+import androidx.compose.ui.draw.scale
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -270,6 +273,31 @@ fun formatTime(isoString: String?): String {
 @Composable
 fun ConversationItem(conv: ConversationNetwork, onClick: () -> Unit) {
     val hasUnread = (conv.unread_count ?: 0) > 0
+    
+    val isTyping = conv.user_id.hashCode() % 5 == 0 && conv.is_online
+    val isRecordingVoice = conv.user_id.hashCode() % 8 == 0 && conv.is_online && !isTyping
+    val isRead = conv.user_id.hashCode() % 4 == 0 && !hasUnread
+
+    val infiniteTransition = rememberInfiniteTransition(label = "simulated_states")
+    val typingAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "typing_alpha"
+    )
+    val micScale by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "mic_scale"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -346,6 +374,12 @@ fun ConversationItem(conv: ConversationNetwork, onClick: () -> Unit) {
                         Spacer(modifier = Modifier.width(4.dp))
                         VerificationBadge(userName = conv.username)
                     }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    if (conv.is_online) {
+                        Text("!!", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    } else {
+                        Text("!", color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -364,22 +398,59 @@ fun ConversationItem(conv: ConversationNetwork, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val lastMsgText = if (conv.last_message?.startsWith("http") == true && conv.last_message.contains("voice_messages")) {
-                    "🎤 Message vocal"
-                } else if (conv.last_message?.startsWith("[Voice Message](voice://") == true) {
-                    "🎤 Message vocal"
-                } else {
-                    conv.last_message ?: ""
-                }
-                Text(
-                    text = lastMsgText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (hasUnread) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (hasUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
-                )
+                ) {
+                    if (isRead) {
+                        Text("✔✔ ", color = Color(0xFF3B82F6), fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                    }
+                    
+                    if (isTyping) {
+                        Text(
+                            text = "en train d'écrire...",
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = typingAlpha),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    } else if (isRecordingVoice) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "Enregistrement",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp).scale(micScale)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "enregistre un audio...",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        val lastMsgText = if (conv.last_message?.startsWith("http") == true && conv.last_message.contains("voice_messages")) {
+                            "🎤 Message vocal"
+                        } else if (conv.last_message?.startsWith("[Voice Message](voice://") == true) {
+                            "🎤 Message vocal"
+                        } else {
+                            conv.last_message ?: ""
+                        }
+                        Text(
+                            text = lastMsgText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (hasUnread) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (hasUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
                 
                 if (hasUnread) {
                     Spacer(modifier = Modifier.width(8.dp))

@@ -15,12 +15,37 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Set up JDK 17
+    - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '17'
+        java-version: '21'
         cache: 'gradle'
+
+    - name: Run Scripts and Apply Patches
+      run: |
+        echo "🚀 Running shell scripts..."
+        for f in *.sh; do
+          if [ -f "$f" ]; then
+            echo "Executing $f..."
+            chmod +x "$f"
+            ./"$f" || echo "⚠️ Warning: Script $f exited with non-zero status"
+          fi
+        done
+        
+        echo "🚀 Applying patch files..."
+        for f in *.patch; do
+          if [ -f "$f" ]; then
+            echo "Applying patch $f..."
+            if git apply --check "$f" 2>/dev/null; then
+              git apply "$f"
+              echo "✅ Patch $f applied successfully using git apply"
+            else
+              echo "⚠️ Git apply check failed for $f. Attempting a fallback manual patch..."
+              patch -p0 < "$f" || echo "⚠️ Warning: Could not apply patch $f"
+            fi
+          fi
+        done
 
     - name: Decode Debug Keystore
       run: |
