@@ -48,6 +48,13 @@ val APP_CATEGORIES = listOf(
 )
 
 fun getCategoryById(id: String?): CategoryInfo? {
-    if (id == null) return null
-    return APP_CATEGORIES.firstOrNull { it.id.equals(id, ignoreCase = true) }
+    if (id == null || id.isBlank()) return null
+    return APP_CATEGORIES.firstOrNull { 
+        it.id.equals(id, ignoreCase = true) || 
+        it.name.equals(id, ignoreCase = true) ||
+        id.contains(it.id, ignoreCase = true) ||
+        id.contains(it.name, ignoreCase = true) ||
+        it.id.contains(id, ignoreCase = true) ||
+        it.name.contains(id, ignoreCase = true)
+    }
 }

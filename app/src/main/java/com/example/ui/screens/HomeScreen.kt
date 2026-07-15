@@ -74,7 +74,15 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
         }
         
         if (selectedCategoryFilter != null) {
-            sortedList.filter { it.category?.equals(selectedCategoryFilter, ignoreCase = true) == true }
+            sortedList.filter { actfile ->
+                val actfileCatInfo = com.example.ui.components.getCategoryById(actfile.category)
+                val filterCatInfo = com.example.ui.components.getCategoryById(selectedCategoryFilter)
+                if (actfileCatInfo != null && filterCatInfo != null) {
+                    actfileCatInfo.id == filterCatInfo.id
+                } else {
+                    actfile.category?.equals(selectedCategoryFilter, ignoreCase = true) == true
+                }
+            }
         } else {
             sortedList
         }

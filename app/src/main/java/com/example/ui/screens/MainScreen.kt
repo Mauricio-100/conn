@@ -64,6 +64,13 @@ fun MainScreen(viewModel: IddetViewModel) {
     val notifications by viewModel.notifications.collectAsState(initial = emptyList())
     val unreadCount = notifications.count { !it.isRead }
 
+    var communitiesExpanded by remember { mutableStateOf(currentSelectedCategory != null) }
+    LaunchedEffect(currentSelectedCategory) {
+        if (currentSelectedCategory != null) {
+            communitiesExpanded = true
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -326,85 +333,110 @@ fun MainScreen(viewModel: IddetViewModel) {
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 4.dp))
 
-                    // SECTION: COMMUNITIES (COMMUNAUTÉS / CATÉGORIES)
-                    Text(
-                        text = "COMMUNAUTÉS",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
-                    )
-
-                    // All categories option
-                    val isAllCategoriesSelected = currentRoute == "home" && currentSelectedCategory == null
-                    NavigationDrawerItem(
-                        icon = {
+                    // Collapsible COMMUNAUTÉ section
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { communitiesExpanded = !communitiesExpanded }
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                Icons.Outlined.AllInclusive,
-                                contentDescription = "Toutes les catégories",
-                                tint = if (isAllCategoriesSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                imageVector = Icons.Outlined.Groups,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
                             )
-                        },
-                        label = {
-                            Text(
-                                "Toutes les catégories",
-                                fontWeight = if (isAllCategoriesSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                color = if (isAllCategoriesSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
-                        },
-                        selected = isAllCategoriesSelected,
-                        onClick = {
-                            scope.launch { drawerState.close() }
-                            viewModel.setSelectedCategoryFilter(null)
-                            if (currentRoute != "home") {
-                                navController.navigate("home") {
-                                    popUpTo("home") { inclusive = true }
-                                }
-                            }
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                        ),
-                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                    )
-
-                    // Individual categories
-                    com.example.ui.components.APP_CATEGORIES.forEach { cat ->
-                        val isCatSelected = currentRoute == "home" && currentSelectedCategory == cat.id
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 2.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isCatSelected) cat.color.copy(alpha = 0.12f) else Color.Transparent)
-                                .clickable {
-                                    scope.launch { drawerState.close() }
-                                    viewModel.setSelectedCategoryFilter(cat.id)
-                                    if (currentRoute != "home") {
-                                        navController.navigate("home") {
-                                            popUpTo("home") { inclusive = true }
-                                        }
-                                    }
-                                }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(cat.color.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(cat.emoji, fontSize = 12.sp)
-                            }
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = cat.name,
+                                text = if (communitiesExpanded) "COMMUNAUTÉ /\\" else "COMMUNAUTÉ \\/",
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (isCatSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                color = if (isCatSelected) cat.color else MaterialTheme.colorScheme.onSurface
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.primary,
                             )
+                        }
+                        Icon(
+                            imageVector = if (communitiesExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    if (communitiesExpanded) {
+                        // All categories option
+                        val isAllCategoriesSelected = currentRoute == "home" && currentSelectedCategory == null
+                        NavigationDrawerItem(
+                            icon = {
+                                Icon(
+                                    Icons.Outlined.AllInclusive,
+                                    contentDescription = "Toutes les catégories",
+                                    tint = if (isAllCategoriesSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            label = {
+                                Text(
+                                    "Toutes les catégories",
+                                    fontWeight = if (isAllCategoriesSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                    color = if (isAllCategoriesSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            selected = isAllCategoriesSelected,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                viewModel.setSelectedCategoryFilter(null)
+                                if (currentRoute != "home") {
+                                    navController.navigate("home") {
+                                        popUpTo("home") { inclusive = true }
+                                    }
+                                }
+                            },
+                            colors = NavigationDrawerItemDefaults.colors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                            ),
+                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                        )
+
+                        // Individual categories
+                        com.example.ui.components.APP_CATEGORIES.forEach { cat ->
+                            val isCatSelected = currentRoute == "home" && currentSelectedCategory == cat.id
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 2.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isCatSelected) cat.color.copy(alpha = 0.12f) else Color.Transparent)
+                                    .clickable {
+                                        scope.launch { drawerState.close() }
+                                        viewModel.setSelectedCategoryFilter(cat.id)
+                                        if (currentRoute != "home") {
+                                            navController.navigate("home") {
+                                                popUpTo("home") { inclusive = true }
+                                            }
+                                        }
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape)
+                                        .background(cat.color.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(cat.emoji, fontSize = 12.sp)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = cat.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isCatSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                    color = if (isCatSelected) cat.color else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
 
