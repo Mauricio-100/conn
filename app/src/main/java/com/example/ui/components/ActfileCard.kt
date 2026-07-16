@@ -307,6 +307,25 @@ fun ActfileCard(
                 onReadMoreClick = { onComment(actfile.id) }
             )
             
+            // Extract and show tags
+            val tags = remember(actfile.content) {
+                val tagRegex = Regex("#([a-zA-Z0-9_]+)")
+                tagRegex.findAll(actfile.content).map { it.groupValues[1] }.distinct().toList()
+            }
+            if (tags.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    tags.forEach { tag ->
+                        TagChip(tagName = tag, onClick = { /* TODO navigate to tag screen */ })
+                    }
+                }
+            }
+            
             Spacer(modifier = Modifier.height(12.dp))
             
             // Reddit-style single bottom actions bar

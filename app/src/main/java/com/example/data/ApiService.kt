@@ -277,6 +277,44 @@ interface ApiService {
         @retrofit2.http.Header("Authorization") token: String,
         @Body body: UpdateCategoriesRequest
     ): UpdateCategoriesResponse
+
+    @POST("/api/communities")
+    suspend fun createCommunity(
+        @retrofit2.http.Header("Authorization") token: String,
+        @Body request: Map<String, @JvmSuppressWildcards Any>
+    ): Community
+
+    @retrofit2.http.GET("/api/communities")
+    suspend fun searchCommunities(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Query("q") query: String?,
+        @retrofit2.http.Query("category") category: String?,
+        @retrofit2.http.Query("sort") sort: String = "popular",
+        @retrofit2.http.Query("limit") limit: Int = 20
+    ): List<Community>
+
+    @retrofit2.http.GET("/api/communities/{slug}")
+    suspend fun getCommunity(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("slug") slug: String
+    ): Community
+
+    @POST("/api/communities/{slug}/join")
+    suspend fun joinCommunity(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.GET("/api/communities/{slug}/channels")
+    suspend fun getCommunityChannels(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("slug") slug: String
+    ): List<Channel>
+    
+    @retrofit2.http.GET("/api/users/me/communities")
+    suspend fun getMyCommunities(
+        @retrofit2.http.Header("Authorization") token: String
+    ): List<Community>
 }
 
 object RetrofitClient {

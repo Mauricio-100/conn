@@ -72,7 +72,11 @@ data class ActfileWithUser(
     val commentsCount: Int,
     val createdAt: Long,
     val isLikedByMe: Boolean = false,
-    val category: String? = null
+    val category: String? = null,
+    val communityId: String? = null,
+    val channelId: String? = null,
+    val channelSlug: String? = null,
+    val channelName: String? = null
 )
 
 @Entity(tableName = "actfile_comments")
@@ -101,3 +105,38 @@ data class Notification(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+
+data class Community(
+    val id: String,
+    val slug: String,
+    val name: String,
+    val description: String?,
+    val iconUrl: String?,
+    val bannerUrl: String?,
+    val category: String,
+    val creatorId: String?,
+    val isPrivate: Boolean,
+    val membersCount: Int,
+    val postsCount: Int,
+    val createdAt: String,
+    val isMember: Boolean,
+    val myRole: String?
+)
+
+data class Channel(
+    val id: String,
+    val communityId: String,
+    val slug: String,
+    val name: String,
+    val description: String?,
+    val isDefault: Boolean,
+    val createdAt: String
+)
+
+data class Tag(val name: String, val usesCount: Int)
+
+sealed class MentionType {
+    data class User(val username: String) : MentionType()
+    data class CommunityMention(val slug: String) : MentionType()
+    data class ChannelMention(val slug: String) : MentionType()
+}

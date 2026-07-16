@@ -480,4 +480,43 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     fun getActfile(actfileId: String): Flow<ActfileWithUser?> {
         return repository.getActfile(actfileId)
     }
+
+    // Communities and Channels Support
+    fun searchCommunitiesFlow(query: String?, category: String?, sort: String = "popular"): Flow<List<com.example.data.Community>> {
+        return flow {
+            emit(repository.searchCommunities(query, category, sort))
+        }
+    }
+
+    fun getCommunityFlow(slug: String): Flow<com.example.data.Community?> {
+        return flow {
+            emit(repository.getCommunity(slug))
+        }
+    }
+
+    fun getCommunityChannelsFlow(slug: String): Flow<List<com.example.data.Channel>> {
+        return flow {
+            emit(repository.getCommunityChannels(slug))
+        }
+    }
+
+    fun toggleCommunityJoin(slug: String, onComplete: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val success = repository.joinCommunity(slug)
+            onComplete(success)
+        }
+    }
+
+    fun createCommunity(
+        name: String,
+        category: String,
+        description: String,
+        isPrivate: Boolean,
+        onResult: (com.example.data.Community?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val com = repository.createCommunity(name, category, description, isPrivate)
+            onResult(com)
+        }
+    }
 }

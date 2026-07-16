@@ -31,6 +31,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.res.painterResource
 import com.example.ui.IddetViewModel
 import com.example.ui.screens.CustomBrowserScreen
+import com.example.ui.components.LocalCommunityClickHandler
+import com.example.ui.components.LocalChannelClickHandler
+import androidx.compose.runtime.CompositionLocalProvider
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -545,6 +548,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                     val drawerItems = listOf(
                         Triple("Rechercher", "search", Icons.Outlined.Search),
                         Triple("Discussions", "messages", Icons.Outlined.Message),
+                        Triple("Communautés", "communities", Icons.Outlined.Group),
                         Triple("Mon Profil", "profile", Icons.Outlined.Person),
                         Triple("Historique Actf", "history", Icons.Outlined.History),
                         Triple("Paramètres", "settings", Icons.Outlined.Settings)
@@ -663,11 +667,19 @@ fun MainScreen(viewModel: IddetViewModel) {
         }
     ) {
         Scaffold { innerPadding ->
-            NavHost(
-                navController = navController,
-                startDestination = "home",
-                modifier = Modifier.padding(innerPadding)
+            CompositionLocalProvider(
+                LocalCommunityClickHandler provides { slug ->
+                    navController.navigate("community/$slug")
+                },
+                LocalChannelClickHandler provides { channelSlug ->
+                    navController.navigate("communities")
+                }
             ) {
+                NavHost(
+                    navController = navController,
+                    startDestination = "home",
+                    modifier = Modifier.padding(innerPadding)
+                ) {
                 composable("home") { 
                     HomeScreen(
                         viewModel = viewModel, 
@@ -699,6 +711,14 @@ fun MainScreen(viewModel: IddetViewModel) {
                     val actfileId = backStackEntry.arguments?.getString("actfileId") ?: return@composable
                     DiscussionScreen(viewModel, navController, actfileId)
                 }
+                composable("communities") { CommunitiesScreen(viewModel, navController) }
+                composable(
+                    "community/{slug}",
+                    arguments = listOf(navArgument("slug") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val slug = backStackEntry.arguments?.getString("slug") ?: return@composable
+                    CommunityDetailScreen(slug, viewModel, navController)
+                }
                 composable("notifications") { NotificationsScreen(viewModel, navController) }
                 composable("history") { HistoryScreen(viewModel, navController) }
                 composable("settings") { SettingsScreen(viewModel, navController) }
@@ -716,4 +736,5 @@ fun MainScreen(viewModel: IddetViewModel) {
             }
         }
     }
+}
 }

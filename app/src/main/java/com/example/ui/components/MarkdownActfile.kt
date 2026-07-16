@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import android.widget.Toast
 
+val LocalCommunityClickHandler = androidx.compose.runtime.compositionLocalOf<((String) -> Unit)?> { null }
+val LocalChannelClickHandler = androidx.compose.runtime.compositionLocalOf<((String) -> Unit)?> { null }
+
 // Markdown Block types
 sealed class MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock()
@@ -370,6 +373,8 @@ fun MarkdownText(
     onLinkClick: ((String) -> Unit)? = null
 ) {
     val uriHandler = LocalUriHandler.current
+    val communityClickHandler = LocalCommunityClickHandler.current
+    val channelClickHandler = LocalChannelClickHandler.current
     
     ClickableText(
         text = annotatedString,
@@ -393,6 +398,19 @@ fun MarkdownText(
             annotatedString.getStringAnnotations(tag = "MENTION", start = offset, end = offset)
                 .firstOrNull()?.let { annotation ->
                     onMentionClick?.invoke(annotation.item)
+                    return@ClickableText
+                }
+                
+            annotatedString.getStringAnnotations(tag = "COMMUNITY", start = offset, end = offset)
+                .firstOrNull()?.let { annotation ->
+                    communityClickHandler?.invoke(annotation.item)
+                    return@ClickableText
+                }
+                
+            annotatedString.getStringAnnotations(tag = "CHANNEL", start = offset, end = offset)
+                .firstOrNull()?.let { annotation ->
+                    channelClickHandler?.invoke(annotation.item)
+                    return@ClickableText
                 }
         }
     )
@@ -412,25 +430,40 @@ fun parseRichMarkdownStyles(
         val codeTextColor = if (isMine) Color.White else primaryColor
         
         while (i < text.length) {
-            // Mention @username
+            // Mentions: @username, @c/community, @#channel
             if (text[i] == '@') {
-                var end = i + 1
-                while (end < text.length && (text[end].isLetterOrDigit() || text[end] == '_' || text[end] == '.')) {
-                    end++
-                }
-                val len = end - i
-                if (len > 1) {
-                    val username = text.substring(i + 1, end)
-                    pushStringAnnotation(tag = "MENTION", annotation = username)
+                val mentionRegex = Regex("^(@([a-zA-Z0-9_.]+)|@c/([a-z0-9_]+)|@#([a-z0-9-]+))")
+                val match = mentionRegex.find(text.substring(i))
+                if (match != null) {
+                    val fullMatch = match.value
+                    
+                    val mentionType = when {
+                        fullMatch.startsWith("@c/") -> "COMMUNITY"
+                        fullMatch.startsWith("@#") -> "CHANNEL"
+                        else -> "MENTION" // user
+                    }
+                    val rawValue = when {
+                        fullMatch.startsWith("@c/") -> fullMatch.substring(3)
+                        fullMatch.startsWith("@#") -> fullMatch.substring(2)
+                        else -> fullMatch.substring(1)
+                    }
+                    
+                    val mentionColor = when(mentionType) {
+                        "COMMUNITY" -> Color(0xFF8B5CF6) // Violet
+                        "CHANNEL" -> Color(0xFF10B981) // Emerald
+                        else -> linkColor
+                    }
+
+                    pushStringAnnotation(tag = mentionType, annotation = rawValue)
                     withStyle(SpanStyle(
-                        color = linkColor,
+                        color = mentionColor,
                         fontWeight = FontWeight.ExtraBold,
                         textDecoration = TextDecoration.Underline
                     )) {
-                        append("@$username")
+                        append(fullMatch)
                     }
                     pop()
-                    i = end
+                    i += fullMatch.length
                     continue
                 }
             }

@@ -1021,4 +1021,71 @@ class IddetRepository(
     suspend fun getUserByUsername(username: String): User? {
         return userDao.getUserByUsername(username)
     }
+
+    suspend fun searchCommunities(query: String?, category: String?, sort: String): List<Community> {
+        val header = currentToken?.let { "Bearer $it" }
+        return try {
+            RetrofitClient.apiService.searchCommunities(header, query, category, sort)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun getCommunity(slug: String): Community? {
+        val header = currentToken?.let { "Bearer $it" }
+        return try {
+            RetrofitClient.apiService.getCommunity(header, slug)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun joinCommunity(slug: String): Boolean {
+        val token = currentToken ?: return false
+        return try {
+            RetrofitClient.apiService.joinCommunity("Bearer $token", slug)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun getCommunityChannels(slug: String): List<Channel> {
+        val header = currentToken?.let { "Bearer $it" }
+        return try {
+            RetrofitClient.apiService.getCommunityChannels(header, slug)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun getMyCommunities(): List<Community> {
+        val token = currentToken ?: return emptyList()
+        return try {
+            RetrofitClient.apiService.getMyCommunities("Bearer $token")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun createCommunity(name: String, category: String, description: String, isPrivate: Boolean): Community? {
+        val token = currentToken ?: return null
+        return try {
+            val body = mapOf(
+                "name" to name,
+                "category" to category,
+                "description" to description,
+                "is_private" to isPrivate
+            )
+            RetrofitClient.apiService.createCommunity("Bearer $token", body)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
 }
