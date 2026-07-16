@@ -24,6 +24,8 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
 
     val targetLanguage: StateFlow<String> = repository.targetLanguage
 
+    val aiState = com.example.utils.LocalAiManager.state
+
     fun setTargetLanguage(language: String) {
         repository.setTargetLanguage(language)
     }

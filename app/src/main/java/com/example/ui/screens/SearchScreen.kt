@@ -149,14 +149,20 @@ fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
                         items(searchActfilesResult, key = { it.id }) { actfile ->
                             val isMine = actfile.userId == currentUser?.id
                             val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
+                            val aiState by viewModel.aiState.collectAsStateWithLifecycle()
                             ActfileCard(
                                 actfile = actfile,
                                 onLike = { viewModel.likeActfile(it) },
                                 onView = { viewModel.incrementView(it) },
                                 targetLanguageName = targetLanguage,
+                                isAiReady = aiState == com.example.utils.AiModelState.READY,
                                 onUserClick = { navController.navigate("profile/$it") },
                                 onComment = { navController.navigate("discussion/$it") },
                                 onDelete = if (isMine) { { viewModel.deleteActfile(it) } } else null,
+                                onLinkClick = { url ->
+                                    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                    navController.navigate("browser/$encodedUrl")
+                                },
                                 onMentionClick = { username ->
                                     scope.launch {
                                         val u = viewModel.getUserByUsername(username)

@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -50,6 +52,14 @@ fun DiscussionScreen(
     var currentTranslatedTo by remember { mutableStateOf<String?>(null) }
     val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
+    var smartReplies by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(actfile?.id) {
+        val currentActfile = actfile
+        if (currentActfile != null && com.example.utils.LocalAiManager.state.value == com.example.utils.AiModelState.READY) {
+            smartReplies = com.example.utils.LocalAiManager.suggestReplies(currentActfile.content)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -195,12 +205,20 @@ fun DiscussionScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            "Traduit en $currentTranslatedTo",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                "Traduit en $currentTranslatedTo",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            if (currentTranslatedTo?.contains("S3 AI") == true) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
+                                            }
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(Icons.Default.Verified, contentDescription = "Certifié", modifier = Modifier.size(12.dp), tint = Color.Gray)
+                                        }
                                         Text(
                                             "Original",
                                             style = MaterialTheme.typography.labelSmall.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
@@ -223,6 +241,10 @@ fun DiscussionScreen(
                                                 navController.navigate("profile/${u.id}")
                                             }
                                         }
+                                    },
+                                    onLinkClick = { url ->
+                                        val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                        navController.navigate("browser/$encodedUrl")
                                     }
                                 )
                                 
@@ -277,9 +299,19 @@ fun DiscussionScreen(
                                             translationError = null
                                             coroutineScope.launch {
                                                 try {
-                                                    val result = com.example.utils.TranslationHelper.translateText(post.content, targetLanguage)
-                                                    translatedContent = result
-                                                    currentTranslatedTo = targetLanguage
+                                                    val aiState = com.example.utils.LocalAiManager.state.value
+                                                    val s3Result = if (aiState == com.example.utils.AiModelState.READY) {
+                                                        com.example.utils.LocalAiManager.translateWithS3(post.content, targetLanguage)
+                                                    } else null
+
+                                                    if (s3Result != null) {
+                                                        translatedContent = s3Result
+                                                        currentTranslatedTo = "$targetLanguage (S3 AI)"
+                                                    } else {
+                                                        val result = com.example.utils.TranslationHelper.translateText(post.content, targetLanguage)
+                                                        translatedContent = result
+                                                        currentTranslatedTo = "$targetLanguage (Engine S3)"
+                                                    }
                                                 } catch (e: Exception) {
                                                     translationError = "Erreur"
                                                 } finally {
@@ -415,6 +447,10 @@ fun DiscussionScreen(
                                                 navController.navigate("profile/${u.id}")
                                             }
                                         }
+                                    },
+                                    onLinkClick = { url ->
+                                        val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                        navController.navigate("browser/$encodedUrl")
                                     }
                                 )
                             }
@@ -445,6 +481,23 @@ fun DiscussionScreen(
                             }
                         )
                     } else {
+                        if (smartReplies.isNotEmpty() && replyText.isEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                smartReplies.forEach { reply ->
+                                    SuggestionChip(
+                                        onClick = { replyText = reply },
+                                        label = { Text(reply, style = MaterialTheme.typography.labelSmall) },
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                }
+                            }
+                        }
                         if (isPreviewMode) {
                             // Compact Markdown Preview Card
                             Card(
@@ -487,7 +540,13 @@ fun DiscussionScreen(
                                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                         )
                                     } else {
-                                        MarkdownActfile(content = replyText)
+                                        MarkdownActfile(
+                                            content = replyText,
+                                            onLinkClick = { url ->
+                                                val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                                navController.navigate("browser/$encodedUrl")
+                                            }
+                                        )
                                     }
                                 }
                             }

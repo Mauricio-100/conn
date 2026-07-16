@@ -18,10 +18,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 
 /**
  * Parses and displays a voice message waveform and allows playback.
@@ -34,7 +37,7 @@ fun VoiceMessagePlayer(
 ) {
     val voiceData = remember(content) {
         if (isVoiceMessage(content)) {
-            parseVoiceMessage(content) ?: VoiceMessageData(5, List(15) { 0.4f })
+            parseVoiceMessage(content) ?: VoiceMessageData(5, List(15) { 0.4f }, null)
         } else {
             // Generate stable deterministic wave for real URLs / local paths
             val hash = content.hashCode()
@@ -43,7 +46,7 @@ fun VoiceMessagePlayer(
             val amplitudes = List(18) {
                 0.15f + 0.85f * random.nextFloat()
             }
-            VoiceMessageData(duration, amplitudes)
+            VoiceMessageData(duration, amplitudes, null)
         }
     }
 
@@ -187,6 +190,17 @@ fun VoiceMessagePlayer(
             modifier = Modifier.width(36.dp)
         )
     }
+    
+    if (voiceData.transcription != null) {
+        Column(modifier = Modifier.padding(start = 54.dp, end = 16.dp, bottom = 4.dp)) {
+            Text(
+                text = voiceData.transcription,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isMine) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontStyle = FontStyle.Italic
+            )
+        }
+    }
 }
 
 /**
@@ -204,6 +218,7 @@ fun VoiceRecorderUI(
     val recorderManager = remember { com.example.utils.AudioRecorderManager(context) }
     var durationSeconds by remember { mutableStateOf(0) }
     var isRecording by remember { mutableStateOf(true) }
+    var isTranscribing by remember { mutableStateOf(false) }
     val recordAmplitudes = remember { mutableStateListOf<Float>() }
 
     // Start native recording on composition
@@ -330,38 +345,55 @@ fun VoiceRecorderUI(
         IconButton(
             onClick = {
                 isRecording = false
-                if (onSendVoiceFile != null) {
-                    val file = recorderManager.stopRecording()
-                    if (file != null) {
-                        onSendVoiceFile(file)
+                val transcriptionScope = CoroutineScope(Dispatchers.Main)
+                transcriptionScope.launch {
+                    var transcription: String? = null
+                    if (com.example.utils.LocalAiManager.state.value == com.example.utils.AiModelState.READY) {
+                        isTranscribing = true
+                        delay(1200)
+                        transcription = "Ceci est une transcription simulée par S3 AI (Whisper)."
+                        isTranscribing = false
+                    }
+
+                    if (onSendVoiceFile != null) {
+                        val file = recorderManager.stopRecording()
+                        if (file != null) {
+                            onSendVoiceFile(file)
+                        } else {
+                            onCancel()
+                        }
+                    } else if (onSendVoice != null) {
+                        recorderManager.cancelRecording()
+                        val finalAmps = if (recordAmplitudes.isEmpty()) {
+                            List(22) { (0.2f + 0.8f * kotlin.math.sin(it.toFloat() / 4.5f).coerceIn(0.1f, 1f)) }
+                        } else {
+                            recordAmplitudes.toList()
+                        }
+                        val ampsString = finalAmps.map { String.format("%.2f", it) }.joinToString(",")
+                        val finalDuration = if (durationSeconds == 0) 3 else durationSeconds
+                        val transcriptionParam = transcription?.let { "&transcription=${java.net.URLEncoder.encode(it, "UTF-8")}" } ?: ""
+                        val voiceMarkdown = "[Voice Message](voice://duration=$finalDuration&amplitudes=$ampsString$transcriptionParam)"
+                        onSendVoice(voiceMarkdown)
                     } else {
                         onCancel()
                     }
-                } else if (onSendVoice != null) {
-                    recorderManager.cancelRecording()
-                    val finalAmps = if (recordAmplitudes.isEmpty()) {
-                        List(22) { (0.2f + 0.8f * kotlin.math.sin(it.toFloat() / 4.5f).coerceIn(0.1f, 1f)) }
-                    } else {
-                        recordAmplitudes.toList()
-                    }
-                    val ampsString = finalAmps.map { String.format("%.2f", it) }.joinToString(",")
-                    val finalDuration = if (durationSeconds == 0) 3 else durationSeconds
-                    val voiceMarkdown = "[Voice Message](voice://duration=$finalDuration&amplitudes=$ampsString)"
-                    onSendVoice(voiceMarkdown)
-                } else {
-                    onCancel()
                 }
             },
             modifier = Modifier
                 .size(32.dp)
-                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                .background(if (isTranscribing) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f) else MaterialTheme.colorScheme.primary, CircleShape),
+            enabled = !isTranscribing
         ) {
-            Icon(
-                imageVector = Icons.Default.Send,
-                contentDescription = "Envoyer vocal",
-                tint = Color.White,
-                modifier = Modifier.size(16.dp)
-            )
+            if (isTranscribing) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Send,
+                    contentDescription = "Envoyer vocal",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 }
@@ -373,7 +405,7 @@ fun isVoiceMessage(content: String): Boolean {
     return content.startsWith("[Voice Message](voice://")
 }
 
-data class VoiceMessageData(val durationSeconds: Int, val amplitudes: List<Float>)
+data class VoiceMessageData(val durationSeconds: Int, val amplitudes: List<Float>, val transcription: String?)
 
 fun parseVoiceMessage(content: String): VoiceMessageData? {
     if (!isVoiceMessage(content)) return null
@@ -386,8 +418,9 @@ fun parseVoiceMessage(content: String): VoiceMessageData? {
         val duration = params["duration"]?.toIntOrNull() ?: 5
         val ampsString = params["amplitudes"] ?: ""
         val amplitudes = ampsString.split(",").mapNotNull { it.toFloatOrNull() }
-        VoiceMessageData(duration, amplitudes)
+        val transcription = params["transcription"]?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+        VoiceMessageData(duration, amplitudes, transcription)
     } catch (e: Exception) {
-        VoiceMessageData(5, List(15) { 0.4f })
+        VoiceMessageData(5, List(15) { 0.4f }, null)
     }
 }

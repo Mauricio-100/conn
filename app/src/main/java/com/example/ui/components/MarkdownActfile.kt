@@ -55,7 +55,10 @@ fun MarkdownActfile(
     modifier: Modifier = Modifier,
     isMine: Boolean = false,
     compactOpenGraph: Boolean = false,
-    onMentionClick: ((String) -> Unit)? = null
+    truncateChars: Int? = null,
+    onMentionClick: ((String) -> Unit)? = null,
+    onLinkClick: ((String) -> Unit)? = null,
+    onReadMoreClick: (() -> Unit)? = null
 ) {
     if (isVoiceMessage(content)) {
         VoiceMessagePlayer(
@@ -66,7 +69,13 @@ fun MarkdownActfile(
         return
     }
 
-    val blocks = rememberParsedMarkdown(content)
+    val displayContent = if (truncateChars != null && content.length > truncateChars) {
+        content.take(truncateChars) + "..."
+    } else {
+        content
+    }
+
+    val blocks = rememberParsedMarkdown(displayContent)
     val primaryColor = MaterialTheme.colorScheme.primary
     val textColor = if (isMine) Color.White else MaterialTheme.colorScheme.onSurface
     val secondaryTextColor = if (isMine) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
@@ -96,6 +105,7 @@ fun MarkdownActfile(
                         style = style,
                         textColor = headerTextColor,
                         onMentionClick = onMentionClick,
+                        onLinkClick = onLinkClick,
                         modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                     )
                 }
@@ -128,6 +138,7 @@ fun MarkdownActfile(
                                 lineHeight = 20.sp
                             ),
                             onMentionClick = onMentionClick,
+                            onLinkClick = onLinkClick,
                             textColor = secondaryTextColor
                         )
                     }
@@ -214,6 +225,7 @@ fun MarkdownActfile(
                                     style = MaterialTheme.typography.bodyMedium,
                                     textColor = textColor,
                                     onMentionClick = onMentionClick,
+                                    onLinkClick = onLinkClick,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -243,6 +255,7 @@ fun MarkdownActfile(
                                     style = MaterialTheme.typography.bodyMedium,
                                     textColor = textColor,
                                     onMentionClick = onMentionClick,
+                                    onLinkClick = onLinkClick,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -280,6 +293,7 @@ fun MarkdownActfile(
                                     },
                                     textColor = if (item.isChecked) secondaryTextColor else textColor,
                                     onMentionClick = onMentionClick,
+                                    onLinkClick = onLinkClick,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -306,10 +320,20 @@ fun MarkdownActfile(
                         annotatedString = formattedText,
                         style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 19.sp),
                         onMentionClick = onMentionClick,
+                        onLinkClick = onLinkClick,
                         textColor = textColor
                     )
                 }
             }
+        }
+
+        if (truncateChars != null && content.length > truncateChars) {
+            Text(
+                text = "Voir plus",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                modifier = Modifier.clickable { onReadMoreClick?.invoke() }
+            )
         }
 
         // OpenGraph URL Preview Integration!
@@ -321,6 +345,7 @@ fun MarkdownActfile(
                 OpenGraphPreview(
                     url = url,
                     compact = compactOpenGraph,
+                    onLinkClick = onLinkClick,
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
@@ -341,7 +366,8 @@ fun MarkdownText(
     modifier: Modifier = Modifier,
     textColor: Color = MaterialTheme.colorScheme.onSurface,
     style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium,
-    onMentionClick: ((String) -> Unit)? = null
+    onMentionClick: ((String) -> Unit)? = null,
+    onLinkClick: ((String) -> Unit)? = null
 ) {
     val uriHandler = LocalUriHandler.current
     
@@ -352,10 +378,15 @@ fun MarkdownText(
         onClick = { offset ->
             annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
                 .firstOrNull()?.let { annotation ->
-                    try {
-                        uriHandler.openUri(annotation.item)
-                    } catch (e: Exception) {
-                        // ignore gracefully
+                    val url = annotation.item
+                    if (onLinkClick != null) {
+                        onLinkClick(url)
+                    } else {
+                        try {
+                            uriHandler.openUri(url)
+                        } catch (e: Exception) {
+                            // ignore gracefully
+                        }
                     }
                 }
             

@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
         }
 
         enableEdgeToEdge()
+        com.example.utils.LocalAiManager.initOnce(applicationContext)
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             val permission = android.Manifest.permission.POST_NOTIFICATIONS

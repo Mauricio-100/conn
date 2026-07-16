@@ -134,11 +134,13 @@ fun HistoryScreen(viewModel: IddetViewModel, navController: NavController) {
                     items(listToDisplay, key = { it.id }) { actfile ->
                         val isMine = actfile.userId == currentUserId
                         val targetLanguage by viewModel.targetLanguage.collectAsState()
+                        val aiState by viewModel.aiState.collectAsState()
                         ActfileCard(
                             actfile = actfile,
                             onLike = { viewModel.likeActfile(it) },
                             onView = { viewModel.incrementView(it) },
                             targetLanguageName = targetLanguage,
+                            isAiReady = aiState == com.example.utils.AiModelState.READY,
                             onUserClick = { userId ->
                                 if (userId == currentUserId) {
                                     navController.navigate("profile")
@@ -150,6 +152,10 @@ fun HistoryScreen(viewModel: IddetViewModel, navController: NavController) {
                                 navController.navigate("discussion/$actfileId")
                             },
                             onDelete = if (isMine) { { viewModel.deleteActfile(it) } } else null,
+                            onLinkClick = { url ->
+                                val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                navController.navigate("browser/$encodedUrl")
+                            },
                             onMentionClick = { username ->
                                 scope.launch {
                                     val u = viewModel.getUserByUsername(username)

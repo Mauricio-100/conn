@@ -46,7 +46,9 @@ import com.example.ui.IddetViewModel
 import com.example.ui.components.ActfileCard
 import com.example.ui.components.VerificationBadge
 import com.example.ui.components.MarkdownEditor
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.AutoAwesome
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -192,11 +194,17 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                 items(activeActfiles, key = { it.id }) { actfile ->
                     val isMine = actfile.userId == currentUser?.id
                     val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
+                    val aiState by viewModel.aiState.collectAsStateWithLifecycle()
                     ActfileCard(
                         actfile = actfile,
                         onLike = { viewModel.likeActfile(it) },
                         onView = { viewModel.incrementView(it) },
                         targetLanguageName = targetLanguage,
+                        isAiReady = aiState == com.example.utils.AiModelState.READY,
+                        onLinkClick = { url ->
+                            val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                            navController.navigate("browser/$encodedUrl")
+                        },
                         onUserClick = {
                             val currentUserId = viewModel.currentUser.value?.id
                             if (it == currentUserId) {
@@ -263,11 +271,28 @@ fun ActfileComposer(
 ) {
     var content by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("Autres") }
+    
+    var isAiSuggesting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    
+    LaunchedEffect(content) {
+        if (content.length > 50 && com.example.utils.LocalAiManager.state.value == com.example.utils.AiModelState.READY) {
+            delay(1500) // Debounce
+            isAiSuggesting = true
+            val suggested = com.example.utils.LocalAiManager.suggestCategory(content)
+            if (suggested != null && suggested in allCategories) {
+                selectedCategory = suggested
+            }
+            isAiSuggesting = false
+        }
+    }
     
     val categoriesToUse = if (allCategories.isNotEmpty()) allCategories else listOf("Fun", "Amour", "Motivation", "Tech", "Sport", "Musique", "Actu", "Business", "Spiritualité", "Autres")
     
-    var selectedCategory by remember { mutableStateOf("Autres") }
     var showCategoryPickerByPublish by remember { mutableStateOf(false) }
+    var moderationError by remember { mutableStateOf<String?>(null) }
+    var isCheckingModeration by remember { mutableStateOf(false) }
     
     val selectedCatInfoRaw = com.example.ui.components.getCategoryById(selectedCategory)
     val selectedCatInfo = selectedCatInfoRaw ?: com.example.ui.components.CategoryInfo(
@@ -333,6 +358,10 @@ fun ActfileComposer(
                         color = selectedCatInfo.color
                     )
                 }
+                if (isAiSuggesting) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
                 Icon(
                     imageVector = androidx.compose.material.icons.Icons.Default.ArrowDropDown,
                     contentDescription = "Changer",
@@ -351,16 +380,41 @@ fun ActfileComposer(
                 )
             )
             Spacer(modifier = Modifier.height(16.dp))
+            if (moderationError != null) {
+                Text(
+                    text = moderationError!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
             Button(
                 onClick = {
-                    if (content.isNotBlank()) onPublish(content, tags, selectedCategory)
+                    if (content.isNotBlank()) {
+                        isCheckingModeration = true
+                        moderationError = null
+                        scope.launch {
+                            val isSafe = com.example.utils.LocalAiManager.checkAppropriate(content)
+                            if (isSafe) {
+                                onPublish(content, tags, selectedCategory)
+                            } else {
+                                moderationError = "⚠️ S3 AI a détecté que ce contenu pourrait être inapproprié. Veuillez le réviser avant de publier."
+                            }
+                            isCheckingModeration = false
+                        }
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                enabled = !isCheckingModeration
             ) {
-                Text("Publish Actfile")
+                if (isCheckingModeration) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Color.White)
+                } else {
+                    Text("Publish Actfile")
+                }
             }
             Spacer(modifier = Modifier.height(16.dp))
         }

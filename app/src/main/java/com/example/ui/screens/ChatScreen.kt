@@ -434,6 +434,10 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
                                             content = msg.content,
                                             isMine = isMine,
                                             compactOpenGraph = true,
+                                            onLinkClick = { url ->
+                                                val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                                navController.navigate("browser/$encodedUrl")
+                                            },
                                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                         )
                                     }

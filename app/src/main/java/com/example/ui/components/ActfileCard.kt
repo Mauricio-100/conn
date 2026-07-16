@@ -11,8 +11,7 @@ import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.material.icons.outlined.Share
@@ -38,6 +37,8 @@ fun ActfileCard(
     onUserClick: (String) -> Unit,
     onComment: (String) -> Unit,
     targetLanguageName: String = "French",
+    isAiReady: Boolean = false,
+    onLinkClick: ((String) -> Unit)? = null,
     onDelete: ((String) -> Unit)? = null,
     onMentionClick: ((String) -> Unit)? = null,
     onCategoryClick: ((String) -> Unit)? = null,
@@ -50,6 +51,9 @@ fun ActfileCard(
     var isTranslating by remember { mutableStateOf(false) }
     var translationError by remember { mutableStateOf<String?>(null) }
     var currentTranslatedTo by remember { mutableStateOf<String?>(null) }
+    var translatedByS3 by remember { mutableStateOf(false) }
+    var summarizedContent by remember { mutableStateOf<String?>(null) }
+    var isSummarizing by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -253,10 +257,27 @@ fun ActfileCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Traduit en $currentTranslatedTo",
+                            text = "Traduit en $currentTranslatedTo by ${if (translatedByS3) "S3 AI" else "Engine S3"}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        // Robot Cat Icon if S3 AI
+                        if (translatedByS3) {
+                            Icon(
+                                Icons.Default.Chat, // Fallback for cat robot icon
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        // Certified Badge (White)
+                        Icon(
+                            Icons.Default.Verified,
+                            contentDescription = "Certifié",
+                            modifier = Modifier.size(14.dp),
+                            tint = Color.White
                         )
                     }
                     Text(
@@ -278,8 +299,12 @@ fun ActfileCard(
             // Post Content
             MarkdownActfile(
                 content = translatedContent ?: actfile.content,
+                modifier = Modifier.clickable { onComment(actfile.id) },
                 compactOpenGraph = false,
-                onMentionClick = onMentionClick
+                truncateChars = 27,
+                onMentionClick = onMentionClick,
+                onLinkClick = onLinkClick,
+                onReadMoreClick = { onComment(actfile.id) }
             )
             
             Spacer(modifier = Modifier.height(12.dp))
@@ -396,8 +421,20 @@ fun ActfileCard(
                                 translationError = null
                                 coroutineScope.launch {
                                     try {
-                                        val translated = TranslationHelper.translateText(actfile.content, targetLanguageName)
-                                        translatedContent = translated
+                                        // Try S3 AI first if ready
+                                        val s3Result = if (isAiReady) {
+                                            com.example.utils.LocalAiManager.translateWithS3(actfile.content, targetLanguageName)
+                                        } else null
+
+                                        if (s3Result != null) {
+                                            translatedContent = s3Result
+                                            translatedByS3 = true
+                                        } else {
+                                            // Fallback to engine
+                                            val translated = TranslationHelper.translateText(actfile.content, targetLanguageName)
+                                            translatedContent = translated
+                                            translatedByS3 = false
+                                        }
                                         currentTranslatedTo = targetLanguageName
                                     } catch (e: Exception) {
                                         translationError = e.message ?: "Erreur lors de la traduction."
@@ -421,6 +458,43 @@ fun ActfileCard(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
+                    }
+
+                    if (isAiReady && actfile.content.length > 200) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    isSummarizing = true
+                                    coroutineScope.launch {
+                                        val summary = com.example.utils.LocalAiManager.summarize(actfile.content)
+                                        if (summary != null) {
+                                            summarizedContent = summary
+                                        }
+                                        isSummarizing = false
+                                    }
+                                }
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            if (isSummarizing) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = "Résumé",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Résumé",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
                     }
                 }
             }

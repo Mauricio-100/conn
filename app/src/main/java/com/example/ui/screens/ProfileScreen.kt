@@ -420,7 +420,11 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                         Spacer(modifier = Modifier.height(8.dp))
                         com.example.ui.components.MarkdownActfile(
                             content = user.bio,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            onLinkClick = { url ->
+                                val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                navController.navigate("browser/$encodedUrl")
+                            }
                         )
                     }
 
@@ -822,11 +826,17 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
             items(userActfiles, key = { it.id }) { actfile ->
                 Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                     val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
+                    val aiState by viewModel.aiState.collectAsStateWithLifecycle()
                     ActfileCard(
                         actfile = actfile,
                         onLike = { viewModel.likeActfile(it) },
                         onView = { viewModel.incrementView(it) },
                         targetLanguageName = targetLanguage,
+                        isAiReady = aiState == com.example.utils.AiModelState.READY,
+                        onLinkClick = { url ->
+                            val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                            navController.navigate("browser/$encodedUrl")
+                        },
                         onUserClick = {}, // It's me
                         onComment = { navController.navigate("discussion/$it") },
                         onDelete = { viewModel.deleteActfile(it) },

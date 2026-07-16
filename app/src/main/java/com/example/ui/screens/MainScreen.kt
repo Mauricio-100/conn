@@ -30,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.res.painterResource
 import com.example.ui.IddetViewModel
+import com.example.ui.screens.CustomBrowserScreen
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -701,6 +702,17 @@ fun MainScreen(viewModel: IddetViewModel) {
                 composable("notifications") { NotificationsScreen(viewModel, navController) }
                 composable("history") { HistoryScreen(viewModel, navController) }
                 composable("settings") { SettingsScreen(viewModel, navController) }
+                composable(
+                    "browser/{url}",
+                    arguments = listOf(navArgument("url") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val url = backStackEntry.arguments?.getString("url") ?: ""
+                    val decodedUrl = java.net.URLDecoder.decode(url, "UTF-8")
+                    CustomBrowserScreen(
+                        url = decodedUrl,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
             }
         }
     }

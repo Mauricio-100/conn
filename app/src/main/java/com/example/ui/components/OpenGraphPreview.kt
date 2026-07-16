@@ -224,7 +224,8 @@ object UrlMetadataResolver {
 fun OpenGraphPreview(
     url: String,
     modifier: Modifier = Modifier,
-    compact: Boolean = false
+    compact: Boolean = false,
+    onLinkClick: ((String) -> Unit)? = null
 ) {
     val uriHandler = LocalUriHandler.current
     var metadata by remember(url) { mutableStateOf(UrlMetadataResolver.getPresetMetadata(url)) }
@@ -242,10 +243,14 @@ fun OpenGraphPreview(
             .fillMaxWidth()
             .clip(cardShape)
             .clickable {
-                try {
-                    uriHandler.openUri(metadata.url)
-                } catch (e: Exception) {
-                    // fallback
+                if (onLinkClick != null) {
+                    onLinkClick(metadata.url)
+                } else {
+                    try {
+                        uriHandler.openUri(metadata.url)
+                    } catch (e: Exception) {
+                        // fallback
+                    }
                 }
             },
         shape = cardShape,

@@ -12,11 +12,11 @@ plugins {
 
 android {
   namespace = "com.example"
-  compileSdk = 35
+  compileSdk = 36
 
   defaultConfig {
     applicationId = "com.aistudio.iddet.zqwpx"
-    minSdk = 24
+    minSdk = 26
     targetSdk = 35
     versionCode = 1
     versionName = "1.0"
@@ -92,9 +92,9 @@ dependencies {
   // implementation(libs.androidx.camera.core)
   // implementation(libs.androidx.camera.lifecycle)
   // implementation(libs.androidx.camera.view)
+  implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
-  implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.graphics)
   implementation(libs.androidx.compose.ui.tooling.preview)
@@ -127,6 +127,7 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.retrofit)
   implementation(libs.translator)
+  implementation(libs.llamatik)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
