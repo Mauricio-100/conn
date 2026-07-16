@@ -140,3 +140,33 @@ sealed class MentionType {
     data class CommunityMention(val slug: String) : MentionType()
     data class ChannelMention(val slug: String) : MentionType()
 }
+
+fun getCategoryDefaultIcon(category: String): String {
+    return when (category) {
+        "Fun" -> "https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=200&q=80"
+        "Amour" -> "https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=200&q=80"
+        "Motivation" -> "https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=200&q=80"
+        "Tech" -> "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=200&q=80"
+        "Sport" -> "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=200&q=80"
+        "Musique" -> "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=200&q=80"
+        "Actu" -> "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=200&q=80"
+        "Business" -> "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=200&q=80"
+        "Spiritualité" -> "https://images.unsplash.com/photo-1474552226712-ac0f0961a954?w=200&q=80"
+        else -> "https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=200&q=80"
+    }
+}
+
+fun getCategoryDefaultBanner(category: String): String {
+    return when (category) {
+        "Fun" -> "https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=600&q=80"
+        "Amour" -> "https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=600&q=80"
+        "Motivation" -> "https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=600&q=80"
+        "Tech" -> "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&q=80"
+        "Sport" -> "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=600&q=80"
+        "Musique" -> "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&q=80"
+        "Actu" -> "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&q=80"
+        "Business" -> "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=600&q=80"
+        "Spiritualité" -> "https://images.unsplash.com/photo-1474552226712-ac0f0961a954?w=600&q=80"
+        else -> "https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=600&q=80"
+    }
+}

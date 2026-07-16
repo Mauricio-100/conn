@@ -519,4 +519,30 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
             onResult(com)
         }
     }
+
+    fun updateCommunity(
+        slug: String,
+        name: String?,
+        description: String?,
+        category: String?,
+        isPrivate: Boolean?,
+        iconUrl: String? = null,
+        onResult: (com.example.data.Community?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val com = repository.updateCommunity(slug, name, description, category, isPrivate, iconUrl)
+            onResult(com)
+        }
+    }
+
+    fun updateCommunityIcon(
+        slug: String,
+        iconFile: java.io.File,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val success = repository.updateCommunityIcon(slug, iconFile)
+            onResult(success)
+        }
+    }
 }

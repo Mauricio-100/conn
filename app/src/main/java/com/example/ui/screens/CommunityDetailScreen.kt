@@ -29,8 +29,15 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.data.Channel
 import com.example.data.Community
+import com.example.data.getCategoryDefaultIcon
+import com.example.data.getCategoryDefaultBanner
 import com.example.ui.IddetViewModel
 import kotlinx.coroutines.launch
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyRow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +61,9 @@ fun CommunityDetailScreen(
     
     var selectedChannel by remember { mutableStateOf<Channel?>(null) }
     var snackbarHostState = remember { SnackbarHostState() }
+    
+    var showEditDialog by remember { mutableStateOf(false) }
+    val currentUserState by viewModel.currentUser.collectAsState()
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -66,6 +76,12 @@ fun CommunityDetailScreen(
                     }
                 },
                 actions = {
+                    val isAdmin = community?.myRole == "admin" || community?.creatorId == currentUserState?.id
+                    if (isAdmin) {
+                        IconButton(onClick = { showEditDialog = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Paramètres")
+                        }
+                    }
                     IconButton(onClick = { refreshTrigger++ }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
                     }
@@ -101,27 +117,13 @@ fun CommunityDetailScreen(
                             .height(180.dp)
                     ) {
                         // Banner background with gradient overlay
-                        if (!com.bannerUrl.isNullOrBlank()) {
-                            AsyncImage(
-                                model = com.bannerUrl,
-                                contentDescription = "Banner",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        brush = Brush.verticalGradient(
-                                            colors = listOf(
-                                                MaterialTheme.colorScheme.primary,
-                                                MaterialTheme.colorScheme.secondary
-                                            )
-                                        )
-                                    )
-                            )
-                        }
+                        val bannerModel = if (!com.bannerUrl.isNullOrBlank()) com.bannerUrl else getCategoryDefaultBanner(com.category)
+                        AsyncImage(
+                            model = bannerModel,
+                            contentDescription = "Banner",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
                         
                         // Icon overlapping banner
                         Box(
@@ -136,21 +138,13 @@ fun CommunityDetailScreen(
                                 .background(MaterialTheme.colorScheme.primaryContainer),
                             contentAlignment = Alignment.Center
                         ) {
-                            if (!com.iconUrl.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = com.iconUrl,
-                                    contentDescription = "Icon",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Text(
-                                    text = com.name.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
+                            val iconModel = if (!com.iconUrl.isNullOrBlank()) com.iconUrl else getCategoryDefaultIcon(com.category)
+                            AsyncImage(
+                                model = iconModel,
+                                contentDescription = "Icon",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
                         }
                     }
                 }
@@ -318,6 +312,52 @@ fun CommunityDetailScreen(
                 community = community,
                 viewModel = viewModel,
                 onDismiss = { selectedChannel = null }
+            )
+        }
+
+        if (showEditDialog && community != null) {
+            val categories = listOf("Fun", "Amour", "Motivation", "Tech", "Sport", "Musique", "Actu", "Business", "Spiritualité", "Autres")
+            EditCommunityDialog(
+                community = community!!,
+                categories = categories,
+                onDismiss = { showEditDialog = false },
+                onSave = { name, desc, cat, priv, presetIconUrl ->
+                    viewModel.updateCommunity(
+                        slug = community!!.slug,
+                        name = name,
+                        description = desc,
+                        category = cat,
+                        isPrivate = priv,
+                        iconUrl = presetIconUrl,
+                        onResult = { updated ->
+                            if (updated != null) {
+                                refreshTrigger++
+                                showEditDialog = false
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Communauté mise à jour avec succès !")
+                                }
+                            } else {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Erreur lors de la mise à jour de la communauté.")
+                                }
+                            }
+                        }
+                    )
+                },
+                onUploadIcon = { file ->
+                    viewModel.updateCommunityIcon(community!!.slug, file) { success ->
+                        if (success) {
+                            refreshTrigger++
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Photo de profil de la communauté mise à jour !")
+                            }
+                        } else {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Erreur lors du téléchargement de la photo.")
+                            }
+                        }
+                    }
+                }
             )
         }
     }
@@ -651,3 +691,312 @@ fun ChannelChatRoomDialog(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditCommunityDialog(
+    community: Community,
+    categories: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String, Boolean, String?) -> Unit,
+    onUploadIcon: (java.io.File) -> Unit
+) {
+    var name by remember { mutableStateOf(community.name) }
+    var description by remember { mutableStateOf(community.description ?: "") }
+    var selectedCategory by remember { mutableStateOf(community.category) }
+    var isPrivate by remember { mutableStateOf(community.isPrivate) }
+    var customIconUrl by remember { mutableStateOf(community.iconUrl ?: "") }
+    
+    var categoryExpanded by remember { mutableStateOf(false) }
+    
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Activity result launcher for picking gallery photo profile
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            val file = uriToTempFile(context, it)
+            if (file != null) {
+                onUploadIcon(file)
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(24.dp),
+            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Modifier la communauté",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                // Community Profile Picture (Icon) Section
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Photo de profil de la communauté",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val displayUrl = if (customIconUrl.isNotBlank()) customIconUrl else getCategoryDefaultIcon(selectedCategory)
+                            AsyncImage(
+                                model = displayUrl,
+                                contentDescription = "Preview",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                        
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = { imagePickerLauncher.launch("image/*") },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Importer de la galerie", style = MaterialTheme.typography.labelMedium)
+                            }
+                            
+                            Text(
+                                text = "Ou sélectionnez un avatar thématique ci-dessous.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                             )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    
+                    // Preset themed community avatars
+                    Text(
+                        text = "Avatars prédéfinis :",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+                    val presetIcons = listOf(
+                        "Gaming" to "https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=200&q=80",
+                        "Tech" to "https://images.unsplash.com/photo-1542831371-29b0f74f9713?w=200&q=80",
+                        "Art" to "https://images.unsplash.com/photo-1452421820245-17cd229f72e7?w=200&q=80",
+                        "Music" to "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=200&q=80",
+                        "Sport" to "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=200&q=80",
+                        "Cooking" to "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=200&q=80",
+                        "Books" to "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=200&q=80",
+                        "Business" to "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=200&q=80",
+                        "Love" to "https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=200&q=80"
+                    )
+                    
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(presetIcons) { (label, url) ->
+                            Card(
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .clickable { customIconUrl = url },
+                                shape = CircleShape,
+                                border = if (customIconUrl == url) {
+                                    androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.primary)
+                                } else null
+                            ) {
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = label,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Community Name
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Nom de la communauté",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+                }
+
+                // Description
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Description",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        maxLines = 4
+                    )
+                }
+
+                // Category dropdown picker
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Catégorie",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { categoryExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(selectedCategory, color = MaterialTheme.colorScheme.onSurface)
+                                Icon(
+                                    imageVector = if (categoryExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        
+                        DropdownMenu(
+                            expanded = categoryExpanded,
+                            onDismissRequest = { categoryExpanded = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            categories.forEach { category ->
+                                DropdownMenuItem(
+                                    text = { Text(category) },
+                                    onClick = {
+                                        selectedCategory = category
+                                        categoryExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Privacy Switch
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Communauté privée",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Seuls les membres approuvés peuvent voir les canaux et publier.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isPrivate,
+                        onCheckedChange = { isPrivate = it }
+                     )
+                 }
+ 
+                 Spacer(modifier = Modifier.height(12.dp))
+ 
+                 // Actions
+                 Row(
+                     modifier = Modifier.fillMaxWidth(),
+                     horizontalArrangement = Arrangement.End,
+                     verticalAlignment = Alignment.CenterVertically
+                 ) {
+                     TextButton(onClick = onDismiss) {
+                         Text("Annuler", fontWeight = FontWeight.Bold)
+                     }
+                     Spacer(modifier = Modifier.width(12.dp))
+                     Button(
+                         onClick = {
+                             onSave(name, description, selectedCategory, isPrivate, customIconUrl.ifBlank { null })
+                         },
+                         shape = RoundedCornerShape(12.dp)
+                     ) {
+                         Text("Enregistrer", fontWeight = FontWeight.Bold)
+                     }
+                 }
+             }
+         }
+     }
+ }
+ 
+ fun uriToTempFile(context: android.content.Context, uri: android.net.Uri): java.io.File? {
+     return try {
+         val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+         val tempFile = java.io.File.createTempFile("community_icon_", ".jpg", context.cacheDir)
+         tempFile.deleteOnExit()
+         val outputStream = java.io.FileOutputStream(tempFile)
+         inputStream.use { input ->
+             outputStream.use { output ->
+                 input.copyTo(output)
+             }
+         }
+         tempFile
+     } catch (e: Exception) {
+         e.printStackTrace()
+         null
+     }
+ }

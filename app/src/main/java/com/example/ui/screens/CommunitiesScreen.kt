@@ -29,6 +29,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.data.Community
+import com.example.data.getCategoryDefaultIcon
+import com.example.data.getCategoryDefaultBanner
 import com.example.ui.IddetViewModel
 import kotlinx.coroutines.launch
 
@@ -347,21 +349,13 @@ fun CommunityCardItem(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                if (!community.iconUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = community.iconUrl,
-                        contentDescription = "Community Icon",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Text(
-                        text = community.name.firstOrNull()?.toString()?.uppercase() ?: "?",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
+                val iconModel = if (!community.iconUrl.isNullOrBlank()) community.iconUrl else getCategoryDefaultIcon(community.category)
+                AsyncImage(
+                    model = iconModel,
+                    contentDescription = "Community Icon",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
             }
 
             Spacer(modifier = Modifier.width(16.dp))

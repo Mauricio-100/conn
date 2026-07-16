@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -48,6 +49,11 @@ import com.example.ui.components.VerificationBadge
 import com.example.ui.components.MarkdownEditor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.lazy.itemsIndexed
+import coil.compose.AsyncImage
+import com.example.data.getCategoryDefaultIcon
+import com.example.data.getCategoryDefaultBanner
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.AutoAwesome
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +72,14 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
     
     LaunchedEffect(Unit) {
         viewModel.loadCategories()
+    }
+
+    var suggestedCommunities by remember { mutableStateOf<List<com.example.data.Community>>(emptyList()) }
+    LaunchedEffect(currentUser) {
+        viewModel.searchCommunitiesFlow(query = null, category = null, sort = "popular")
+            .collect { list ->
+                suggestedCommunities = list.filter { !it.isMember }.shuffled()
+            }
     }
     
     val activeActfiles = remember(feedTab, actfiles, followedActfiles, preferredCategory, selectedCategoryFilter) {
@@ -191,7 +205,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                     }
                 }
 
-                items(activeActfiles, key = { it.id }) { actfile ->
+                itemsIndexed(activeActfiles, key = { _, actfile -> actfile.id }) { index, actfile ->
                     val isMine = actfile.userId == currentUser?.id
                     val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
                     val aiState by viewModel.aiState.collectAsStateWithLifecycle()
@@ -229,6 +243,25 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                             viewModel.setSelectedCategoryFilter(categoryId)
                         }
                     )
+
+                    // Inject suggested community card every 4 items
+                    if ((index + 1) % 4 == 0 && suggestedCommunities.isNotEmpty()) {
+                        val suggestionIndex = (index / 4) % suggestedCommunities.size
+                        val communitySuggestion = suggestedCommunities[suggestionIndex]
+                        SuggestedCommunityCard(
+                            community = communitySuggestion,
+                            onJoinToggle = { slug ->
+                                viewModel.toggleCommunityJoin(slug) { success ->
+                                    if (success) {
+                                        suggestedCommunities = suggestedCommunities.filter { it.slug != slug }
+                                    }
+                                }
+                            },
+                            onClick = { slug ->
+                                navController.navigate("community/$slug")
+                            }
+                        )
+                    }
                 }
 
                 if (activeActfiles.isEmpty()) {
@@ -504,6 +537,172 @@ fun ActfileComposer(
                     }
                 }
             )
+        }
+    }
+}
+
+@Composable
+fun SuggestedCommunityCard(
+    community: com.example.data.Community,
+    onJoinToggle: (String) -> Unit,
+    onClick: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clickable { onClick(community.slug) },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column {
+            // Header banner area
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(90.dp)
+            ) {
+                // Banner background
+                val bannerModel = if (!community.bannerUrl.isNullOrBlank()) {
+                    community.bannerUrl
+                } else {
+                    getCategoryDefaultBanner(community.category)
+                }
+                AsyncImage(
+                    model = bannerModel,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                
+                // Translucent category overlay
+                Box(
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .align(Alignment.TopEnd)
+                        .background(
+                            color = Color.Black.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = community.category.uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            
+            // Content area
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                // Profile Avatar/Icon overlapping
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(2.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val iconModel = if (!community.iconUrl.isNullOrBlank()) {
+                        community.iconUrl
+                    } else {
+                        getCategoryDefaultIcon(community.category)
+                    }
+                    AsyncImage(
+                        model = iconModel,
+                        contentDescription = community.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                
+                Spacer(modifier = Modifier.width(12.dp))
+                
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = community.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    
+                    Text(
+                        text = "c/${community.slug}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    
+                    if (!community.description.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = community.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Members count
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Group,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "${community.membersCount} membres",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                // Join Button
+                Button(
+                    onClick = { onJoinToggle(community.slug) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    shape = RoundedCornerShape(20.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.align(Alignment.CenterVertically)
+                ) {
+                    Text(
+                        text = "Rejoindre",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            }
         }
     }
 }

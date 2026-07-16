@@ -1075,8 +1075,40 @@ class IddetRepository(
 
     suspend fun createCommunity(name: String, category: String, description: String, isPrivate: Boolean): Community? {
         val token = currentToken ?: return null
+        
+        // Generate a robust, server-compliant slug
+        var slug = name.lowercase().trim()
+        val replacements = mapOf(
+            'à' to 'a', 'â' to 'a', 'ä' to 'a',
+            'é' to 'e', 'è' to 'e', 'ê' to 'e', 'ë' to 'e',
+            'î' to 'i', 'ï' to 'i',
+            'ô' to 'o', 'ö' to 'o',
+            'û' to 'u', 'ü' to 'u',
+            'ç' to 'c'
+        )
+        val sb = java.lang.StringBuilder()
+        for (char in slug) {
+            sb.append(replacements[char] ?: char)
+        }
+        slug = sb.toString()
+        slug = slug.replace(Regex("[^a-z0-9_]"), "_")
+        slug = slug.replace(Regex("_+"), "_")
+        slug = slug.trim('_')
+        
+        if (slug.length < 3) {
+            val randomSuffix = (100..999).random()
+            slug = "com_${slug}_$randomSuffix".replace(Regex("_+"), "_").trim('_')
+            if (slug.length < 3) {
+                slug = "com_$randomSuffix"
+            }
+        }
+        if (slug.length > 50) {
+            slug = slug.substring(0, 50).trim('_')
+        }
+
         return try {
             val body = mapOf(
+                "slug" to slug,
                 "name" to name,
                 "category" to category,
                 "description" to description,
@@ -1086,6 +1118,47 @@ class IddetRepository(
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        }
+    }
+
+    suspend fun updateCommunity(
+        slug: String,
+        name: String?,
+        description: String?,
+        category: String?,
+        isPrivate: Boolean?,
+        iconUrl: String? = null
+    ): Community? {
+        val token = currentToken ?: return null
+        return try {
+            val body = mutableMapOf<String, Any>()
+            if (name != null) body["name"] = name
+            if (description != null) body["description"] = description
+            if (category != null) body["category"] = category
+            if (isPrivate != null) body["is_private"] = isPrivate
+            if (iconUrl != null) {
+                body["icon_url"] = iconUrl
+                body["iconUrl"] = iconUrl
+            }
+
+            RetrofitClient.apiService.updateCommunity("Bearer $token", slug, body)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun updateCommunityIcon(slug: String, iconFile: java.io.File): Boolean {
+        val token = currentToken ?: return false
+        return try {
+            val mediaType = "image/jpeg".toMediaType()
+            val requestFile = iconFile.asRequestBody(mediaType)
+            val iconPart = MultipartBody.Part.createFormData("icon", iconFile.name, requestFile)
+            RetrofitClient.apiService.updateCommunityIcon("Bearer $token", slug, iconPart)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
     }
 }

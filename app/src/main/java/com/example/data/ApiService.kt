@@ -315,6 +315,21 @@ interface ApiService {
     suspend fun getMyCommunities(
         @retrofit2.http.Header("Authorization") token: String
     ): List<Community>
+
+    @retrofit2.http.PUT("/api/communities/{slug}")
+    suspend fun updateCommunity(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any>
+    ): Community
+
+    @Multipart
+    @retrofit2.http.PUT("/api/communities/{slug}/icon")
+    suspend fun updateCommunityIcon(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @retrofit2.http.Part icon: okhttp3.MultipartBody.Part
+    ): Map<String, @JvmSuppressWildcards Any>
 }
 
 object RetrofitClient {
