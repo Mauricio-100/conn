@@ -3,6 +3,7 @@ package com.example.data
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.util.UUID
+import com.squareup.moshi.Json
 
 @Entity(tableName = "users")
 data class User(
@@ -106,31 +107,33 @@ data class Notification(
 )
 
 
+
+
 data class Community(
     val id: String,
     val slug: String,
     val name: String,
     val description: String?,
-    val iconUrl: String?,
-    val bannerUrl: String?,
+    @Json(name = "icon_url") val iconUrl: String?,
+    @Json(name = "banner_url") val bannerUrl: String?,
     val category: String,
-    val creatorId: String?,
-    val isPrivate: Boolean,
-    val membersCount: Int,
-    val postsCount: Int,
-    val createdAt: String,
-    val isMember: Boolean,
-    val myRole: String?
+    @Json(name = "creator_id") val creatorId: String?,
+    @Json(name = "is_private") val isPrivate: Boolean,
+    @Json(name = "members_count") val membersCount: Int,
+    @Json(name = "posts_count") val postsCount: Int,
+    @Json(name = "created_at") val createdAt: String,
+    @Json(name = "is_member") val isMember: Boolean,
+    @Json(name = "my_role") val myRole: String?
 )
 
 data class Channel(
     val id: String,
-    val communityId: String,
+    @Json(name = "community_id") val communityId: String,
     val slug: String,
     val name: String,
     val description: String?,
-    val isDefault: Boolean,
-    val createdAt: String
+    @Json(name = "is_default") val isDefault: Boolean,
+    @Json(name = "created_at") val createdAt: String
 )
 
 data class Tag(val name: String, val usesCount: Int)
