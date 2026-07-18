@@ -87,7 +87,8 @@ data class ConversationNetwork(
     val last_message: String?,
     val last_message_time: String?,
     val unread_count: Int? = 0,
-    val is_online: Boolean
+    val is_online: Boolean,
+    val is_verified: Boolean = false
 )
 
 data class MessageNetwork(

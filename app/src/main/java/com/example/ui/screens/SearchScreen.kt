@@ -228,10 +228,8 @@ fun UserCard(user: User, isFollowing: Boolean, onFollowClick: () -> Unit, onClic
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                if (user.isVerified) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    VerificationBadge(userName = user.username)
-                }
+                Spacer(modifier = Modifier.width(4.dp))
+                VerificationBadge(userName = user.username, isVerified = user.isVerified)
             }
             Text(
                 text = "${user.followersCount} followers",

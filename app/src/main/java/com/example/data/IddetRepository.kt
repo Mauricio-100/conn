@@ -708,7 +708,8 @@ class IddetRepository(
                 last_message = displayContent,
                 last_message_time = nowIso,
                 unread_count = if (isIncoming) 1 else 0,
-                is_online = true
+                is_online = true,
+                is_verified = false
             )
             current.add(0, newConv)
         }
@@ -768,7 +769,7 @@ class IddetRepository(
                             username = conv.username,
                             passwordHash = "mocked",
                             avatarUrl = conv.avatar_url,
-                            isVerified = (conv.username.length > 5)
+                            isVerified = conv.is_verified
                         )
                     }
                     userDao.insertUser(partnerUser)

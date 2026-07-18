@@ -41,6 +41,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import com.example.ui.components.CommunityDashboardHeader
 import com.example.ui.components.ActfileCard
+import com.example.ui.components.VerificationBadge
 import androidx.compose.foundation.lazy.itemsIndexed
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -610,12 +611,16 @@ fun ChannelChatRoomDialog(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Text(
-                                                text = post.username,
-                                                style = MaterialTheme.typography.labelLarge,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = post.username,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                VerificationBadge(userName = post.username, isVerified = post.isVerified, modifier = Modifier.size(10.dp))
+                                            }
                                             Text(
                                                 text = android.text.format.DateUtils.getRelativeTimeSpanString(post.createdAt).toString(),
                                                 style = MaterialTheme.typography.labelSmall,

@@ -235,10 +235,8 @@ fun NotificationItem(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        if (senderUser?.isVerified == true) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            VerificationBadge(userName = notification.fromUsername)
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        VerificationBadge(userName = notification.fromUsername, isVerified = senderUser?.isVerified == true)
                     }
                     Text(
                         text = senderUser?.bio ?: "Membre actif",

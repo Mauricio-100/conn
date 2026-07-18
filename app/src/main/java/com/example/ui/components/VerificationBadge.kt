@@ -28,7 +28,7 @@ enum class VerificationState {
 }
 
 // Special usernames that get the Niveau 1 White badge (Official)
-private val FOUNDER_USERNAMES = listOf("C.M.O", "Doffranel", "Crislem", "Mauricio-100")
+private val FOUNDER_USERNAMES = listOf("C.M.O", "Doffranel", "doffranel", "Crislem", "Mauricio-100")
 
 /**
  * Resolves the verification state based on username and verification flag.
@@ -36,7 +36,7 @@ private val FOUNDER_USERNAMES = listOf("C.M.O", "Doffranel", "Crislem", "Maurici
 fun getVerificationState(userName: String?, isVerified: Boolean): VerificationState {
     val name = userName ?: ""
     return when {
-        name in FOUNDER_USERNAMES -> VerificationState.OFFICIAL
+        FOUNDER_USERNAMES.any { it.equals(name, ignoreCase = true) } -> VerificationState.OFFICIAL
         isVerified -> VerificationState.VERIFIED
         else -> VerificationState.NONE
     }

@@ -370,10 +370,8 @@ fun ConversationItem(conv: ConversationNetwork, onClick: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                         fontSize = 15.sp
                     )
-                    if (conv.username.length > 5) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        VerificationBadge(userName = conv.username)
-                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    VerificationBadge(userName = conv.username, isVerified = conv.is_verified)
                     Spacer(modifier = Modifier.width(4.dp))
                     if (conv.is_online) {
                         Text("!!", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 13.sp)

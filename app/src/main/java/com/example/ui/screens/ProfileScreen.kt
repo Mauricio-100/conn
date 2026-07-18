@@ -410,10 +410,8 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        if (user.isVerified) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            VerificationBadge(modifier = Modifier.size(24.dp), userName = user.username)
-                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        VerificationBadge(modifier = Modifier.size(24.dp), userName = user.username, isVerified = user.isVerified)
                     }
                     
                     if (user.bio.isNotBlank()) {

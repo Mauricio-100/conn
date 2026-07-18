@@ -36,6 +36,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.data.Message
 import com.example.ui.IddetViewModel
+import com.example.ui.components.VerificationBadge
 import com.example.ui.components.MarkdownActfile
 import com.example.ui.components.VoiceMessagePlayer
 import com.example.ui.components.VoiceRecorderUI
@@ -132,12 +133,16 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text(
-                                text = partnerName,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = partnerName,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                VerificationBadge(userName = partnerName, isVerified = partnerConversation?.is_verified ?: partner?.isVerified ?: false)
+                            }
                             if (isOnline) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(
