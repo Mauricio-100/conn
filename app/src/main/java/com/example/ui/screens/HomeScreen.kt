@@ -31,6 +31,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -47,6 +48,7 @@ import com.example.ui.IddetViewModel
 import com.example.ui.components.ActfileCard
 import com.example.ui.components.VerificationBadge
 import com.example.ui.components.MarkdownEditor
+import com.example.ui.components.CommunitySuggestionRow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -74,6 +76,14 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
         viewModel.loadCategories()
     }
 
+    var discoverySeed by remember { mutableStateOf((1..100000).random()) }
+    
+    LaunchedEffect(feedTab) {
+        if (feedTab == 0) {
+            discoverySeed = (1..100000).random()
+        }
+    }
+
     var suggestedCommunities by remember { mutableStateOf<List<com.example.data.Community>>(emptyList()) }
     LaunchedEffect(currentUser) {
         viewModel.searchCommunitiesFlow(query = null, category = null, sort = "popular")
@@ -82,17 +92,19 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
             }
     }
     
-    val activeActfiles = remember(feedTab, actfiles, followedActfiles, preferredCategory, selectedCategoryFilter) {
+    val activeActfiles = remember(feedTab, actfiles, followedActfiles, preferredCategory, selectedCategoryFilter, discoverySeed) {
+        val filteredActfiles = actfiles.filter { it.channelId.isNullOrBlank() }
+        val filteredFollowed = followedActfiles.filter { it.channelId.isNullOrBlank() }
+        
         val baseList = when (feedTab) {
-            0 -> actfiles
-            1 -> followedActfiles
-            else -> actfiles.shuffled()
+            0 -> {
+                // Discovery mode: beautiful clean pseudo-random feed
+                filteredActfiles.shuffled(java.util.Random(discoverySeed.toLong()))
+            }
+            1 -> filteredFollowed
+            else -> filteredActfiles.sortedByDescending { it.likesCount + it.commentsCount * 2 + it.viewsCount }
         }
-        val sortedList = if (feedTab == 0 && preferredCategory.isNotBlank()) {
-            baseList.sortedWith(compareByDescending { it.category == preferredCategory })
-        } else {
-            baseList
-        }
+        val sortedList = baseList
         
         if (selectedCategoryFilter != null) {
             sortedList.filter { actfile ->
@@ -138,7 +150,17 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                         Icon(Icons.Filled.Menu, contentDescription = "Ouvrir le menu")
                     }
                 },
-                actions = {},
+                actions = {
+                    IconButton(
+                        onClick = {
+                            discoverySeed = (1..100000).random()
+                            viewModel.refreshActfiles()
+                        },
+                        modifier = Modifier.testTag("refresh_discovery_button")
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
@@ -209,58 +231,66 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                     val isMine = actfile.userId == currentUser?.id
                     val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
                     val aiState by viewModel.aiState.collectAsStateWithLifecycle()
-                    ActfileCard(
-                        actfile = actfile,
-                        onLike = { viewModel.likeActfile(it) },
-                        onView = { viewModel.incrementView(it) },
-                        targetLanguageName = targetLanguage,
-                        isAiReady = aiState == com.example.utils.AiModelState.READY,
-                        onLinkClick = { url ->
-                            val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
-                            navController.navigate("browser/$encodedUrl")
-                        },
-                        onUserClick = {
-                            val currentUserId = viewModel.currentUser.value?.id
-                            if (it == currentUserId) {
-                                navController.navigate("profile")
-                            } else {
-                                navController.navigate("profile/$it")
-                            }
-                        },
-                        onComment = { actfileId ->
-                            navController.navigate("discussion/$actfileId")
-                        },
-                        onDelete = if (isMine) { { viewModel.deleteActfile(it) } } else null,
-                        onMentionClick = { username ->
-                            scope.launch {
-                                val u = viewModel.getUserByUsername(username)
-                                if (u != null) {
-                                    navController.navigate("profile/${u.id}")
+                    Column {
+                        ActfileCard(
+                            actfile = actfile,
+                            onLike = { viewModel.likeActfile(it) },
+                            onView = { viewModel.incrementView(it) },
+                            targetLanguageName = targetLanguage,
+                            isAiReady = aiState == com.example.utils.AiModelState.READY,
+                            onLinkClick = { url ->
+                                val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                navController.navigate("browser/$encodedUrl")
+                            },
+                            onUserClick = {
+                                val currentUserId = viewModel.currentUser.value?.id
+                                if (it == currentUserId) {
+                                    navController.navigate("profile")
+                                } else {
+                                    navController.navigate("profile/$it")
                                 }
-                            }
-                        },
-                        onCategoryClick = { categoryId ->
-                            viewModel.setSelectedCategoryFilter(categoryId)
-                        }
-                    )
-
-                    // Inject suggested community card every 4 items
-                    if ((index + 1) % 4 == 0 && suggestedCommunities.isNotEmpty()) {
-                        val suggestionIndex = (index / 4) % suggestedCommunities.size
-                        val communitySuggestion = suggestedCommunities[suggestionIndex]
-                        SuggestedCommunityCard(
-                            community = communitySuggestion,
-                            onJoinToggle = { slug ->
-                                viewModel.toggleCommunityJoin(slug) { success ->
-                                    if (success) {
-                                        suggestedCommunities = suggestedCommunities.filter { it.slug != slug }
+                            },
+                            onComment = { actfileId ->
+                                navController.navigate("discussion/$actfileId")
+                            },
+                            onDelete = if (isMine) { { viewModel.deleteActfile(it) } } else null,
+                            onMentionClick = { username ->
+                                scope.launch {
+                                    val u = viewModel.getUserByUsername(username)
+                                    if (u != null) {
+                                        navController.navigate("profile/${u.id}")
                                     }
                                 }
                             },
-                            onClick = { slug ->
-                                navController.navigate("community/$slug")
+                            onCategoryClick = { categoryId ->
+                                viewModel.setSelectedCategoryFilter(categoryId)
                             }
                         )
+
+                        // Inject CommunitySuggestionRow (Horizontal scrolling list of communities) after the 2nd post (index 1)
+                        if (index == 1 && suggestedCommunities.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            CommunitySuggestionRow(
+                                communities = suggestedCommunities,
+                                onJoinToggle = { slug ->
+                                    viewModel.toggleCommunityJoin(slug) { success ->
+                                        if (success) {
+                                            suggestedCommunities = suggestedCommunities.map {
+                                                if (it.slug == slug) {
+                                                    it.copy(
+                                                        isMember = !it.isMember,
+                                                        membersCount = if (it.isMember) it.membersCount - 1 else it.membersCount + 1
+                                                    )
+                                                } else it
+                                            }
+                                        }
+                                    }
+                                },
+                                onClick = { slug ->
+                                    navController.navigate("community/$slug")
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -283,8 +313,8 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
         }
         
         if (showComposer) {
-            ActfileComposer(
-                allCategories = allCategories,
+            ActfileComposerScreen(
+                viewModel = viewModel,
                 onDismiss = { viewModel.setShowComposer(false) },
                 onPublish = { content, tags, category ->
                     viewModel.publishActfile(content, tags, category)
@@ -298,6 +328,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActfileComposer(
+    viewModel: com.example.ui.IddetViewModel,
     allCategories: List<String>,
     onDismiss: () -> Unit,
     onPublish: (String, String, String?) -> Unit
@@ -403,6 +434,123 @@ fun ActfileComposer(
             }
             
             Spacer(modifier = Modifier.height(12.dp))
+            
+            // Community selector block
+            val myCommunities by produceState<List<com.example.data.Community>>(initialValue = emptyList()) {
+                viewModel.getMyCommunitiesFlow().collect { value = it }
+            }
+            var selectedCommunity by remember { mutableStateOf<com.example.data.Community?>(null) }
+            var showCommunityPicker by remember { mutableStateOf(false) }
+            
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    .clickable { showCommunityPicker = true }
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.Group,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Communauté", 
+                         style = MaterialTheme.typography.labelSmall, 
+                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = selectedCommunity?.name ?: "Aucune (Public)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.ArrowDropDown,
+                    contentDescription = "Changer",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            if (showCommunityPicker) {
+                AlertDialog(
+                    onDismissRequest = { showCommunityPicker = false },
+                    title = {
+                        Text(
+                            text = "Sélectionner une communauté",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        LazyColumn {
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { 
+                                            selectedCommunity = null
+                                            showCommunityPicker = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Aucune (Public)",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            items(myCommunities, key = { it.id }) { com ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { 
+                                            selectedCommunity = com
+                                            showCommunityPicker = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = com.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "c/${com.slug}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showCommunityPicker = false }) {
+                            Text("Fermer")
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
             OutlinedTextField(
                 value = tags,
                 onValueChange = { tags = it },
@@ -429,7 +577,8 @@ fun ActfileComposer(
                         scope.launch {
                             val isSafe = com.example.utils.LocalAiManager.checkAppropriate(content)
                             if (isSafe) {
-                                onPublish(content, tags, selectedCategory)
+                                val finalContent = if (selectedCommunity != null) "$content\n\n@c/${selectedCommunity!!.slug}" else content
+                                onPublish(finalContent, tags, selectedCategory)
                             } else {
                                 moderationError = "⚠️ S3 AI a détecté que ce contenu pourrait être inapproprié. Veuillez le réviser avant de publier."
                             }
@@ -542,30 +691,60 @@ fun ActfileComposer(
 }
 
 @Composable
-fun SuggestedCommunityCard(
+fun CommunityList(
+    communities: List<com.example.data.Community>,
+    onJoinToggle: (String) -> Unit,
+    onClick: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp)
+    ) {
+        Text(
+            text = "Communautés suggérées",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp)
+        ) {
+            items(communities, key = { it.id }) { community ->
+                CommunitySuggestionItem(
+                    community = community,
+                    onJoinToggle = onJoinToggle,
+                    onClick = onClick
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CommunitySuggestionItem(
     community: com.example.data.Community,
     onJoinToggle: (String) -> Unit,
     onClick: (String) -> Unit
 ) {
     Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .width(280.dp)
             .clickable { onClick(community.slug) },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column {
-            // Header banner area
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(90.dp)
+                    .height(80.dp)
             ) {
-                // Banner background
                 val bannerModel = if (!community.bannerUrl.isNullOrBlank()) {
                     community.bannerUrl
                 } else {
@@ -577,130 +756,99 @@ fun SuggestedCommunityCard(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-                
-                // Translucent category overlay
-                Box(
-                    modifier = Modifier
-                        .padding(8.dp)
-                        .align(Alignment.TopEnd)
-                        .background(
-                            color = Color.Black.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = community.category.uppercase(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
             }
-            
-            // Content area
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.Top
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.Start
             ) {
-                // Profile Avatar/Icon overlapping
-                Box(
-                    modifier = Modifier
-                        .size(54.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(2.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val iconModel = if (!community.iconUrl.isNullOrBlank()) {
-                        community.iconUrl
-                    } else {
-                        getCategoryDefaultIcon(community.category)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val iconModel = if (!community.iconUrl.isNullOrBlank()) {
+                            community.iconUrl
+                        } else {
+                            getCategoryDefaultIcon(community.category)
+                        }
+                        AsyncImage(
+                            model = iconModel,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
                     }
-                    AsyncImage(
-                        model = iconModel,
-                        contentDescription = community.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-                
-                Spacer(modifier = Modifier.width(12.dp))
-                
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = community.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    
-                    Text(
-                        text = "c/${community.slug}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    
-                    if (!community.description.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
                         Text(
-                            text = community.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
+                            text = "c/${community.slug}",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = community.name,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    // Members count
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Group,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "${community.membersCount} membres",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
                 }
                 
-                Spacer(modifier = Modifier.width(8.dp))
-                
-                // Join Button
-                Button(
-                    onClick = { onJoinToggle(community.slug) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    ),
-                    shape = RoundedCornerShape(20.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    modifier = Modifier.align(Alignment.CenterVertically)
-                ) {
+                if (!community.description.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Rejoindre",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimary
+                        text = community.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Group,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${community.membersCount} membres actifs",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    
+                    Button(
+                        onClick = { onJoinToggle(community.slug) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Rejoindre",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
                 }
             }
         }

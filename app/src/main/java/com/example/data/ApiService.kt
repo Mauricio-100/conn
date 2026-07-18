@@ -36,10 +36,19 @@ data class ActfileNetwork(
     val avatar_url: String?,
     val is_verified: Boolean,
     val liked: Boolean,
-    val category: String? = null
+    val category: String? = null,
+    val community_id: String? = null,
+    val channel_id: String? = null,
+    val channel_slug: String? = null,
+    val channel_name: String? = null
 )
 
-data class PublishActfileRequest(val content: String, val category: String? = null)
+data class PublishActfileRequest(
+    val content: String,
+    val category: String? = null,
+    val community_id: String? = null,
+    val channel_id: String? = null
+)
 
 data class UserProfileNetwork(
     val id: String? = null,
@@ -305,11 +314,26 @@ interface ApiService {
         @retrofit2.http.Path("slug") slug: String
     ): Map<String, @JvmSuppressWildcards Any>
 
+    @retrofit2.http.GET("/api/communities/{slug}/posts")
+    suspend fun getCommunityPosts(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("slug") slug: String,
+        @retrofit2.http.Query("limit") limit: Int = 20,
+        @retrofit2.http.Query("cursor") cursor: String? = null
+    ): List<ActfileNetwork>
+
     @retrofit2.http.GET("/api/communities/{slug}/channels")
     suspend fun getCommunityChannels(
         @retrofit2.http.Header("Authorization") token: String?,
         @retrofit2.http.Path("slug") slug: String
     ): List<Channel>
+
+    @retrofit2.http.POST("/api/communities/{slug}/channels")
+    suspend fun createChannel(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any>
+    ): Channel
     
     @retrofit2.http.GET("/api/users/me/communities")
     suspend fun getMyCommunities(

@@ -38,7 +38,11 @@ data class Actfile(
     val commentsCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
     val isLikedByMe: Boolean = false,
-    val category: String? = null
+    val category: String? = null,
+    val communityId: String? = null,
+    val channelId: String? = null,
+    val channelSlug: String? = null,
+    val channelName: String? = null
 )
 
 @Entity(tableName = "messages")

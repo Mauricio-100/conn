@@ -306,7 +306,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                     val feeds = listOf(
                         Triple("Pour vous", 0, Icons.Outlined.AutoAwesome),
                         Triple("Abonnements", 1, Icons.Outlined.People),
-                        Triple("Aléatoire", 2, Icons.Outlined.Shuffle)
+                        Triple("Populaire", 2, Icons.Outlined.TrendingUp)
                     )
 
                     feeds.forEach { (label, tabIndex, icon) ->

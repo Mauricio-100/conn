@@ -28,6 +28,8 @@ class IddetRepository(
     // Current logged in user (in-memory mock)
     private val _currentUser = MutableStateFlow<User?>(null)
     val currentUser: StateFlow<User?> = _currentUser
+
+    private val localChannels = mutableMapOf<String, MutableList<Channel>>()
     
     private val _selectedTheme = MutableStateFlow(AppTheme.valueOf(prefs.getString("selected_theme", AppTheme.DEFAULT.name) ?: AppTheme.DEFAULT.name))
     val selectedTheme: StateFlow<AppTheme> = _selectedTheme.asStateFlow()
@@ -143,7 +145,7 @@ class IddetRepository(
     suspend fun refreshActfiles() {
         try {
             val header = currentToken?.let { "Bearer $it" }
-            val netActfiles = RetrofitClient.apiService.getActfiles(header).shuffled()
+            val netActfiles = RetrofitClient.apiService.getActfiles(header)
             
             val actfilesWithComments = coroutineScope {
                 val deferreds = netActfiles.map { net ->
@@ -205,7 +207,11 @@ class IddetRepository(
                         commentsCount = comments.size,
                         createdAt = parseIso(net.created_at),
                         isLikedByMe = net.liked,
-                        category = net.category
+                        category = net.category,
+                        communityId = net.community_id,
+                        channelId = net.channel_id,
+                        channelSlug = net.channel_slug,
+                        channelName = net.channel_name
                     )
                 )
             }
@@ -362,7 +368,13 @@ class IddetRepository(
         prefs.edit().clear().apply()
     }
 
-    suspend fun publishActfile(content: String, tags: String = "", category: String? = null) {
+    suspend fun publishActfile(
+        content: String,
+        tags: String = "",
+        category: String? = null,
+        communityId: String? = null,
+        channelId: String? = null
+    ) {
         val user = _currentUser.value ?: return
         
         try {
@@ -370,7 +382,12 @@ class IddetRepository(
             if (header != null) {
                 val netActfile = RetrofitClient.apiService.publishActfile(
                     token = header,
-                    request = PublishActfileRequest(content = content, category = category)
+                    request = PublishActfileRequest(
+                        content = content,
+                        category = category,
+                        community_id = communityId,
+                        channel_id = channelId
+                    )
                 )
                 actfileDao.insertActfile(
                     Actfile(
@@ -381,7 +398,11 @@ class IddetRepository(
                         likesCount = netActfile.likes_count,
                         viewsCount = netActfile.views_count,
                         createdAt = parseIso(netActfile.created_at),
-                        category = netActfile.category ?: category
+                        category = netActfile.category ?: category,
+                        communityId = netActfile.community_id ?: communityId,
+                        channelId = netActfile.channel_id ?: channelId,
+                        channelSlug = netActfile.channel_slug,
+                        channelName = netActfile.channel_name
                     )
                 )
             } else {
@@ -390,7 +411,9 @@ class IddetRepository(
                         userId = user.id,
                         content = content,
                         tags = tags,
-                        category = category
+                        category = category,
+                        communityId = communityId,
+                        channelId = channelId
                     )
                 )
             }
@@ -402,7 +425,9 @@ class IddetRepository(
                     userId = user.id,
                     content = content,
                     tags = tags,
-                    category = category
+                    category = category,
+                    communityId = communityId,
+                    channelId = channelId
                 )
             )
         }
@@ -1055,11 +1080,95 @@ class IddetRepository(
 
     suspend fun getCommunityChannels(slug: String): List<Channel> {
         val header = currentToken?.let { "Bearer $it" }
-        return try {
+        val netList = try {
             RetrofitClient.apiService.getCommunityChannels(header, slug)
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
+        }
+        val localList = localChannels[slug] ?: emptyList()
+        return (netList + localList).distinctBy { it.id }
+    }
+
+    suspend fun createChannel(slug: String, name: String, description: String?): Channel? {
+        val token = currentToken ?: return null
+        
+        var chanSlug = name.lowercase().trim().replace(Regex("[^a-z0-9_]"), "_").replace(Regex("_+"), "_").trim('_')
+        if (chanSlug.isBlank()) chanSlug = "chan_" + (100..999).random()
+
+        try {
+            val body = mapOf(
+                "name" to name,
+                "slug" to chanSlug,
+                "description" to (description ?: "")
+            )
+            val channel = RetrofitClient.apiService.createChannel("Bearer $token", slug, body)
+            return channel
+        } catch (e: Exception) {
+            e.printStackTrace()
+            val community = getCommunity(slug)
+            val newChannel = Channel(
+                id = "local_chan_" + java.util.UUID.randomUUID().toString(),
+                communityId = community?.id ?: slug,
+                slug = chanSlug,
+                name = name,
+                description = description,
+                isDefault = false,
+                createdAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(java.util.Date())
+            )
+            val list = localChannels.getOrPut(slug) { mutableListOf() }
+            list.add(newChannel)
+            return newChannel
+        }
+    }
+
+    fun getCommunityPostsFlow(slug: String): Flow<List<ActfileWithUser>> = kotlinx.coroutines.flow.flow {
+        try {
+            val header = currentToken?.let { "Bearer $it" }
+            val netActfiles = RetrofitClient.apiService.getCommunityPosts(header, slug)
+            val mapped = netActfiles.filter { it.channel_id.isNullOrBlank() }.map { net ->
+                val existing = userDao.getUserById(net.user_id)
+                val user = if (existing != null) {
+                    existing.copy(
+                        username = net.username,
+                        avatarUrl = net.avatar_url,
+                        isVerified = net.is_verified
+                    )
+                } else {
+                    User(
+                        id = net.user_id,
+                        username = net.username,
+                        passwordHash = "mocked",
+                        avatarUrl = net.avatar_url,
+                        isVerified = net.is_verified
+                    )
+                }
+                userDao.insertUser(user)
+                
+                ActfileWithUser(
+                    id = net.id,
+                    userId = net.user_id,
+                    username = net.username,
+                    avatarUrl = net.avatar_url,
+                    isVerified = net.is_verified,
+                    content = net.content,
+                    tags = "",
+                    likesCount = net.likes_count,
+                    viewsCount = net.views_count,
+                    commentsCount = net.comments_count ?: 0,
+                    createdAt = parseIso(net.created_at),
+                    isLikedByMe = net.liked,
+                    category = net.category,
+                    communityId = net.community_id,
+                    channelId = net.channel_id,
+                    channelSlug = net.channel_slug,
+                    channelName = net.channel_name
+                )
+            }
+            emit(mapped)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emit(emptyList())
         }
     }
 

@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -10,24 +11,46 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.ui.components.MarkdownActfile
-import com.example.ui.components.VerificationBadge
 import com.example.data.ActfileWithUser
-import com.example.utils.TranslationHelper
+import com.example.data.getCategoryDefaultIcon
+import com.example.ui.components.VerificationBadge
+import com.example.ui.components.MarkdownContent
+import com.example.ui.components.TagChip
 import kotlinx.coroutines.launch
+
+// Helper to calculate relative time
+fun getRelativeTimeString(timeMs: Long): String {
+    return try {
+        android.text.format.DateUtils.getRelativeTimeSpanString(
+            timeMs,
+            System.currentTimeMillis(),
+            android.text.format.DateUtils.MINUTE_IN_MILLIS
+        ).toString()
+    } catch (e: Exception) {
+        val diffSec = (System.currentTimeMillis() - timeMs) / 1000
+        when {
+            diffSec < 60 -> "à l'instant"
+            diffSec < 3600 -> "il y a ${diffSec / 60}m"
+            diffSec < 86400 -> "il y a ${diffSec / 3600}h"
+            else -> "il y a ${diffSec / 86400}j"
+        }
+    }
+}
 
 @Composable
 fun ActfileCard(
@@ -42,62 +65,61 @@ fun ActfileCard(
     onDelete: ((String) -> Unit)? = null,
     onMentionClick: ((String) -> Unit)? = null,
     onCategoryClick: ((String) -> Unit)? = null,
-    onShare: ((String) -> Unit)? = null
+    onShare: ((String) -> Unit)? = null,
+    isDetailView: Boolean = false
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var showShareDialog by remember { mutableStateOf(false) }
-
-    var translatedContent by remember { mutableStateOf<String?>(null) }
-    var isTranslating by remember { mutableStateOf(false) }
-    var translationError by remember { mutableStateOf<String?>(null) }
-    var currentTranslatedTo by remember { mutableStateOf<String?>(null) }
-    var translatedByS3 by remember { mutableStateOf(false) }
-    var summarizedContent by remember { mutableStateOf<String?>(null) }
-    var isSummarizing by remember { mutableStateOf(false) }
-
-    val coroutineScope = rememberCoroutineScope()
-
-    // Increment view when the card is composed (simple simulation)
+    val context = LocalContext.current
+    val relativeTime = remember(actfile.createdAt) { getRelativeTimeString(actfile.createdAt) }
+    
+    // Automatically register views
     LaunchedEffect(actfile.id) {
         onView(actfile.id)
     }
 
+    val isCommunityPost = !actfile.communityId.isNullOrBlank() || !actfile.channelSlug.isNullOrBlank()
+    val avatarSize = if (isDetailView) 56.dp else 40.dp
+    val miniAvatarSize = 20.dp
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("actfile_card_${actfile.id}"),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
-            modifier = Modifier.padding(10.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
         ) {
-            // Compact Header Row
+            
+            // Header Section
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onUserClick(actfile.userId) }
-                ) {
-                    // Small Avatar
+                if (!isCommunityPost) {
+                    // CAS 1 : Publication standard (community_id == null / blank)
+                    // Author Avatar
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(avatarSize)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .clickable { onUserClick(actfile.userId) },
                         contentAlignment = Alignment.Center
                     ) {
                         if (!actfile.avatarUrl.isNullOrBlank()) {
                             AsyncImage(
                                 model = actfile.avatarUrl,
-                                contentDescription = "Profile Picture",
+                                contentDescription = "Avatar de ${actfile.username}",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
@@ -105,503 +127,355 @@ fun ActfileCard(
                             Text(
                                 text = actfile.username.firstOrNull()?.toString()?.uppercase() ?: "?",
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    
-                    // Username and Category on the same row
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f, fill = false)
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Username + VerificationBadge + Timestamp relative
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onUserClick(actfile.userId) }
                     ) {
-                        Text(
-                            text = actfile.username,
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                        if (actfile.isVerified) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = actfile.username,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
                             Spacer(modifier = Modifier.width(4.dp))
-                            VerificationBadge(userName = actfile.username)
+                            VerificationBadge(
+                                userName = actfile.username,
+                                isVerified = actfile.isVerified,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
                         
                         Text(
-                            text = " • ",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                            text = relativeTime,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
-                        
-                        val catInfo = com.example.ui.components.getCategoryById(actfile.category)
-                        if (catInfo != null) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = catInfo.color.copy(alpha = 0.12f),
-                                modifier = Modifier
-                                    .then(
-                                        if (onCategoryClick != null) {
-                                            Modifier.clickable { onCategoryClick(catInfo.id) }
-                                        } else {
-                                            Modifier
-                                        }
-                                    )
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                    }
+
+                } else {
+                    // CAS 2 : Publication communautaire (community_id != null / channelSlug is present)
+                    // Community Icon / Avatar (using category default icon as fallback)
+                    val commIconUrl = remember(actfile.category) {
+                        getCategoryDefaultIcon(actfile.category ?: "general")
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(avatarSize)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.secondaryContainer)
+                            .clickable { onCategoryClick?.invoke(actfile.channelSlug ?: "") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AsyncImage(
+                            model = commIconUrl,
+                            contentDescription = "Communauté ${actfile.channelSlug}",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Community Details + Author secondary line
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        // Line 1: c/slug in bold + optional channel chip
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "c/${actfile.channelSlug ?: "communaute"}",
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable { onCategoryClick?.invoke(actfile.channelSlug ?: "") }
+                            )
+
+                            if (!actfile.channelName.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    modifier = Modifier.padding(vertical = 2.dp)
                                 ) {
-                                    Text(text = catInfo.emoji, style = MaterialTheme.typography.labelSmall)
-                                    Spacer(modifier = Modifier.width(2.dp))
                                     Text(
-                                        text = catInfo.name,
+                                        text = "#${actfile.channelName}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = catInfo.color
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                     )
                                 }
                             }
-                        } else {
+                        }
+
+                        Spacer(modifier = Modifier.height(2.dp))
+
+                        // Line 2: mini-avatar + Username + VerificationBadge + Timestamp
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onUserClick(actfile.userId) }
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(miniAvatarSize)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (!actfile.avatarUrl.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = actfile.avatarUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text(
+                                        text = actfile.username.firstOrNull()?.toString()?.uppercase() ?: "?",
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
                             Text(
-                                text = "Actfile",
+                                text = actfile.username,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            VerificationBadge(
+                                userName = actfile.username,
+                                isVerified = actfile.isVerified,
+                                modifier = Modifier.size(12.dp)
+                            )
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            Text(
+                                text = "• $relativeTime",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                             )
                         }
                     }
                 }
-                
+
+                // Delete button for post owner
                 if (onDelete != null) {
                     IconButton(
                         onClick = { onDelete(actfile.id) },
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Delete,
-                            contentDescription = "Supprimer",
+                            contentDescription = "Supprimer la publication",
                             tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
-            
-            Spacer(modifier = Modifier.height(10.dp))
-            
-            if (isTranslating) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Traduction en cours...",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            } else if (translationError != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = translationError ?: "Erreur de traduction",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Masquer",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.clickable { translationError = null }
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            } else if (translatedContent != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Translate,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Traduit en $currentTranslatedTo by ${if (translatedByS3) "S3 AI" else "Engine S3"}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        // Robot Cat Icon if S3 AI
-                        if (translatedByS3) {
-                            Icon(
-                                Icons.Default.Chat, // Fallback for cat robot icon
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        // Certified Badge (White)
-                        Icon(
-                            Icons.Default.Verified,
-                            contentDescription = "Certifié",
-                            modifier = Modifier.size(14.dp),
-                            tint = Color.White
-                        )
-                    }
-                    Text(
-                        text = "Voir l'original",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { 
-                            translatedContent = null 
-                            currentTranslatedTo = null
-                        }
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            
-            // Post Content
-            MarkdownActfile(
-                content = translatedContent ?: actfile.content,
-                modifier = Modifier.clickable { onComment(actfile.id) },
-                compactOpenGraph = false,
-                truncateChars = 27,
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Body content & Markdown
+            MarkdownContent(
+                content = actfile.content,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onComment(actfile.id) }
+                    .testTag("actfile_body_${actfile.id}"),
+                isDetailView = isDetailView,
+                onReadMoreClick = { onComment(actfile.id) },
                 onMentionClick = onMentionClick,
-                onLinkClick = onLinkClick,
-                onReadMoreClick = { onComment(actfile.id) }
+                onLinkClick = onLinkClick
             )
-            
-            // Extract and show tags
-            val tags = remember(actfile.content) {
-                val tagRegex = Regex("#([a-zA-Z0-9_]+)")
-                tagRegex.findAll(actfile.content).map { it.groupValues[1] }.distinct().toList()
+
+            // Dynamic tags rendering above action bar
+            val tagsList = remember(actfile.content, actfile.tags) {
+                val foundTags = Regex("#([a-zA-Z0-9_À-ÿ]+)")
+                    .findAll(actfile.content)
+                    .map { it.groupValues[1] }
+                    .toList()
+                val modelTags = (actfile.tags ?: "")
+                    .split(",")
+                    .map { it.trim().removePrefix("#") }
+                    .filter { it.isNotBlank() }
+                (foundTags + modelTags).distinct()
             }
-            if (tags.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
+
+            if (tagsList.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
                 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
                 androidx.compose.foundation.layout.FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    tags.forEach { tag ->
-                        TagChip(tagName = tag, onClick = { /* TODO navigate to tag screen */ })
+                    tagsList.forEach { tag ->
+                        TagChip(
+                            tagName = tag,
+                            onClick = { onMentionClick?.invoke("#$tag") }
+                        )
                     }
                 }
             }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Reddit-style single bottom actions bar
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Horizontal bottom action bar & Category badge aligned to the right
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Views Count (Quiet indicator)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Outlined.Visibility,
-                        contentDescription = "Views",
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${actfile.viewsCount}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                    )
-                }
-                
-                // Interaction Row
+                // Interactive Buttons
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Likes
+                    // Like Button
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { onLike(actfile.id) }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = if (actfile.isLikedByMe) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                            contentDescription = "Likes",
-                            modifier = Modifier.size(16.dp),
-                            tint = if (actfile.isLikedByMe) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            contentDescription = if (actfile.isLikedByMe) "Ne plus aimer" else "Aimer",
+                            tint = if (actfile.isLikedByMe) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "${actfile.likesCount}",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
-                            color = if (actfile.isLikedByMe) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            color = if (actfile.isLikedByMe) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
-                    // Comments
+                    // Comment Button
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { onComment(actfile.id) }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Forum,
-                            contentDescription = "Discussions",
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            contentDescription = "Commenter",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "${actfile.commentsCount}",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    
-                    // Share
+
+                    // Share Button
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
                                 if (onShare != null) {
                                     onShare(actfile.id)
                                 } else {
-                                    showShareDialog = true
+                                    // Trigger default Share Sheet
+                                    val sendIntent = android.content.Intent().apply {
+                                        action = android.content.Intent.ACTION_SEND
+                                        putExtra(
+                                            android.content.Intent.EXTRA_TEXT,
+                                            "Découvrez cette publication sur bit :\n" +
+                                            "👉 https://bit.gopu.inc/s/actfile/${actfile.id}"
+                                        )
+                                        type = "text/plain"
+                                    }
+                                    val shareIntent = android.content.Intent.createChooser(sendIntent, "Partager")
+                                    context.startActivity(shareIntent)
                                 }
                             }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Share,
                             contentDescription = "Partager",
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Share",
+                            text = "Partager",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
 
-                    // Translate / Traduire button
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable {
-                                isTranslating = true
-                                translationError = null
-                                coroutineScope.launch {
-                                    try {
-                                        // Try S3 AI first if ready
-                                        val s3Result = if (isAiReady) {
-                                            com.example.utils.LocalAiManager.translateWithS3(actfile.content, targetLanguageName)
-                                        } else null
-
-                                        if (s3Result != null) {
-                                            translatedContent = s3Result
-                                            translatedByS3 = true
-                                        } else {
-                                            // Fallback to engine
-                                            val translated = TranslationHelper.translateText(actfile.content, targetLanguageName)
-                                            translatedContent = translated
-                                            translatedByS3 = false
-                                        }
-                                        currentTranslatedTo = targetLanguageName
-                                    } catch (e: Exception) {
-                                        translationError = e.message ?: "Erreur lors de la traduction."
-                                    } finally {
-                                        isTranslating = false
-                                    }
-                                }
-                            }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                // Category Badge (e.g. #Tech) aligned to the right
+                val catInfo = com.example.ui.components.getCategoryById(actfile.category)
+                if (catInfo != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = catInfo.color.copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.dp,
+                            color = catInfo.color.copy(alpha = 0.25f)
+                        )
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Translate,
-                            contentDescription = "Traduire",
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Traduire",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    if (isAiReady && actfile.content.length > 200) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    isSummarizing = true
-                                    coroutineScope.launch {
-                                        val summary = com.example.utils.LocalAiManager.summarize(actfile.content)
-                                        if (summary != null) {
-                                            summarizedContent = summary
-                                        }
-                                        isSummarizing = false
-                                    }
-                                }
-                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (isSummarizing) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = "Résumé",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.secondary
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Résumé",
-                                style = MaterialTheme.typography.bodySmall,
+                                text = "${catInfo.emoji} #${catInfo.name}",
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.secondary
+                                color = catInfo.color
                             )
                         }
                     }
                 }
             }
         }
-    }
-
-    if (showShareDialog) {
-        AlertDialog(
-            onDismissRequest = { showShareDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Outlined.Share,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Partager cette publication", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Lien unique généré avec support Open Graph pour WhatsApp, Facebook et iMessage :",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "https://ais-pre-4csav45hpiduyolef4svay-126960423958.europe-west2.run.app/discussion/${actfile.id}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(12.dp),
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                    }
-                    
-                    Text(
-                        "Le lien affichera automatiquement un aperçu riche (titre, message et auteur) lors du partage.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showShareDialog = false
-                        val sendIntent = android.content.Intent().apply {
-                            action = android.content.Intent.ACTION_SEND
-                            putExtra(
-                                android.content.Intent.EXTRA_TEXT,
-                                "🌟 CMO Actf par @${actfile.username}\n\n" +
-                                "\"${if (actfile.content.length > 120) actfile.content.take(120) + "..." else actfile.content}\"\n\n" +
-                                "👉 Rejoindre la discussion : https://ais-pre-4csav45hpiduyolef4svay-126960423958.europe-west2.run.app/discussion/${actfile.id}"
-                            )
-                            type = "text/plain"
-                        }
-                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Partager via")
-                        context.startActivity(shareIntent)
-                    }
-                ) {
-                    Text("Partager")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showShareDialog = false
-                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        val clip = android.content.ClipData.newPlainText(
-                            "CMO Actfile Link",
-                            "https://ais-pre-4csav45hpiduyolef4svay-126960423958.europe-west2.run.app/discussion/${actfile.id}"
-                        )
-                        clipboard.setPrimaryClip(clip)
-                        android.widget.Toast.makeText(context, "Lien copié dans le presse-papiers !", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                ) {
-                    Text("Copier le lien")
-                }
-            }
-        )
     }
 }

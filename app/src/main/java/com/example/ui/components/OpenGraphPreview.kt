@@ -265,35 +265,23 @@ fun OpenGraphPreview(
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left Image (Thumbnail)
-                if (metadata.imageUrl != null) {
-                    AsyncImage(
-                        model = metadata.imageUrl,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surface),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
+                // Left Image (Thumbnail) - If null/blank, use a cute cat image!
+                val thumbnailModel = if (!metadata.imageUrl.isNullOrBlank()) {
+                    metadata.imageUrl
                 } else {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Link,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
+                    "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=100&q=80"
                 }
+                
+                AsyncImage(
+                    model = thumbnailModel,
+                    contentDescription = "Miniature",
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surface),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(10.dp))
 
                 // Metadata Details
                 Column(modifier = Modifier.weight(1f)) {
@@ -341,61 +329,50 @@ fun OpenGraphPreview(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Source : ${metadata.url}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Light),
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         } else {
             // Full Banner Style: beautiful design for feed/actfiles
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Top Header Image
-                if (metadata.imageUrl != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(160.dp)
-                    ) {
-                        AsyncImage(
-                            model = metadata.imageUrl,
-                            contentDescription = "Preview Image",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                        // Decorative overlay
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.3f)
-                                        )
-                                    )
-                                )
-                        )
-                    }
+                // Top Header Image - If null/blank, use a cute cat image!
+                val bannerModel = if (!metadata.imageUrl.isNullOrBlank()) {
+                    metadata.imageUrl
                 } else {
-                    // Clean gradient header when no image exists
+                    "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&q=80"
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                ) {
+                    AsyncImage(
+                        model = bannerModel,
+                        contentDescription = "Preview Image",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    // Decorative overlay
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(80.dp)
+                            .fillMaxSize()
                             .background(
-                                Brush.linearGradient(
+                                Brush.verticalGradient(
                                     colors = listOf(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.05f)
+                                        Color.Transparent,
+                                        Color.Black.copy(alpha = 0.4f)
                                     )
                                 )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Link,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
+                            )
+                    )
                 }
 
                 // Text details
@@ -447,6 +424,20 @@ fun OpenGraphPreview(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Données récupérées du site : ${metadata.url}",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }

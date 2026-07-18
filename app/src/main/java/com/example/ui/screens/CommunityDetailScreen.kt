@@ -32,12 +32,16 @@ import com.example.data.Community
 import com.example.data.getCategoryDefaultIcon
 import com.example.data.getCategoryDefaultBanner
 import com.example.ui.IddetViewModel
+import com.example.utils.AiModelState
 import kotlinx.coroutines.launch
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
+import com.example.ui.components.CommunityDashboardHeader
+import com.example.ui.components.ActfileCard
+import androidx.compose.foundation.lazy.itemsIndexed
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,14 +53,34 @@ fun CommunityDetailScreen(
     val coroutineScope = rememberCoroutineScope()
     var refreshTrigger by remember { mutableStateOf(0) }
     
-    // Fetch community details
-    val community by produceState<Community?>(initialValue = null, slug, refreshTrigger) {
-        viewModel.getCommunityFlow(slug).collect { value = it }
-    }
+    // Fetch community details using collectAsState
+    val communityState by remember(slug, refreshTrigger) {
+        viewModel.getCommunityFlow(slug)
+    }.collectAsState(initial = null)
+    val community = communityState
     
-    // Fetch community channels
-    val channels by produceState<List<Channel>>(initialValue = emptyList(), slug, refreshTrigger) {
-        viewModel.getCommunityChannelsFlow(slug).collect { value = it }
+    // Fetch community channels using collectAsState
+    val channelsState by remember(slug, refreshTrigger) {
+        viewModel.getCommunityChannelsFlow(slug)
+    }.collectAsState(initial = emptyList())
+    val channels = channelsState
+
+    var selectedTab by remember { mutableStateOf(0) } // 0 = Publications, 1 = Canaux
+    
+    // Fetch community posts using collectAsState
+    val communityPostsState by remember(slug, refreshTrigger) {
+        viewModel.getCommunityPostsFlow(slug)
+    }.collectAsState(initial = emptyList())
+    val communityPosts = communityPostsState
+
+    var showCreateChannelDialog by remember { mutableStateOf(false) }
+    var showRulesDialog by remember { mutableStateOf(false) }
+    
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("community_rules", android.content.Context.MODE_PRIVATE) }
+    val defaultRules = "1. Soyez respectueux envers tous les membres.\n2. Pas de spam, de publicité ou de harcèlement.\n3. Restez dans le thème de la communauté.\n4. Partagez des contenus de qualité."
+    var communityRules by remember(slug) {
+        mutableStateOf(prefs.getString(slug, defaultRules) ?: defaultRules)
     }
     
     var selectedChannel by remember { mutableStateOf<Channel?>(null) }
@@ -109,197 +133,183 @@ fun CommunityDetailScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                // Header Banner & Profile Section
                 item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp)
-                    ) {
-                        // Banner background with gradient overlay
-                        val bannerModel = if (!com.bannerUrl.isNullOrBlank()) com.bannerUrl else getCategoryDefaultBanner(com.category)
-                        AsyncImage(
-                            model = bannerModel,
-                            contentDescription = "Banner",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                        
-                        // Icon overlapping banner
-                        Box(
-                            modifier = Modifier
-                                .padding(16.dp)
-                                .size(72.dp)
-                                .align(Alignment.BottomStart)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surface)
-                                .padding(4.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            val iconModel = if (!com.iconUrl.isNullOrBlank()) com.iconUrl else getCategoryDefaultIcon(com.category)
-                            AsyncImage(
-                                model = iconModel,
-                                contentDescription = "Icon",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-                    }
-                }
-
-                // Community Metadata Details
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = com.name,
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onBackground
-                                    )
-                                    if (com.isPrivate) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.Lock,
-                                            contentDescription = "Privée",
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.primary
+                    CommunityDashboardHeader(
+                        community = com,
+                        onJoinClick = {
+                            viewModel.toggleCommunityJoin(com.slug) { success ->
+                                if (success) {
+                                    refreshTrigger++
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            if (com.isMember) "Vous avez quitté c/${com.slug}" else "Vous avez rejoint c/${com.slug}"
                                         )
                                     }
                                 }
-                                Text(
-                                    text = "c/${com.slug}",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold
-                                )
                             }
-                            
-                            Button(
-                                onClick = {
-                                    viewModel.toggleCommunityJoin(com.slug) { success ->
-                                        if (success) {
-                                            refreshTrigger++
-                                            coroutineScope.launch {
-                                                snackbarHostState.showSnackbar(
-                                                    if (com.isMember) "Vous avez quitté c/${com.slug}" else "Vous avez rejoint c/${com.slug}"
-                                                )
-                                            }
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (com.isMember) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
-                                    contentColor = if (com.isMember) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
-                                ),
-                                shape = RoundedCornerShape(24.dp),
-                                modifier = Modifier.testTag("detail_join_button")
-                            ) {
-                                Text(if (com.isMember) "Quitter" else "Rejoindre", fontWeight = FontWeight.Bold)
-                            }
+                        },
+                        onRulesClick = {
+                            showRulesDialog = true
                         }
-
-                        if (!com.description.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = com.description,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        // Stats Card row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            CommunityStatCard(
-                                value = "${com.membersCount}",
-                                label = "Membres",
-                                icon = Icons.Default.Group,
-                                modifier = Modifier.weight(1f)
-                            )
-                            CommunityStatCard(
-                                value = "${com.postsCount}",
-                                label = "Publications",
-                                icon = Icons.Outlined.ChatBubbleOutline,
-                                modifier = Modifier.weight(1f)
-                            )
-                            CommunityStatCard(
-                                value = com.category,
-                                label = "Catégorie",
-                                icon = Icons.Default.Label,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-
-                // Channel divider text
-                item {
-                    Text(
-                        text = "CANAUX ET DISCUSSIONS",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                     )
                 }
 
-                // Channels list
-                if (channels.isEmpty()) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Default.Tag,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(48.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Aucun canal disponible",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                item {
+                    TabRow(
+                        selectedTabIndex = selectedTab,
+                        containerColor = MaterialTheme.colorScheme.background,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Tab(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            text = { Text("Publications", fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Article, contentDescription = null) }
+                        )
+                        Tab(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            text = { Text("Canaux", fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Chat, contentDescription = null) }
+                        )
+                    }
+                }
+
+                if (selectedTab == 0) {
+                    if (communityPosts.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Default.Article,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(48.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Aucune publication pour le moment",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
+                        }
+                    } else {
+                        items(communityPosts, key = { it.id }) { actfile ->
+                            val isMine = actfile.userId == currentUserState?.id
+                            val targetLanguage by viewModel.targetLanguage.collectAsState()
+                            val aiState by viewModel.aiState.collectAsState()
+                            ActfileCard(
+                                actfile = actfile,
+                                onLike = { viewModel.likeActfile(it) },
+                                onView = { viewModel.incrementView(it) },
+                                targetLanguageName = targetLanguage,
+                                isAiReady = aiState == AiModelState.READY,
+                                onLinkClick = { url ->
+                                    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                    navController.navigate("browser/$encodedUrl")
+                                },
+                                onUserClick = {
+                                    val currentUserId = viewModel.currentUser.value?.id
+                                    if (it == currentUserId) {
+                                        navController.navigate("profile")
+                                    } else {
+                                        navController.navigate("profile/$it")
+                                    }
+                                },
+                                onComment = { actfileId ->
+                                    navController.navigate("discussion/$actfileId")
+                                },
+                                onDelete = if (isMine) { { viewModel.deleteActfile(it) } } else null,
+                                onMentionClick = { username ->
+                                    coroutineScope.launch {
+                                        val u = viewModel.getUserByUsername(username)
+                                        if (u != null) {
+                                            navController.navigate("profile/${u.id}")
+                                        }
+                                    }
+                                }
+                            )
                         }
                     }
                 } else {
-                    items(channels, key = { it.id }) { channel ->
-                        ChannelListItem(
-                            channel = channel,
-                            isLocked = com.isPrivate && !com.isMember,
-                            onClick = {
-                                if (com.isPrivate && !com.isMember) {
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("Rejoignez d'abord cette communauté privée pour accéder à ce canal.")
-                                    }
-                                } else {
-                                    selectedChannel = channel
+                    // Channel divider text
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "CANAUX ET DISCUSSIONS",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            
+                            val isAdmin = com.myRole == "admin" || com.creatorId == currentUserState?.id
+                            if (isAdmin) {
+                                IconButton(onClick = {
+                                    showCreateChannelDialog = true
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Créer un canal",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                             }
-                        )
+                        }
+                    }
+
+                    // Channels list
+                    if (channels.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tag,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(48.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Aucun canal disponible",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        items(channels, key = { it.id }) { channel ->
+                            ChannelListItem(
+                                channel = channel,
+                                isLocked = com.isPrivate && !com.isMember,
+                                onClick = {
+                                    if (com.isPrivate && !com.isMember) {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("Rejoignez d'abord cette communauté privée pour accéder à ce canal.")
+                                        }
+                                    } else {
+                                        selectedChannel = channel
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -312,6 +322,43 @@ fun CommunityDetailScreen(
                 community = community,
                 viewModel = viewModel,
                 onDismiss = { selectedChannel = null }
+            )
+        }
+
+        if (showRulesDialog && community != null) {
+            val isAdmin = community?.myRole == "admin" || community?.creatorId == currentUserState?.id
+            RulesDialog(
+                rules = communityRules,
+                isAdmin = isAdmin,
+                onDismiss = { showRulesDialog = false },
+                onSaveRules = { newRules ->
+                    communityRules = newRules
+                    prefs.edit().putString(slug, newRules).apply()
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Règles de la communauté mises à jour !")
+                    }
+                }
+            )
+        }
+
+        if (showCreateChannelDialog && community != null) {
+            CreateChannelDialog(
+                onDismiss = { showCreateChannelDialog = false },
+                onConfirm = { name, description ->
+                    showCreateChannelDialog = false
+                    viewModel.createChannel(slug, name, description) { created ->
+                        if (created != null) {
+                            refreshTrigger++
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Le canal #${created.name} a été créé !")
+                            }
+                        } else {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Erreur lors de la création du canal.")
+                            }
+                        }
+                    }
+                }
             )
         }
 
@@ -363,45 +410,7 @@ fun CommunityDetailScreen(
     }
 }
 
-@Composable
-fun CommunityStatCard(
-    value: String,
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
+
 
 @Composable
 fun ChannelListItem(
@@ -470,18 +479,12 @@ fun ChannelChatRoomDialog(
     val coroutineScope = rememberCoroutineScope()
     var refreshCount by remember { mutableStateOf(0) }
     
-    // Query list of all actfiles and filter by community mention or tag to show relevant posts
-    val posts by produceState<List<com.example.data.ActfileWithUser>>(initialValue = emptyList(), refreshCount) {
-        viewModel.actfiles.collect { list ->
-            // Filter posts that contain this community's slug or channel name as mentions/text, or general category matches
-            val filtered = list.filter { post ->
-                val slugMatch = community?.slug?.let { post.content.contains("@c/$it") } ?: false
-                val chanMatch = post.content.contains("@#${channel.slug}") || post.content.contains("#${channel.name}")
-                val directMatch = post.channelId == channel.id || post.communityId == community?.id
-                slugMatch || chanMatch || directMatch
-            }
-            value = filtered.sortedBy { it.createdAt }
-        }
+    // Query list of all actfiles and filter by channel scope to show relevant posts using collectAsState
+    val actfilesState by viewModel.actfiles.collectAsState(initial = emptyList())
+    val posts = remember(actfilesState, refreshCount, channel.id) {
+        actfilesState.filter { post ->
+            post.channelId == channel.id || post.content.contains("@#${channel.slug}")
+        }.sortedBy { it.createdAt }
     }
 
     Dialog(
@@ -632,16 +635,22 @@ fun ChannelChatRoomDialog(
                     }
                 }
 
-                // Chat Input box with auto tagging to make sure messages route to this channel/community
+                // Floating elevated Chat Input capsule to make writing more comfortable and modern
                 Surface(
-                    tonalElevation = 4.dp,
+                    tonalElevation = 6.dp,
                     color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .imePadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedTextField(
@@ -656,18 +665,23 @@ fun ChannelChatRoomDialog(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color.Transparent,
                                 unfocusedBorderColor = Color.Transparent,
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent
                             )
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         IconButton(
                             onClick = {
                                 if (messageText.isNotBlank()) {
                                     coroutineScope.launch {
                                         // Auto-append tags so Markdown and list filters pick it up correctly
                                         val taggedContent = "$messageText\n\n@c/${community?.slug} @#${channel.slug}"
-                                        viewModel.publishActfile(content = taggedContent, category = community?.category)
+                                        viewModel.publishActfile(
+                                            content = taggedContent,
+                                            category = community?.category,
+                                            communityId = community?.id,
+                                            channelId = channel.id
+                                        )
                                         messageText = ""
                                         refreshCount++
                                     }
@@ -675,6 +689,7 @@ fun ChannelChatRoomDialog(
                             },
                             enabled = messageText.isNotBlank(),
                             modifier = Modifier
+                                .size(40.dp)
                                 .clip(CircleShape)
                                 .background(if (messageText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
                                 .testTag("send_channel_message_button")
@@ -682,9 +697,186 @@ fun ChannelChatRoomDialog(
                             Icon(
                                 imageVector = Icons.Default.Send,
                                 contentDescription = "Envoyer",
-                                tint = if (messageText.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = if (messageText.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(18.dp)
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RulesDialog(
+    rules: String,
+    isAdmin: Boolean,
+    onDismiss: () -> Unit,
+    onSaveRules: (String) -> Unit
+) {
+    var isEditing by remember { mutableStateOf(false) }
+    var editedRules by remember { mutableStateOf(rules) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Règles de la communauté",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                if (isEditing) {
+                    OutlinedTextField(
+                        value = editedRules,
+                        onValueChange = { editedRules = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp),
+                        placeholder = { Text("Entrez les règles de la communauté...") },
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = rules,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isAdmin) {
+                        if (isEditing) {
+                            TextButton(onClick = { isEditing = false }) {
+                                Text("Annuler")
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(onClick = {
+                                onSaveRules(editedRules)
+                                isEditing = false
+                            }) {
+                                Text("Enregistrer")
+                            }
+                        } else {
+                            TextButton(onClick = { isEditing = true }) {
+                                Text("Modifier")
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(onClick = onDismiss) {
+                                Text("Fermer")
+                            }
+                        }
+                    } else {
+                        Button(onClick = onDismiss) {
+                            Text("Fermer")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CreateChannelDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Créer un nouveau canal",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nom du canal") },
+                    placeholder = { Text("ex: actualités") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description (Optionnel)") },
+                    placeholder = { Text("De quoi parle ce canal...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Annuler")
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = { onConfirm(name, description) },
+                        enabled = name.isNotBlank(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Créer", fontWeight = FontWeight.Bold)
                     }
                 }
             }

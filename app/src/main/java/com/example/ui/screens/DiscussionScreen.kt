@@ -30,6 +30,8 @@ import com.example.ui.IddetViewModel
 import com.example.ui.components.MarkdownActfile
 import com.example.ui.components.VerificationBadge
 import com.example.ui.components.VoiceRecorderUI
+import com.example.ui.components.ActfileCard
+import com.example.ui.components.getRelativeTimeString
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -95,248 +97,37 @@ fun DiscussionScreen(
                 // Post content at the top
                 actfile?.let { post ->
                     item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                            )
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                // Author Header
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clickable {
-                                                val myId = viewModel.currentUser.value?.id
-                                                if (post.userId == myId) {
-                                                    navController.navigate("profile")
-                                                } else {
-                                                    navController.navigate("profile/${post.userId}")
-                                                }
-                                            }
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.primaryContainer),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (!post.avatarUrl.isNullOrBlank()) {
-                                                AsyncImage(
-                                                    model = post.avatarUrl,
-                                                    contentDescription = "Profile Picture",
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentScale = ContentScale.Crop
-                                                )
-                                            } else {
-                                                Text(
-                                                    text = post.username.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = post.username,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                                if (post.isVerified) {
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    VerificationBadge(userName = post.username)
-                                                }
-                                            }
-                                            Text(
-                                                text = "Auteur de l'actfile",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                            )
-                                        }
-                                    }
-                                    
-                                    val myId = currentUser?.id
-                                    if (post.userId == myId) {
-                                        IconButton(
-                                            onClick = {
-                                                viewModel.deleteActfile(post.id)
-                                                navController.popBackStack()
-                                            }
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "Supprimer",
-                                                tint = MaterialTheme.colorScheme.error
-                                            )
-                                        }
-                                    }
+                        ActfileCard(
+                            actfile = post,
+                            onLike = { viewModel.likeActfile(post.id) },
+                            onView = { viewModel.incrementView(post.id) },
+                            onUserClick = { userId ->
+                                val myId = currentUser?.id
+                                if (userId == myId) {
+                                    navController.navigate("profile")
+                                } else {
+                                    navController.navigate("profile/$userId")
                                 }
-                                
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                // Content
-                                if (isTranslating) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Traduction...", style = MaterialTheme.typography.labelSmall)
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                } else if (translationError != null) {
-                                    Text(
-                                        text = translationError!!,
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                } else if (translatedContent != null) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                "Traduit en $currentTranslatedTo",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            if (currentTranslatedTo?.contains("S3 AI") == true) {
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
-                                            }
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Icon(Icons.Default.Verified, contentDescription = "Certifié", modifier = Modifier.size(12.dp), tint = Color.Gray)
+                            },
+                            onComment = { /* already on discussion screen */ },
+                            onDelete = if (post.userId == currentUser?.id) { { viewModel.deleteActfile(post.id); navController.popBackStack() } } else null,
+                            onCategoryClick = { channelSlug ->
+                                navController.navigate("community/$channelSlug")
+                            },
+                            onMentionClick = { mention ->
+                                if (mention.startsWith("@")) {
+                                    coroutineScope.launch {
+                                        val u = viewModel.getUserByUsername(mention.removePrefix("@"))
+                                        if (u != null) {
+                                            navController.navigate("profile/${u.id}")
                                         }
-                                        Text(
-                                            "Original",
-                                            style = MaterialTheme.typography.labelSmall.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.clickable { 
-                                                translatedContent = null
-                                                currentTranslatedTo = null
-                                            }
-                                        )
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                } else if (mention.startsWith("#")) {
+                                    navController.navigate("search?query=${java.net.URLEncoder.encode(mention, "UTF-8")}")
                                 }
-
-                                MarkdownActfile(
-                                    content = translatedContent ?: post.content,
-                                    onMentionClick = { username ->
-                                        coroutineScope.launch {
-                                            val u = viewModel.getUserByUsername(username)
-                                            if (u != null) {
-                                                navController.navigate("profile/${u.id}")
-                                            }
-                                        }
-                                    },
-                                    onLinkClick = { url ->
-                                        val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
-                                        navController.navigate("browser/$encodedUrl")
-                                    }
-                                )
-                                
-                                if (post.tags.isNotBlank()) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        post.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { tag ->
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                            ) {
-                                                Text(
-                                                    text = "#$tag",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                // Metadata
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Visibility,
-                                            contentDescription = "Vues",
-                                            modifier = Modifier.size(20.dp),
-                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "${post.viewsCount} vues",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                    
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        IconButton(onClick = {
-                                            isTranslating = true
-                                            translationError = null
-                                            coroutineScope.launch {
-                                                try {
-                                                    val aiState = com.example.utils.LocalAiManager.state.value
-                                                    val s3Result = if (aiState == com.example.utils.AiModelState.READY) {
-                                                        com.example.utils.LocalAiManager.translateWithS3(post.content, targetLanguage)
-                                                    } else null
-
-                                                    if (s3Result != null) {
-                                                        translatedContent = s3Result
-                                                        currentTranslatedTo = "$targetLanguage (S3 AI)"
-                                                    } else {
-                                                        val result = com.example.utils.TranslationHelper.translateText(post.content, targetLanguage)
-                                                        translatedContent = result
-                                                        currentTranslatedTo = "$targetLanguage (Engine S3)"
-                                                    }
-                                                } catch (e: Exception) {
-                                                    translationError = "Erreur"
-                                                } finally {
-                                                    isTranslating = false
-                                                }
-                                            }
-                                        }) {
-                                            Icon(Icons.Default.Translate, contentDescription = "Traduire", tint = MaterialTheme.colorScheme.primary)
-                                        }
-                                        IconButton(onClick = { viewModel.likeActfile(post.id) }) {
-                                            Icon(
-                                                imageVector = Icons.Default.Favorite,
-                                                contentDescription = "Likes",
-                                                tint = if (post.isLikedByMe) Color(0xFF2196F3) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                            )
-                                        }
-                                        Text(
-                                            text = "${post.likesCount}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                            },
+                            isDetailView = true
+                        )
                     }
                 }
                 
@@ -386,7 +177,7 @@ fun DiscussionScreen(
                             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                // Commenter Header
+                                // Commenter Header: Avatar + Username + VerificationBadge + Timestamp relative
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.clickable {
@@ -408,7 +199,7 @@ fun DiscussionScreen(
                                         if (!comment.avatarUrl.isNullOrBlank()) {
                                             AsyncImage(
                                                 model = comment.avatarUrl,
-                                                contentDescription = "Profile Picture",
+                                                contentDescription = "Avatar de ${comment.username}",
                                                 modifier = Modifier.fillMaxSize(),
                                                 contentScale = ContentScale.Crop
                                             )
@@ -421,22 +212,35 @@ fun DiscussionScreen(
                                             )
                                         }
                                     }
+                                    
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = comment.username,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (comment.isVerified) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        VerificationBadge(userName = comment.username)
+                                    
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = comment.username,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            VerificationBadge(
+                                                userName = comment.username,
+                                                isVerified = comment.isVerified,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = getRelativeTimeString(comment.createdAt),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        )
                                     }
                                 }
                                 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(10.dp))
                                 
-                                // Comment Body (Supporting Markdown!)
+                                // Comment Body (Supporting Markdown & clickable elements)
                                 val scope = rememberCoroutineScope()
                                 MarkdownActfile(
                                     content = comment.content,

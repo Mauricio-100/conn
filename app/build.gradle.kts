@@ -15,7 +15,7 @@ android {
   compileSdk = 36
 
   defaultConfig {
-    applicationId = "com.aistudio.iddet.zqwpx"
+    applicationId = "com.iddet.cmo.zqwpx"
     minSdk = 26
     targetSdk = 35
     versionCode = 1

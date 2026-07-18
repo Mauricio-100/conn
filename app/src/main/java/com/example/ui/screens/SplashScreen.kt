@@ -3,16 +3,15 @@ package com.example.ui.screens
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -29,8 +28,8 @@ import androidx.compose.ui.platform.LocalContext
 @Composable
 fun SplashScreen(onTimeout: () -> Unit) {
     val context = LocalContext.current
-    val scale = remember { Animatable(0f) }
-    val opacity = remember { Animatable(0f) }
+    val logoScale = remember { Animatable(0.85f) }
+    val logoAlpha = remember { Animatable(0f) }
 
     val permissionsToRequest = mutableListOf(
         Manifest.permission.CAMERA,
@@ -47,8 +46,7 @@ fun SplashScreen(onTimeout: () -> Unit) {
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
-        // We proceed regardless of whether permissions were granted or not
-        // The app will handle missing permissions when specific features are used
+        // Proceed regardless of permissions
     }
 
     LaunchedEffect(key1 = true) {
@@ -58,32 +56,23 @@ fun SplashScreen(onTimeout: () -> Unit) {
             e.printStackTrace()
         }
         
-        // Animation sequence
+        // Soft scale-in and fade-in animation for the logo
         launch {
-            scale.animateTo(
-                targetValue = 1.2f,
+            logoScale.animateTo(
+                targetValue = 1.0f,
                 animationSpec = tween(
-                    durationMillis = 1500,
+                    durationMillis = 1200,
                     easing = FastOutSlowInEasing
-                )
-            )
-            scale.animateTo(
-                targetValue = 20f,
-                animationSpec = tween(
-                    durationMillis = 500,
-                    easing = AccelerateInterpolator()
                 )
             )
         }
         launch {
-            opacity.animateTo(
+            logoAlpha.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 800)
-            )
-            delay(1000)
-            opacity.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 700)
+                animationSpec = tween(
+                    durationMillis = 1000,
+                    easing = LinearOutSlowInEasing
+                )
             )
         }
         
@@ -91,43 +80,66 @@ fun SplashScreen(onTimeout: () -> Unit) {
         onTimeout()
     }
 
+    // Infinite breathing/pulsing animation for the dot (similar to ChatGPT / AI indicators)
+    val infiniteTransition = rememberInfiniteTransition(label = "dot_breathe")
+    val dotScale by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dot_scale"
+    )
+    val dotAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dot_alpha"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black), // High-fidelity clean dark background
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.scale(scale.value)
+        // Center-aligned branding logo
+        Box(
+            modifier = Modifier
+                .size(110.dp)
+                .scale(logoScale.value)
+                .alpha(logoAlpha.value),
+            contentAlignment = Alignment.Center
         ) {
             Image(
                 painter = painterResource(id = R.drawable.ic_cat_logo),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(80.dp)
-                    .padding(bottom = 16.dp)
-            )
-            Text(
-                text = "IDDET",
-                color = Color(0xFFDC2626), // Netflix Red
-                fontSize = 48.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 4.sp
-            )
-            Text(
-                text = "VOILA",
-                color = Color.White.copy(alpha = opacity.value),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 8.sp
+                contentDescription = "IDDET Logo",
+                modifier = Modifier.fillMaxSize()
             )
         }
-    }
-}
 
-class AccelerateInterpolator : Easing {
-    override fun transform(fraction: Float): Float {
-        return fraction * fraction * fraction
+        // ChatGPT-style pulsing dot at the bottom
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 64.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .scale(dotScale)
+                    .alpha(dotAlpha)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary, // Premium theme primary color for branding consistency
+                        shape = CircleShape
+                    )
+            )
+        }
     }
 }

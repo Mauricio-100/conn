@@ -332,9 +332,15 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         repository.logout()
     }
 
-    fun publishActfile(content: String, tags: String = "", category: String? = null) {
+    fun publishActfile(
+        content: String,
+        tags: String = "",
+        category: String? = null,
+        communityId: String? = null,
+        channelId: String? = null
+    ) {
         viewModelScope.launch {
-            repository.publishActfile(content, tags, category)
+            repository.publishActfile(content, tags, category, communityId, channelId)
         }
     }
 
@@ -497,6 +503,23 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     fun getCommunityChannelsFlow(slug: String): Flow<List<com.example.data.Channel>> {
         return flow {
             emit(repository.getCommunityChannels(slug))
+        }
+    }
+
+    fun getCommunityPostsFlow(slug: String): Flow<List<com.example.data.ActfileWithUser>> {
+        return repository.getCommunityPostsFlow(slug)
+    }
+
+    fun createChannel(slug: String, name: String, description: String?, onResult: (com.example.data.Channel?) -> Unit) {
+        viewModelScope.launch {
+            val result = repository.createChannel(slug, name, description)
+            onResult(result)
+        }
+    }
+
+    fun getMyCommunitiesFlow(): Flow<List<com.example.data.Community>> {
+        return flow {
+            emit(repository.getMyCommunities())
         }
     }
 

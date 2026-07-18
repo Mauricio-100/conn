@@ -27,12 +27,26 @@ import com.example.ui.theme.AppTheme
 class MainActivity : ComponentActivity() {
     private var crashError by mutableStateOf<String?>(null)
 
-    override fun onNewIntent(intent: android.content.Intent) {
-        super.onNewIntent(intent)
+    private fun handleIntent(intent: android.content.Intent?) {
+        if (intent == null) return
         val route = intent.getStringExtra("route")
         if (route != null) {
             com.example.utils.NotificationRouter.pendingRoute.value = route
+        } else {
+            val uri = intent.data
+            if (uri != null) {
+                val pathSegments = uri.pathSegments
+                if (pathSegments != null && pathSegments.size >= 3 && pathSegments[0] == "s" && pathSegments[1] == "actfile") {
+                    val actfileId = pathSegments[2]
+                    com.example.utils.NotificationRouter.pendingRoute.value = "discussion/$actfileId"
+                }
+            }
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,10 +70,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         
-        val route = intent?.getStringExtra("route")
-        if (route != null) {
-            com.example.utils.NotificationRouter.pendingRoute.value = route
-        }
+        handleIntent(intent)
         
         try {
             val db = AppDatabase.getDatabase(this)
