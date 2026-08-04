@@ -4,6 +4,9 @@ import android.content.Context
 import android.media.MediaRecorder
 import android.os.Build
 import android.util.Log
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
 import java.io.IOException
 
@@ -100,5 +103,25 @@ class AudioRecorderManager(private val context: Context) {
     }
 
     fun isCurrentlyRecording(): Boolean = isRecording
+
+    /**
+     * Open binary InputStream from recorded audio file for streaming
+     */
+    fun getAudioInputStream(file: File): java.io.InputStream? {
+        return try {
+            java.io.FileInputStream(file)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open audio InputStream", e)
+            null
+        }
+    }
+
+    /**
+     * Create MultipartBody.Part for binary file stream upload to API/Cloudinary
+     */
+    fun toMultipartBodyPart(file: File, paramName: String = "file"): MultipartBody.Part {
+        val requestFile = file.asRequestBody("audio/m4a".toMediaTypeOrNull())
+        return MultipartBody.Part.createFormData(paramName, file.name, requestFile)
+    }
 }
 

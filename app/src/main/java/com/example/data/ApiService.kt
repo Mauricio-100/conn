@@ -279,7 +279,7 @@ interface ApiService {
     @POST("/api/upload")
     suspend fun uploadAudio(
         @retrofit2.http.Header("Authorization") token: String?,
-        @Part audio: okhttp3.MultipartBody.Part
+        @Part file: okhttp3.MultipartBody.Part
     ): UploadResponse
 
     @retrofit2.http.GET("/api/notifications")

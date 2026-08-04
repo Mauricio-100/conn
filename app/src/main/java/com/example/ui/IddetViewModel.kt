@@ -465,22 +465,27 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
             )
             
             try {
-                val bytes = file.readBytes()
-                val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                val base64Data = "data:audio/m4a;base64,$b64"
+                // 1. Binary multipart upload to Cloudinary via UploadRepository
+                val uploadRepo = com.example.data.UploadRepository()
+                val uploadedUrl = uploadRepo.uploadAudioFile(repository.userToken, file)
 
-                // 1. Try sending via WebSocket voice_message (backend decodes base64, uploads to Cloudinary & persists message)
-                val wsSuccess = com.example.utils.WebSocketManager.sendVoiceMessage(receiverId, base64Data, username)
-
-                if (!wsSuccess) {
-                    // 2. Fallback to HTTP upload / REST API if WebSocket is disconnected
-                    val uploadRepo = com.example.data.UploadRepository()
-                    val uploadedUrl = uploadRepo.uploadAudioFile(repository.userToken, file)
-                    val audioContent = if (!uploadedUrl.isNullOrBlank()) uploadedUrl else base64Data
-                    
-                    repository.sendMessage(receiverId, audioContent, type = "audio")
-                    repository.deleteMessageLocal(tempId)
+                val audioContent = if (!uploadedUrl.isNullOrBlank()) {
+                    uploadedUrl
+                } else {
+                    // Fallback to base64 encoding if network upload failed
+                    val bytes = file.readBytes()
+                    val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    "data:audio/m4a;base64,$b64"
                 }
+
+                // 2. Send audio message via REST API
+                repository.sendMessage(receiverId, audioContent, type = "audio")
+
+                // 3. Notify real-time WebSocket listeners
+                com.example.utils.WebSocketManager.sendVoiceMessage(receiverId, audioContent, username)
+
+                // 4. Remove temporary sending placeholder
+                repository.deleteMessageLocal(tempId)
             } catch (e: Exception) {
                 e.printStackTrace()
                 repository.insertMessageLocal(tempMsg.copy(type = "audio_error"))

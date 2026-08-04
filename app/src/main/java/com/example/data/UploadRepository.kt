@@ -16,12 +16,16 @@ class UploadRepository {
             val authHeader = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
             
             val response = RetrofitClient.apiService.uploadAudio(authHeader, body)
-            val url = response.secure_url ?: response.url
-            Log.d(TAG, "Audio file uploaded successfully: $url")
+            val url = if (!response.secure_url.isNullBlinkOrEmpty()) response.secure_url else response.url
+            Log.d(TAG, "Audio file binary stream uploaded successfully: $url")
             url
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to upload audio via Retrofit, falling back", e)
+            Log.e(TAG, "Failed to upload audio binary stream via Retrofit", e)
             null
         }
+    }
+
+    private fun String?.isNullBlinkOrEmpty(): Boolean {
+        return this.isNullOrBlank() || this.isEmpty()
     }
 }
