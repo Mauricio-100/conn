@@ -109,6 +109,12 @@ data class SendMessageRequest(
     val type: String = "text"
 )
 
+data class UploadResponse(
+    val url: String,
+    val public_id: String? = null,
+    val secure_url: String? = null
+)
+
 data class ActfileCommentCreate(val content: String)
 
 data class ActfileCommentResponse(
@@ -268,6 +274,13 @@ interface ApiService {
         @retrofit2.http.Header("Authorization") token: String?,
         @Body request: SendMessageRequest
     ): MessageNetwork
+
+    @Multipart
+    @POST("/api/upload")
+    suspend fun uploadAudio(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @Part audio: okhttp3.MultipartBody.Part
+    ): UploadResponse
 
     @retrofit2.http.GET("/api/notifications")
     suspend fun getNotifications(

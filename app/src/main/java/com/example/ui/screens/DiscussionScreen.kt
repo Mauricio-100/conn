@@ -99,6 +99,8 @@ fun DiscussionScreen(
                     item {
                         ActfileCard(
                             actfile = post,
+                            isDetailView = true,
+                            targetLanguageName = targetLanguage,
                             onLike = { viewModel.likeActfile(post.id) },
                             onView = { viewModel.incrementView(post.id) },
                             onUserClick = { userId ->
@@ -126,7 +128,6 @@ fun DiscussionScreen(
                                     navController.navigate("search?query=${java.net.URLEncoder.encode(mention, "UTF-8")}")
                                 }
                             },
-                            isDetailView = true
                         )
                     }
                 }

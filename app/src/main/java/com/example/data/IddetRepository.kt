@@ -48,6 +48,7 @@ class IddetRepository(
     }
 
     private var currentToken: String? = prefs.getString("auth_token", null)
+    val userToken: String? get() = currentToken
     private val viewedActfiles = mutableSetOf<String>()
 
     init {

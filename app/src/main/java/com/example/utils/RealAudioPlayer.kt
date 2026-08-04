@@ -1,9 +1,13 @@
 package com.example.utils
 
+import android.content.Context
 import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import android.util.Log
+import java.io.File
+import java.io.FileOutputStream
 
 object RealAudioPlayer {
     private const val TAG = "RealAudioPlayer"
@@ -20,7 +24,7 @@ object RealAudioPlayer {
 
     private var activeListener: PlaybackListener? = null
 
-    fun play(url: String, listener: PlaybackListener) {
+    fun play(url: String, listener: PlaybackListener, context: Context? = null) {
         if (currentUrl == url && mediaPlayer != null) {
             try {
                 mediaPlayer?.start()
@@ -38,8 +42,19 @@ object RealAudioPlayer {
         activeListener = listener
 
         try {
+            val sourcePath = resolveAudioSource(url, context)
             val player = MediaPlayer().apply {
-                setDataSource(url)
+                if (sourcePath.startsWith("http://") || sourcePath.startsWith("https://")) {
+                    setDataSource(sourcePath)
+                } else {
+                    val file = File(sourcePath)
+                    if (file.exists()) {
+                        setDataSource(file.absolutePath)
+                    } else {
+                        setDataSource(sourcePath)
+                    }
+                }
+                
                 setOnPreparedListener { mp ->
                     mp.start()
                     startProgressUpdate()
@@ -63,6 +78,38 @@ object RealAudioPlayer {
             listener.onError(e.message ?: "Impossible d'initialiser le lecteur audio.")
             stop()
         }
+    }
+
+    fun seekTo(ratio: Float) {
+        try {
+            mediaPlayer?.let { player ->
+                val duration = player.duration
+                if (duration > 0) {
+                    val targetMs = (duration * ratio.coerceIn(0f, 1f)).toInt()
+                    player.seekTo(targetMs)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error seeking audio", e)
+        }
+    }
+
+    private fun resolveAudioSource(url: String, context: Context?): String {
+        val trimmed = url.trim()
+        if (trimmed.startsWith("data:audio") || (!trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("/") && trimmed.length > 100)) {
+            return try {
+                val base64Data = if (trimmed.contains("base64,")) trimmed.substringAfter("base64,") else trimmed
+                val decodedBytes = Base64.decode(base64Data, Base64.DEFAULT)
+                val cacheDir = context?.cacheDir ?: File.createTempFile("temp_audio_", "").parentFile
+                val tempFile = File.createTempFile("decoded_voice_", ".m4a", cacheDir)
+                FileOutputStream(tempFile).use { it.write(decodedBytes) }
+                tempFile.absolutePath
+            } catch (e: Exception) {
+                Log.e(TAG, "Error decoding base64 audio source", e)
+                trimmed
+            }
+        }
+        return trimmed
     }
 
     fun pause() {
@@ -130,3 +177,4 @@ object RealAudioPlayer {
         updateProgressRunnable = null
     }
 }
+

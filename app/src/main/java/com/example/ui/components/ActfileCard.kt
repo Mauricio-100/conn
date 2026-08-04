@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -69,6 +70,10 @@ fun ActfileCard(
     isDetailView: Boolean = false
 ) {
     val context = LocalContext.current
+    var translatedContent by remember { mutableStateOf<String?>(null) }
+    var isTranslating by remember { mutableStateOf(false) }
+    var showOriginal by remember { mutableStateOf(true) }
+    val coroutineScope = rememberCoroutineScope()
     val relativeTime = remember(actfile.createdAt) { getRelativeTimeString(actfile.createdAt) }
     
     // Automatically register views
@@ -310,7 +315,7 @@ fun ActfileCard(
 
             // Body content & Markdown
             MarkdownContent(
-                content = actfile.content,
+                content = (if (showOriginal) actfile.content else translatedContent) ?: actfile.content,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onComment(actfile.id) }
@@ -448,6 +453,46 @@ fun ActfileCard(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+
+                    // Translate Button
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                if (showOriginal) {
+                                    if (translatedContent == null) {
+                                        isTranslating = true
+                                        coroutineScope.launch {
+                                            try {
+                                                translatedContent = com.example.utils.TranslationHelper.translateText(actfile.content, targetLanguageName)
+                                                showOriginal = false
+                                            } catch (e: Exception) {
+                                                android.widget.Toast.makeText(context, "Erreur", android.widget.Toast.LENGTH_SHORT).show()
+                                            } finally {
+                                                isTranslating = false
+                                            }
+                                        }
+                                    } else {
+                                        showOriginal = false
+                                    }
+                                } else {
+                                    showOriginal = true
+                                }
+                            }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isTranslating) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                imageVector = Icons.Outlined.Translate,
+                                contentDescription = "Traduire",
+                                tint = if (!showOriginal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 

@@ -35,6 +35,7 @@ fun VoiceMessagePlayer(
     modifier: Modifier = Modifier,
     isMine: Boolean = false
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val voiceData = remember(content) {
         if (isVoiceMessage(content)) {
             parseVoiceMessage(content) ?: VoiceMessageData(5, List(15) { 0.4f }, null)
@@ -42,7 +43,7 @@ fun VoiceMessagePlayer(
             // Generate stable deterministic wave for real URLs / local paths
             val hash = content.hashCode()
             val random = java.util.Random(hash.toLong())
-            val duration = 8 + random.nextInt(12) // Mock duration 8-20s
+            val duration = 8 + random.nextInt(12) // Default estimated duration 8-20s
             val amplitudes = List(18) {
                 0.15f + 0.85f * random.nextFloat()
             }
@@ -96,23 +97,26 @@ fun VoiceMessagePlayer(
                         com.example.utils.VoiceSynthPlayer.stop()
                     }
                     isPlaying = false
-                    progress = 0f
                 } else {
                     isPlaying = true
                     if (isRealAudio) {
-                        com.example.utils.RealAudioPlayer.play(content, object : com.example.utils.RealAudioPlayer.PlaybackListener {
-                            override fun onProgress(p: Float, currentMs: Int, durationMs: Int) {
-                                progress = p
-                            }
-                            override fun onFinished() {
-                                isPlaying = false
-                                progress = 0f
-                            }
-                            override fun onError(error: String) {
-                                isPlaying = false
-                                progress = 0f
-                            }
-                        })
+                        com.example.utils.RealAudioPlayer.play(
+                            url = content,
+                            listener = object : com.example.utils.RealAudioPlayer.PlaybackListener {
+                                override fun onProgress(p: Float, currentMs: Int, durationMs: Int) {
+                                    progress = p
+                                }
+                                override fun onFinished() {
+                                    isPlaying = false
+                                    progress = 0f
+                                }
+                                override fun onError(error: String) {
+                                    isPlaying = false
+                                    progress = 0f
+                                }
+                            },
+                            context = context
+                        )
                     } else {
                         com.example.utils.VoiceSynthPlayer.play(
                             amplitudes = voiceData.amplitudes,
@@ -152,8 +156,8 @@ fun VoiceMessagePlayer(
                     detectTapGestures { offset ->
                         val ratio = (offset.x / size.width).coerceIn(0f, 1f)
                         progress = ratio
-                        if (!isPlaying) {
-                            // seek
+                        if (!isVoiceMessage(content)) {
+                            com.example.utils.RealAudioPlayer.seekTo(ratio)
                         }
                     }
                 }
@@ -246,18 +250,36 @@ fun VoiceRecorderUI(
         label = "alpha"
     )
 
-    // Simulate timer and recording sound wave amplitudes
+    // Sample real peak amplitude & increment stopwatch timer (max 5 mins = 300s)
     LaunchedEffect(isRecording) {
         if (isRecording) {
+            var msCounter = 0
             while (isRecording) {
-                delay(1000)
-                durationSeconds++
-                // Append a new simulated amplitude level (0.1 to 1.0)
-                val nextAmp = (0.2f + 0.8f * (0..100).random().toFloat() / 100f)
-                recordAmplitudes.add(nextAmp)
-                // Keep the last 15 amplitudes visible
-                if (recordAmplitudes.size > 18) {
+                delay(100)
+                msCounter += 100
+                
+                // Sample real amplitude
+                val realAmp = recorderManager.getMaxAmplitudeNormalized()
+                recordAmplitudes.add(realAmp)
+                if (recordAmplitudes.size > 20) {
                     recordAmplitudes.removeAt(0)
+                }
+
+                if (msCounter >= 1000) {
+                    msCounter = 0
+                    durationSeconds++
+                    
+                    // 5-minute maximum limit check (300 seconds)
+                    if (durationSeconds >= 300) {
+                        isRecording = false
+                        val file = recorderManager.stopRecording()
+                        if (file != null) {
+                            onSendVoiceFile?.invoke(file)
+                        } else {
+                            onCancel()
+                        }
+                        break
+                    }
                 }
             }
         }
@@ -297,7 +319,7 @@ fun VoiceRecorderUI(
 
         Spacer(modifier = Modifier.width(12.dp))
 
-        // Live Audio wave simulation
+        // Live Audio wave from real mic
         Row(
             modifier = Modifier
                 .weight(1f)

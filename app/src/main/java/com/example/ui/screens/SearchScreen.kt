@@ -27,10 +27,12 @@ import com.example.ui.components.ActfileCard
 import com.example.ui.components.VerificationBadge
 import kotlinx.coroutines.launch
 
+import com.example.ui.components.PersistentSearchBar
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
-    var query by remember { mutableStateOf("") }
+    val query by viewModel.searchQuery.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     
     val giants by viewModel.giants.collectAsStateWithLifecycle()
@@ -55,26 +57,9 @@ fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { 
-                        query = it 
-                        viewModel.updateSearchQuery(it)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search actfiles and users...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    shape = RoundedCornerShape(24.dp),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                    )
-                )
-            }
+            PersistentSearchBar(viewModel = viewModel)
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             TabRow(selectedTabIndex = selectedTab) {
                 Tab(

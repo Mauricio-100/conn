@@ -39,6 +39,8 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
 
     private val _feedTab = MutableStateFlow(0)
     val feedTab: StateFlow<Int> = _feedTab.asStateFlow()
+    private val _isFeedLoading = MutableStateFlow(true)
+    val isFeedLoading: StateFlow<Boolean> = _isFeedLoading.asStateFlow()
 
     fun setFeedTab(tab: Int) {
         _feedTab.value = tab
@@ -94,7 +96,12 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
 
     fun refreshActfiles() {
         viewModelScope.launch {
-            repository.refreshActfiles()
+            _isFeedLoading.value = true
+            try {
+                repository.refreshActfiles()
+            } finally {
+                _isFeedLoading.value = false
+            }
         }
     }
 
@@ -215,12 +222,51 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     val conversations: StateFlow<List<com.example.data.ConversationNetwork>> = repository.conversations
 
     private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _searchInContent = MutableStateFlow(true)
+    val searchInContent: StateFlow<Boolean> = _searchInContent.asStateFlow()
+
+    private val _searchInTags = MutableStateFlow(true)
+    val searchInTags: StateFlow<Boolean> = _searchInTags.asStateFlow()
+
+    private val _searchInUsers = MutableStateFlow(true)
+    val searchInUsers: StateFlow<Boolean> = _searchInUsers.asStateFlow()
+
+    private val _searchSortOrder = MutableStateFlow("Recent") // Recent, Popular
+    val searchSortOrder: StateFlow<String> = _searchSortOrder.asStateFlow()
+
+    fun setSearchOptions(content: Boolean, tags: Boolean, users: Boolean) {
+        _searchInContent.value = content
+        _searchInTags.value = tags
+        _searchInUsers.value = users
+    }
+
+    fun setSearchSortOrder(order: String) {
+        _searchSortOrder.value = order
+    }
+
     val searchUsersResult: StateFlow<List<User>> = _searchQuery.flatMapLatest { query ->
         if (query.isBlank()) flowOf(emptyList()) else repository.searchUsers(query)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val searchActfilesResult: StateFlow<List<ActfileWithUser>> = _searchQuery.flatMapLatest { query ->
-        if (query.isBlank()) flowOf(emptyList()) else repository.searchActfiles(query)
+    val searchActfilesResult: StateFlow<List<ActfileWithUser>> = combine(
+        _searchQuery, _searchInContent, _searchInTags, _searchInUsers, _searchSortOrder
+    ) { query, inContent, inTags, inUsers, sortOrder ->
+        if (query.isBlank()) return@combine emptyList<ActfileWithUser>()
+        
+        repository.searchActfiles(query).first().filter { actfile ->
+            val matchContent = inContent && actfile.content.contains(query, ignoreCase = true)
+            val matchTags = inTags && actfile.tags?.contains(query, ignoreCase = true) == true
+            val matchUsers = inUsers && actfile.username.contains(query, ignoreCase = true)
+            matchContent || matchTags || matchUsers
+        }.let { list ->
+            if (sortOrder == "Popular") {
+                list.sortedByDescending { it.likesCount + it.viewsCount }
+            } else {
+                list.sortedByDescending { it.createdAt }
+            }
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun updateSearchQuery(query: String) {
@@ -421,16 +467,19 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
             try {
                 val bytes = file.readBytes()
                 val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                
-                val success = com.example.utils.WebSocketManager.sendVoiceMessage(receiverId, b64, username)
-                if (!success) {
-                    repository.insertMessageLocal(tempMsg.copy(type = "audio_error"))
-                    repository.updateConversationLastMessage(
-                        otherUserId = receiverId,
-                        content = "Échec de l'envoi",
-                        type = "audio_error",
-                        isIncoming = false
-                    )
+                val base64Data = "data:audio/m4a;base64,$b64"
+
+                // 1. Try sending via WebSocket voice_message (backend decodes base64, uploads to Cloudinary & persists message)
+                val wsSuccess = com.example.utils.WebSocketManager.sendVoiceMessage(receiverId, base64Data, username)
+
+                if (!wsSuccess) {
+                    // 2. Fallback to HTTP upload / REST API if WebSocket is disconnected
+                    val uploadRepo = com.example.data.UploadRepository()
+                    val uploadedUrl = uploadRepo.uploadAudioFile(repository.userToken, file)
+                    val audioContent = if (!uploadedUrl.isNullOrBlank()) uploadedUrl else base64Data
+                    
+                    repository.sendMessage(receiverId, audioContent, type = "audio")
+                    repository.deleteMessageLocal(tempId)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

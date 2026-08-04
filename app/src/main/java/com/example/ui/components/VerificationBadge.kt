@@ -84,10 +84,10 @@ fun VerificationBadge(
                 }
             }
             VerificationState.VERIFIED -> {
-                // Niveau 2 (Badge Bleu Standard) : Blue background (#1DA1F2), white checkmark
+                // Niveau 2 (Badge Rouge Standard) : Red background, white checkmark
                 Box(
                     modifier = modifier
-                        .background(Color(0xFF1DA1F2), CircleShape)
+                        .background(Color(0xFFE53935), CircleShape)
                         .testTag("verification_badge_verified_$name"),
                     contentAlignment = Alignment.Center
                 ) {
@@ -142,7 +142,7 @@ fun VerificationBottomSheet(
                 modifier = Modifier
                     .size(64.dp)
                     .background(
-                        color = if (verificationState == VerificationState.OFFICIAL) Color.White else Color(0xFF1DA1F2),
+                        color = if (verificationState == VerificationState.OFFICIAL) Color.White else Color(0xFFE53935),
                         shape = CircleShape
                     )
                     .border(

@@ -58,6 +58,8 @@ import com.example.data.getCategoryDefaultBanner
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.AutoAwesome
 
+import com.example.ui.components.PersistentSearchBar
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDrawer: () -> Unit) {
@@ -92,7 +94,15 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
             }
     }
     
-    val activeActfiles = remember(feedTab, actfiles, followedActfiles, preferredCategory, selectedCategoryFilter, discoverySeed) {
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val searchActfilesResult by viewModel.searchActfilesResult.collectAsStateWithLifecycle()
+    val isFeedLoading by viewModel.isFeedLoading.collectAsStateWithLifecycle()
+
+    val activeActfiles = remember(feedTab, actfiles, followedActfiles, preferredCategory, selectedCategoryFilter, discoverySeed, searchQuery, searchActfilesResult) {
+        if (searchQuery.isNotBlank()) {
+            return@remember searchActfilesResult
+        }
+        
         val filteredActfiles = actfiles.filter { it.channelId.isNullOrBlank() }
         val filteredFollowed = followedActfiles.filter { it.channelId.isNullOrBlank() }
         
@@ -174,6 +184,8 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            PersistentSearchBar(viewModel = viewModel)
+            
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
@@ -294,7 +306,11 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                     }
                 }
 
-                if (activeActfiles.isEmpty()) {
+                if (isFeedLoading && activeActfiles.isEmpty()) {
+                    items(3) {
+                        com.example.ui.components.ShimmerActfileCard()
+                    }
+                } else if (activeActfiles.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier

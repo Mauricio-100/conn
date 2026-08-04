@@ -11,6 +11,7 @@ class AudioRecorderManager(private val context: Context) {
     private val TAG = "AudioRecorderManager"
     private var mediaRecorder: MediaRecorder? = null
     private var currentFile: File? = null
+    private var isRecording = false
 
     fun startRecording(): File? {
         stopRecording() // Clean up before starting a new one
@@ -34,22 +35,41 @@ class AudioRecorderManager(private val context: Context) {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioSamplingRate(44100)
+                setAudioEncodingBitRate(96000)
                 setOutputFile(tempFile.absolutePath)
                 prepare()
                 start()
             }
+            isRecording = true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize MediaRecorder", e)
             tempFile.delete()
             currentFile = null
             mediaRecorder = null
+            isRecording = false
             return null
         }
 
         return currentFile
     }
 
+    /**
+     * Get real peak amplitude normalized from 0.0 to 1.0
+     */
+    fun getMaxAmplitudeNormalized(): Float {
+        if (!isRecording) return 0f
+        return try {
+            val amp = mediaRecorder?.maxAmplitude ?: 0
+            (amp / 32767f).coerceIn(0.05f, 1.0f)
+        } catch (e: Exception) {
+            0.1f
+        }
+    }
+
     fun stopRecording(): File? {
+        if (!isRecording && currentFile == null) return null
+        isRecording = false
         try {
             mediaRecorder?.let {
                 it.stop()
@@ -65,6 +85,7 @@ class AudioRecorderManager(private val context: Context) {
     }
 
     fun cancelRecording() {
+        isRecording = false
         try {
             mediaRecorder?.let {
                 it.stop()
@@ -77,4 +98,7 @@ class AudioRecorderManager(private val context: Context) {
         currentFile?.delete()
         currentFile = null
     }
+
+    fun isCurrentlyRecording(): Boolean = isRecording
 }
+
