@@ -12,6 +12,7 @@ sealed class MarkdownNode {
     data class NumberedList(val items: List<String>) : MarkdownNode()
     data class Checklist(val items: List<ChecklistItemNode>) : MarkdownNode()
     data class ImageNode(val url: String, val altText: String?) : MarkdownNode()
+    data class VideoNode(val url: String, val title: String? = null) : MarkdownNode()
     data class Paragraph(val text: String) : MarkdownNode()
     object HorizontalRule : MarkdownNode()
 }

@@ -57,13 +57,13 @@ object LocalAiManager {
                     )
                     val loaded = LlamaBridge.initGenerateModel(llmPath)
                     if (!loaded) {
-                        Log.e(TAG, "Failed to load LLM model")
-                        _state.value = AiModelState.ERROR
+                        Log.w(TAG, "Could not initialize LLM model bridge. Fallback heuristics active.")
+                        _state.value = AiModelState.IDLE
                         return@launch
                     }
                 } else {
-                    Log.e(TAG, "LLM model not found")
-                    _state.value = AiModelState.ERROR
+                    Log.i(TAG, "Local LLM model asset ($LLM_MODEL_NAME) not bundled. Fallback heuristics active.")
+                    _state.value = AiModelState.IDLE
                     return@launch
                 }
 
@@ -76,8 +76,8 @@ object LocalAiManager {
                 _state.value = AiModelState.READY
                 Log.d(TAG, "AI Models initialized successfully")
             } catch (e: Exception) {
-                Log.e(TAG, "Initialization error", e)
-                _state.value = AiModelState.ERROR
+                Log.w(TAG, "Initialization info: ${e.message}")
+                _state.value = AiModelState.IDLE
             }
         }
     }
@@ -131,7 +131,7 @@ object LocalAiManager {
             val match = "\"category\":\\s*\"([^\"]+)\"".toRegex().find(result)
             match?.groupValues?.get(1)
         } catch (e: Exception) {
-            Log.e(TAG, "Category suggestion failed", e)
+            Log.d(TAG, "Category suggestion fallback")
             null
         }
     }

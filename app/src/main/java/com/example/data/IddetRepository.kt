@@ -989,7 +989,10 @@ class IddetRepository(
                 if (context != null) {
                     val shownNotifications = prefs.getStringSet("shown_notification_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
                     var updated = false
-                    mapped.filter { !it.isRead && !shownNotifications.contains(it.id) }.forEach { notif ->
+                    val newUnread = mapped.filter { !it.isRead && !shownNotifications.contains(it.id) }
+                    
+                    // Only show up to 5 most recent system notifications to prevent system limit error
+                    newUnread.takeLast(5).forEach { notif ->
                         val route = when (notif.type) {
                             "like", "comment" -> "discussion/${notif.targetId}"
                             "message" -> "chat/${notif.fromUserId}"
@@ -1022,10 +1025,13 @@ class IddetRepository(
                             avatarUrl = notif.fromAvatar,
                             senderName = notif.fromUsername
                         )
-                        
+                    }
+
+                    newUnread.forEach { notif ->
                         shownNotifications.add(notif.id)
                         updated = true
                     }
+
                     if (updated) {
                         prefs.edit().putStringSet("shown_notification_ids", shownNotifications).apply()
                     }

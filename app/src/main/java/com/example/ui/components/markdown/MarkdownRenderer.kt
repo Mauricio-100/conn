@@ -35,6 +35,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.ui.components.ActfileVideoPlayer
+import com.example.ui.components.VideoUrlHelper
 import com.example.ui.components.LocalChannelClickHandler
 import com.example.ui.components.LocalCommunityClickHandler
 import com.example.ui.components.OpenGraphPreview
@@ -129,6 +131,10 @@ fun MarkdownRenderer(
                 )
 
                 is MarkdownNode.ImageNode -> MarkdownImageNode(
+                    node = node
+                )
+
+                is MarkdownNode.VideoNode -> MarkdownVideoNode(
                     node = node
                 )
 
@@ -436,16 +442,35 @@ private fun MarkdownChecklistNode(
 private fun MarkdownImageNode(
     node: MarkdownNode.ImageNode
 ) {
-    AsyncImage(
-        model = node.url,
-        contentDescription = node.altText ?: "Markdown Image",
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-            .testTag("markdown_image_node"),
-        contentScale = ContentScale.FillWidth
+    if (VideoUrlHelper.isVideoUrl(node.url)) {
+        ActfileVideoPlayer(
+            videoUrl = node.url,
+            title = node.altText,
+            modifier = Modifier.padding(vertical = 4.dp)
+        )
+    } else {
+        AsyncImage(
+            model = node.url,
+            contentDescription = node.altText ?: "Markdown Image",
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                .testTag("markdown_image_node"),
+            contentScale = ContentScale.FillWidth
+        )
+    }
+}
+
+@Composable
+private fun MarkdownVideoNode(
+    node: MarkdownNode.VideoNode
+) {
+    ActfileVideoPlayer(
+        videoUrl = node.url,
+        title = node.title,
+        modifier = Modifier.padding(vertical = 4.dp)
     )
 }
 

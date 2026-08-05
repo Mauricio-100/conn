@@ -132,24 +132,22 @@ object MarkdownParser {
                 continue
             }
 
-            // 8. Standalone Image Node (![alt](url) or [img](url))
-            val imgRegex = Regex("(?i)^\\[img\\]\\((.*?)\\)$")
-            val altImgRegex = Regex("^!\\[(.*?)\\]\\((.*?)\\)$")
-            if (imgRegex.matches(trimmedLine)) {
-                val url = imgRegex.matchEntire(trimmedLine)!!.groupValues[1]
-                blocks.add(MarkdownNode.ImageNode(url, null))
-                i++
-                continue
-            } else if (altImgRegex.matches(trimmedLine)) {
-                val match = altImgRegex.matchEntire(trimmedLine)!!
-                val alt = match.groupValues[1]
-                val url = match.groupValues[2]
-                blocks.add(MarkdownNode.ImageNode(url, alt))
+            // 8. Standalone Image / Video Node (![alt](url), [img](url), [Img](url), [video](url))
+            val mediaRegex = Regex("(?i)^(?:!\\[(.*?)\\]|\\[(?:img|video|media|vid)\\])\\((.*?)\\)$")
+            if (mediaRegex.matches(trimmedLine)) {
+                val match = mediaRegex.matchEntire(trimmedLine)!!
+                val alt = match.groupValues[1].ifEmpty { null }
+                val url = match.groupValues[2].trim()
+                if (com.example.ui.components.VideoUrlHelper.isVideoUrl(url)) {
+                    blocks.add(MarkdownNode.VideoNode(url, alt))
+                } else {
+                    blocks.add(MarkdownNode.ImageNode(url, alt))
+                }
                 i++
                 continue
             }
 
-            // 9. Standard Paragraph (with embedded visual image inline parsing)
+            // 9. Standard Paragraph (with embedded visual image & video inline parsing)
             if (trimmedLine.isNotEmpty()) {
                 val mixedNodes = parseMixedParagraph(line)
                 blocks.addAll(mixedNodes)
@@ -167,7 +165,7 @@ object MarkdownParser {
     }
 
     private fun parseMixedParagraph(text: String): List<MarkdownNode> {
-        val regex = Regex("(?i)(?:\\[img\\]|!\\[(.*?)\\])\\((.*?)\\)")
+        val regex = Regex("(?i)(?:!\\[(.*?)\\]|\\[(?:img|video|media|vid)\\])\\((.*?)\\)")
         val nodes = mutableListOf<MarkdownNode>()
         var lastIndex = 0
         val matches = regex.findAll(text)
@@ -178,8 +176,12 @@ object MarkdownParser {
                 nodes.add(MarkdownNode.Paragraph(textBefore))
             }
             val altText = match.groupValues[1].ifEmpty { null }
-            val url = match.groupValues[2]
-            nodes.add(MarkdownNode.ImageNode(url, altText))
+            val url = match.groupValues[2].trim()
+            if (com.example.ui.components.VideoUrlHelper.isVideoUrl(url)) {
+                nodes.add(MarkdownNode.VideoNode(url, altText))
+            } else {
+                nodes.add(MarkdownNode.ImageNode(url, altText))
+            }
             lastIndex = match.range.last + 1
         }
 

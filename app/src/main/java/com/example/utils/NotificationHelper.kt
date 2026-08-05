@@ -114,8 +114,12 @@ object NotificationHelper {
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setSubText("S-3 CMO")
 
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(idHash, builder.build())
+            try {
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.notify(idHash, builder.build())
+            } catch (e: Exception) {
+                android.util.Log.e("NotificationHelper", "Failed to show system notification", e)
+            }
 
             // Play cute kitten meow sound!
             CatSoundPlayer.playCuteMeow()
