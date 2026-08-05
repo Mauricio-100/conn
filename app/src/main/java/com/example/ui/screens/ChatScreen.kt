@@ -352,8 +352,8 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
                 }
                 
                 itemsIndexed(messages, key = { _, msg -> msg.id }) { index, msg ->
-                    val isMine = msg.senderId == myUser!!.id
-                    val isAudio = msg.type == "audio" || msg.type == "audio_sending" || msg.type == "audio_error" || (msg.content.startsWith("http") && msg.content.contains("voice_messages"))
+                    val isMine = myUser?.id?.let { msg.senderId == it } ?: false
+                    val isAudio = com.example.utils.AudioMessageHelper.isAudioContent(msg.content, msg.type) || msg.type == "audio_sending" || msg.type == "audio_error"
                     
                     // Show date header if the day changes
                     val showDateHeader = if (index == 0) {

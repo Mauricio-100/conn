@@ -432,15 +432,7 @@ fun ConversationItem(conv: ConversationNetwork, onClick: () -> Unit) {
                             )
                         }
                     } else {
-                        val lastMsgText = if (conv.last_message?.startsWith("http") == true && conv.last_message.contains("voice_messages")) {
-                            "🎤 Message vocal"
-                        } else if (conv.last_message?.startsWith("[Voice Message](voice://") == true) {
-                            "🎤 Message vocal"
-                        } else if (conv.last_message?.startsWith("/") == true || conv.last_message?.contains("recording") == true) {
-                            "🎤 Message vocal"
-                        } else {
-                            conv.last_message ?: ""
-                        }
+                        val lastMsgText = com.example.utils.AudioMessageHelper.getPreviewText(conv.last_message)
                         Text(
                             text = lastMsgText,
                             style = MaterialTheme.typography.bodyMedium,

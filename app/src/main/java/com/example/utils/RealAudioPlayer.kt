@@ -96,9 +96,9 @@ object RealAudioPlayer {
 
     private fun resolveAudioSource(url: String, context: Context?): String {
         val trimmed = url.trim()
-        if (trimmed.startsWith("data:audio") || (!trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("/") && trimmed.length > 100)) {
+        if (trimmed.startsWith("data:") || trimmed.contains("base64,") || (!trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("/") && trimmed.length > 50)) {
             return try {
-                val base64Data = if (trimmed.contains("base64,")) trimmed.substringAfter("base64,") else trimmed
+                val base64Data = if (trimmed.contains("base64,")) trimmed.substringAfter("base64,").trim() else trimmed.trim()
                 val decodedBytes = Base64.decode(base64Data, Base64.DEFAULT)
                 val cacheDir = context?.cacheDir ?: File.createTempFile("temp_audio_", "").parentFile
                 val tempFile = File.createTempFile("decoded_voice_", ".m4a", cacheDir)

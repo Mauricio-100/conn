@@ -135,12 +135,13 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
                         } catch (e: Exception) {
                             System.currentTimeMillis()
                         }
+                        val detectedType = if (com.example.utils.AudioMessageHelper.isAudioContent(event.content, event.msgType)) "audio" else event.msgType
                         val incomingMsg = Message(
                             id = event.messageId,
                             senderId = event.senderId,
                             receiverId = currentUser.value?.id ?: "",
                             content = event.content,
-                            type = event.msgType,
+                            type = detectedType,
                             isRead = false,
                             createdAt = parsedTime
                         )
@@ -148,7 +149,7 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
                         repository.updateConversationLastMessage(
                             otherUserId = event.senderId,
                             content = event.content,
-                            type = event.msgType,
+                            type = detectedType,
                             isIncoming = true,
                             senderUsername = event.senderUsername
                         )

@@ -804,7 +804,7 @@ class IddetRepository(
                         senderId = it.sender_id,
                         receiverId = it.receiver_id,
                         content = it.content,
-                        type = it.type,
+                        type = if (com.example.utils.AudioMessageHelper.isAudioContent(it.content, it.type)) "audio" else it.type,
                         isRead = it.read,
                         createdAt = parseIso(it.created_at)
                     )

@@ -63,7 +63,7 @@ fun MarkdownActfile(
     onLinkClick: ((String) -> Unit)? = null,
     onReadMoreClick: (() -> Unit)? = null
 ) {
-    if (isVoiceMessage(content)) {
+    if (isVoiceMessage(content) || com.example.utils.AudioMessageHelper.isAudioContent(content)) {
         VoiceMessagePlayer(
             content = content,
             modifier = modifier,
