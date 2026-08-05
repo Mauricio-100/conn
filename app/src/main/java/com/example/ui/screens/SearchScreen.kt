@@ -27,20 +27,42 @@ import com.example.ui.components.ActfileCard
 import com.example.ui.components.VerificationBadge
 import kotlinx.coroutines.launch
 
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.ui.platform.LocalContext
+import android.content.Context
 import com.example.ui.components.PersistentSearchBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("search_prefs", Context.MODE_PRIVATE) }
+    
+    var searchHistory by remember { 
+        mutableStateOf(prefs.getStringSet("history", emptySet())?.toList() ?: emptyList()) 
+    }
+    
     val query by viewModel.searchQuery.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     
     val giants by viewModel.giants.collectAsStateWithLifecycle()
+    val actfiles by viewModel.actfiles.collectAsStateWithLifecycle() // For actfile suggestions
     val searchUsersResult by viewModel.searchUsersResult.collectAsStateWithLifecycle()
     val searchActfilesResult by viewModel.searchActfilesResult.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     
     var selectedTab by remember { mutableStateOf(0) } // 0: Users, 1: Actfiles
+
+    // Function to add query to history
+    val addToHistory = { q: String ->
+        if (q.isNotBlank()) {
+            val newHistory = (listOf(q) + searchHistory).distinct().take(10)
+            searchHistory = newHistory
+            prefs.edit().putStringSet("history", newHistory.toSet()).apply()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -57,7 +79,10 @@ fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            PersistentSearchBar(viewModel = viewModel)
+            PersistentSearchBar(
+                viewModel = viewModel,
+                onSearch = { addToHistory(it) }
+            )
             
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -80,15 +105,83 @@ fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp)
             ) {
-                if (selectedTab == 0) {
-                    if (query.isBlank()) {
+                if (query.isBlank()) {
+                    // SEARCH HISTORY
+                    if (searchHistory.isNotEmpty()) {
                         item {
-                            Text(
-                                text = "Giants to follow",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Recent Searches",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                TextButton(onClick = { 
+                                    searchHistory = emptyList()
+                                    prefs.edit().remove("history").apply()
+                                }) {
+                                    Text("Clear All")
+                                }
+                            }
+                        }
+                        
+                        items(searchHistory) { historyItem ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { 
+                                        viewModel.updateSearchQuery(historyItem)
+                                    }
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.History,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text(
+                                    text = historyItem,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = {
+                                    val newHistory = searchHistory.filter { it != historyItem }
+                                    searchHistory = newHistory
+                                    prefs.edit().putStringSet("history", newHistory.toSet()).apply()
+                                }, modifier = Modifier.size(24.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Remove",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                        
+                        item { Spacer(modifier = Modifier.height(16.dp)) }
+                    }
+                    
+                    // SUGGESTIONS
+                    if (selectedTab == 0) {
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.TrendingUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Suggested Accounts",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                         items(giants, key = { it.id }) { user ->
                             val isFollowing by viewModel.isFollowing(user.id).collectAsStateWithLifecycle(initialValue = false)
@@ -102,6 +195,50 @@ fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
                             )
                         }
                     } else {
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.TrendingUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Suggested Actfiles",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        items(actfiles.take(10), key = { actfile -> "sug_${actfile.id}" }) { actfile ->
+                            val isMine = actfile.userId == currentUser?.id
+                            val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
+                            val aiState by viewModel.aiState.collectAsStateWithLifecycle()
+                            ActfileCard(
+                                actfile = actfile,
+                                onLike = { viewModel.likeActfile(actfile.id) },
+                                onView = { viewModel.incrementView(actfile.id) },
+                                targetLanguageName = targetLanguage,
+                                isAiReady = aiState == com.example.utils.AiModelState.READY,
+                                onUserClick = { navController.navigate("profile/${actfile.userId}") },
+                                onComment = { navController.navigate("discussion/${actfile.id}") },
+                                onDelete = if (isMine) { { viewModel.deleteActfile(actfile.id) } } else null,
+                                onLinkClick = { url ->
+                                    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                    navController.navigate("browser/$encodedUrl")
+                                },
+                                onMentionClick = { username ->
+                                    scope.launch {
+                                        val u = viewModel.getUserByUsername(username)
+                                        if (u != null) {
+                                            navController.navigate("profile/${u.id}")
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                } else {
+                    // SEARCH RESULTS
+                    if (selectedTab == 0) {
                         items(searchUsersResult, key = { it.id }) { user ->
                             val isFollowing by viewModel.isFollowing(user.id).collectAsStateWithLifecycle(initialValue = false)
                             UserCard(
@@ -121,15 +258,6 @@ fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
                                 )
                             }
                         }
-                    }
-                } else {
-                    if (query.isBlank()) {
-                        item {
-                            Text(
-                                text = "Type to search actfiles by content or tags...",
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
-                        }
                     } else {
                         items(searchActfilesResult, key = { it.id }) { actfile ->
                             val isMine = actfile.userId == currentUser?.id
@@ -137,13 +265,13 @@ fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
                             val aiState by viewModel.aiState.collectAsStateWithLifecycle()
                             ActfileCard(
                                 actfile = actfile,
-                                onLike = { viewModel.likeActfile(it) },
-                                onView = { viewModel.incrementView(it) },
+                                onLike = { viewModel.likeActfile(actfile.id) },
+                                onView = { viewModel.incrementView(actfile.id) },
                                 targetLanguageName = targetLanguage,
                                 isAiReady = aiState == com.example.utils.AiModelState.READY,
-                                onUserClick = { navController.navigate("profile/$it") },
-                                onComment = { navController.navigate("discussion/$it") },
-                                onDelete = if (isMine) { { viewModel.deleteActfile(it) } } else null,
+                                onUserClick = { navController.navigate("profile/${actfile.userId}") },
+                                onComment = { navController.navigate("discussion/${actfile.id}") },
+                                onDelete = if (isMine) { { viewModel.deleteActfile(actfile.id) } } else null,
                                 onLinkClick = { url ->
                                     val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
                                     navController.navigate("browser/$encodedUrl")

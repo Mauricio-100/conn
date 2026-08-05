@@ -466,15 +466,14 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
             )
             
             try {
-                // Transmit the file stream directly to the backend endpoint using MultipartBody
-                val msgNetwork = repository.sendAudioMessageMultipart(receiverId, file)
+                // Encode the audio file to base64
+                val bytes = file.readBytes()
+                val audioB64 = "base64," + android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                 
-                if (msgNetwork != null) {
-                    // Notify real-time WebSocket listeners with the content URL returned by the backend
-                    com.example.utils.WebSocketManager.sendVoiceMessage(receiverId, msgNetwork.content, username)
-                }
-
-                // Remove temporary sending placeholder
+                // Transmit the audio data directly via REST API as base64 content
+                val sentMsg = repository.sendMessage(receiverId, audioB64, "audio")
+                
+                // Remove temporary sending placeholder and let the server response populate it
                 repository.deleteMessageLocal(tempId)
             } catch (e: Exception) {
                 e.printStackTrace()

@@ -280,6 +280,12 @@ fun DiscussionScreen(
                     if (isRecordingMode) {
                         VoiceRecorderUI(
                             onCancel = { isRecordingMode = false },
+                            onSendVoiceFile = { file ->
+                                val bytes = file.readBytes()
+                                val audioB64 = "base64," + android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                                viewModel.commentActfile(actfileId, audioB64)
+                                isRecordingMode = false
+                            },
                             onSendVoice = { voiceContent ->
                                 viewModel.commentActfile(actfileId, voiceContent)
                                 isRecordingMode = false

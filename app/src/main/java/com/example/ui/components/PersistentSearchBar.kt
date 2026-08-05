@@ -21,12 +21,17 @@ import com.example.ui.IddetViewModel
 
 import androidx.compose.material.icons.filled.Clear
 
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PersistentSearchBar(
     viewModel: IddetViewModel,
     modifier: Modifier = Modifier,
-    placeholder: String = "Search actfiles and users..."
+    placeholder: String = "Search actfiles and users...",
+    onSearch: ((String) -> Unit)? = null
 ) {
     val query by viewModel.searchQuery.collectAsStateWithLifecycle()
     var showFilterDialog by remember { mutableStateOf(false) }
@@ -74,6 +79,8 @@ fun PersistentSearchBar(
                 ),
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyMedium,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke(query) }),
                 trailingIcon = {
                     if (query.isNotEmpty()) {
                         IconButton(onClick = { viewModel.updateSearchQuery("") }) {
