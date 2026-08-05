@@ -857,6 +857,30 @@ class IddetRepository(
         }
     }
 
+    suspend fun sendAudioMessageMultipart(receiverId: String, file: java.io.File): MessageNetwork? {
+        return try {
+            val header = currentToken?.let { "Bearer $it" } ?: return null
+            val requestFile = file.asRequestBody("audio/m4a".toMediaType())
+            val body = okhttp3.MultipartBody.Part.createFormData("file", file.name, requestFile)
+            val receiverPart = receiverId.toRequestBody("text/plain".toMediaType())
+            
+            val res = RetrofitClient.apiService.sendAudioMessage(header, receiverPart, body)
+            messageDao.insertMessage(Message(
+                id = res.id,
+                senderId = res.sender_id,
+                receiverId = res.receiver_id,
+                content = res.content,
+                type = res.type,
+                isRead = res.read,
+                createdAt = parseIso(res.created_at)
+            ))
+            res
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     suspend fun insertMessageLocal(message: Message) {
         messageDao.insertMessage(message)
     }

@@ -276,6 +276,14 @@ interface ApiService {
     ): MessageNetwork
 
     @Multipart
+    @POST("/api/messages/send_audio")
+    suspend fun sendAudioMessage(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @Part("receiver_id") receiverId: okhttp3.RequestBody,
+        @Part file: okhttp3.MultipartBody.Part
+    ): MessageNetwork
+
+    @Multipart
     @POST("/api/upload")
     suspend fun uploadAudio(
         @retrofit2.http.Header("Authorization") token: String?,

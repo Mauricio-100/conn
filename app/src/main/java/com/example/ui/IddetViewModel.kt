@@ -466,26 +466,15 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
             )
             
             try {
-                // 1. Binary multipart upload to Cloudinary via UploadRepository
-                val uploadRepo = com.example.data.UploadRepository()
-                val uploadedUrl = uploadRepo.uploadAudioFile(repository.userToken, file)
-
-                val audioContent = if (!uploadedUrl.isNullOrBlank()) {
-                    uploadedUrl
-                } else {
-                    // Fallback to base64 encoding if network upload failed
-                    val bytes = file.readBytes()
-                    val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                    "data:audio/m4a;base64,$b64"
+                // Transmit the file stream directly to the backend endpoint using MultipartBody
+                val msgNetwork = repository.sendAudioMessageMultipart(receiverId, file)
+                
+                if (msgNetwork != null) {
+                    // Notify real-time WebSocket listeners with the content URL returned by the backend
+                    com.example.utils.WebSocketManager.sendVoiceMessage(receiverId, msgNetwork.content, username)
                 }
 
-                // 2. Send audio message via REST API
-                repository.sendMessage(receiverId, audioContent, type = "audio")
-
-                // 3. Notify real-time WebSocket listeners
-                com.example.utils.WebSocketManager.sendVoiceMessage(receiverId, audioContent, username)
-
-                // 4. Remove temporary sending placeholder
+                // Remove temporary sending placeholder
                 repository.deleteMessageLocal(tempId)
             } catch (e: Exception) {
                 e.printStackTrace()
