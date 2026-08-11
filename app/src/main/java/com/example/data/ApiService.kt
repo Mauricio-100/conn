@@ -156,7 +156,12 @@ data class UpdateProfileRequest(
     val bio: String? = null,
     val avatar_url: String? = null,
     val username: String? = null,
-    val preferred_category: String? = null
+    val preferred_category: String? = null,
+    val phone_number: String? = null,
+    val privacy_setting: String? = null,
+    val email: String? = null,
+    val birth_date: String? = null,
+    val zodiac_sign: String? = null
 )
 
 interface ApiService {

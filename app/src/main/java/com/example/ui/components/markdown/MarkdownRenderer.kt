@@ -166,7 +166,9 @@ fun MarkdownRenderer(
 
         // Extract URLs for OpenGraph cards
         val urls = remember(content) { extractUrlsFromMarkdown(content) }
-        if (urls.isNotEmpty()) {
+        val hasVideo = remember(urls) { urls.any { VideoUrlHelper.isVideoUrl(it) } }
+        
+        if (!hasVideo && urls.isNotEmpty()) {
             Spacer(modifier = Modifier.height(4.dp))
             urls.forEach { url ->
                 OpenGraphPreview(

@@ -72,6 +72,7 @@ import android.net.Uri
 import android.Manifest
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.AccountCircle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,6 +90,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     var showEditDialog by remember { mutableStateOf(false) }
     var showVerificationDialog by remember { mutableStateOf(false) }
     var showImageOptions by remember { mutableStateOf(false) }
+    var showFullScreenAvatar by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     
     var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
@@ -355,7 +357,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                             .clickable { showImageOptions = true },
                         contentAlignment = Alignment.Center
                     ) {
-                        val imageModel = localPreviewUri ?: user.avatarUrl
+                        val imageModel = localPreviewUri ?: user.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) }
                         if (imageModel != null && (imageModel is Uri || (imageModel is String && imageModel.isNotBlank()))) {
                             AsyncImage(
                                 model = imageModel,
@@ -1215,6 +1217,14 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                 
                 if (!user.avatarUrl.isNullOrBlank()) {
                     ListItem(
+                        headlineContent = { Text("Voir la photo") },
+                        leadingContent = { Icon(Icons.Default.AccountCircle, contentDescription = null) },
+                        modifier = Modifier.clickable {
+                            showFullScreenAvatar = true
+                            showImageOptions = false
+                        }
+                    )
+                    ListItem(
                         headlineContent = { Text("Supprimer la photo", color = MaterialTheme.colorScheme.error) },
                         leadingContent = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                         modifier = Modifier.clickable {
@@ -1223,6 +1233,32 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                         }
                     )
                 }
+            }
+        }
+    }
+
+    if (showFullScreenAvatar && !user.avatarUrl.isNullOrBlank()) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showFullScreenAvatar = false },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .clickable { showFullScreenAvatar = false },
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = user.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
+                    contentDescription = "Profile Picture",
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                    contentScale = ContentScale.Fit
+                )
             }
         }
     }

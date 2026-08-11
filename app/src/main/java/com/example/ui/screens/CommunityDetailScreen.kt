@@ -580,7 +580,7 @@ fun ChannelChatRoomDialog(
                                 ) {
                                     if (!post.avatarUrl.isNullOrBlank()) {
                                         AsyncImage(
-                                            model = post.avatarUrl,
+                                            model = post.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                                             contentDescription = null,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop

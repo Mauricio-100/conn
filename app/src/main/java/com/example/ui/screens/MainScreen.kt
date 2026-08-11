@@ -152,7 +152,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                                 val avatarUrl = currentUser?.avatarUrl
                                 if (!avatarUrl.isNullOrBlank()) {
                                     AsyncImage(
-                                        model = avatarUrl,
+                                        model = avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                                         contentDescription = "My Profile Picture",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop

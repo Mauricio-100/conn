@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -45,6 +46,7 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
     }
     
     var commentDialogTarget by remember { mutableStateOf<String?>(null) }
+    var showFullScreenAvatar by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     
     val profileUser = user!!
@@ -83,12 +85,17 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                         modifier = Modifier
                             .size(80.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .clickable {
+                                if (!profileUser.avatarUrl.isNullOrBlank()) {
+                                    showFullScreenAvatar = true
+                                }
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         if (!profileUser.avatarUrl.isNullOrBlank()) {
                             AsyncImage(
-                                model = profileUser.avatarUrl,
+                                model = profileUser.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                                 contentDescription = "Profile Picture",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
@@ -363,6 +370,32 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                         }
                     }
                 }
+            }
+        }
+    }
+
+    if (showFullScreenAvatar && !profileUser.avatarUrl.isNullOrBlank()) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showFullScreenAvatar = false },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .clickable { showFullScreenAvatar = false },
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = profileUser.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
+                    contentDescription = "Profile Picture",
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                    contentScale = ContentScale.Fit
+                )
             }
         }
     }

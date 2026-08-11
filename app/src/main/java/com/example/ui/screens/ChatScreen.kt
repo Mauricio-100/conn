@@ -117,7 +117,7 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
                         ) {
                             if (!partnerAvatar.isNullOrBlank()) {
                                 AsyncImage(
-                                    model = partnerAvatar,
+                                    model = partnerAvatar?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                                     contentDescription = "Profile Picture",
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop

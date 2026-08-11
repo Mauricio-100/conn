@@ -199,7 +199,7 @@ fun DiscussionScreen(
                                     ) {
                                         if (!comment.avatarUrl.isNullOrBlank()) {
                                             AsyncImage(
-                                                model = comment.avatarUrl,
+                                                model = comment.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                                                 contentDescription = "Avatar de ${comment.username}",
                                                 modifier = Modifier.fillMaxSize(),
                                                 contentScale = ContentScale.Crop

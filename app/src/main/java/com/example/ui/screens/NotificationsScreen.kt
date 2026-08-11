@@ -210,7 +210,7 @@ fun NotificationItem(
                     val avatarUrl = senderUser?.avatarUrl ?: notification.fromAvatar
                     if (!avatarUrl.isNullOrEmpty()) {
                         AsyncImage(
-                            model = avatarUrl,
+                            model = avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                             contentDescription = "Avatar de ${notification.fromUsername}",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop

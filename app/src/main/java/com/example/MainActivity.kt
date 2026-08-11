@@ -23,6 +23,12 @@ import com.example.ui.screens.MainScreen
 import com.example.ui.screens.SplashScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.AppTheme
+import android.os.Build
+import coil.ImageLoader
+import coil.decode.ImageDecoderDecoder
+import coil.decode.GifDecoder
+import coil.decode.SvgDecoder
+import coil.Coil
 
 class MainActivity : ComponentActivity() {
     private var crashError by mutableStateOf<String?>(null)
@@ -51,6 +57,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        val imageLoader = ImageLoader.Builder(applicationContext)
+            .components {
+                if (Build.VERSION.SDK_INT >= 28) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
+                add(SvgDecoder.Factory())
+            }
+            .build()
+        Coil.setImageLoader(imageLoader)
         
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
             val stackTrace = android.util.Log.getStackTraceString(e)

@@ -320,7 +320,7 @@ fun UserCard(user: User, isFollowing: Boolean, onFollowClick: () -> Unit, onClic
         ) {
             if (!user.avatarUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = user.avatarUrl,
+                    model = user.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                     contentDescription = "Profile Picture",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop

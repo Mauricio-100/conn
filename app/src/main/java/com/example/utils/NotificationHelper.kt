@@ -81,7 +81,7 @@ object NotificationHelper {
 
             // Generate avatar for MessagingStyle if it's a social interaction
             val avatarIcon = if (!avatarUrl.isNullOrEmpty()) {
-                downloadAvatarOrPlaceholder(avatarUrl, senderName ?: "?")
+                downloadAvatarOrPlaceholder(com.example.utils.UrlHelper.fixCloudinaryUrl(avatarUrl) ?: avatarUrl, senderName ?: "?")
             } else {
                 generatePlaceholderAvatar(senderName ?: "?")
             }

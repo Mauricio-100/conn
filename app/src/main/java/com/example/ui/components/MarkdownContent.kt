@@ -20,7 +20,7 @@ fun MarkdownContent(
         onMentionClick = onMentionClick,
         onLinkClick = onLinkClick,
         onReadMoreClick = onReadMoreClick,
-        truncateChars = if (isDetailView) null else 250
+        truncateChars = if (isDetailView) null else 150
     )
 }
 

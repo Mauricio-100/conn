@@ -123,7 +123,7 @@ fun ActfileCard(
                     ) {
                         if (!actfile.avatarUrl.isNullOrBlank()) {
                             AsyncImage(
-                                model = actfile.avatarUrl,
+                                model = actfile.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                                 contentDescription = "Avatar de ${actfile.username}",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
@@ -251,7 +251,7 @@ fun ActfileCard(
                             ) {
                                 if (!actfile.avatarUrl.isNullOrBlank()) {
                                     AsyncImage(
-                                        model = actfile.avatarUrl,
+                                        model = actfile.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
