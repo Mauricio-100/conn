@@ -9,9 +9,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as lazyRowItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Search
@@ -23,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -186,72 +190,78 @@ fun MessagesScreen(viewModel: IddetViewModel, navController: NavController) {
             }
         }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(padding)
+                .padding(padding),
+            contentPadding = PaddingValues(bottom = 16.dp)
         ) {
+            item {
+                StoriesRow(
+                    conversations = conversations,
+                    navController = navController
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             if (filteredConversations.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillParentMaxSize()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Surface(
-                            modifier = Modifier.size(80.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Forum,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(36.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                            Surface(
+                                modifier = Modifier.size(80.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Forum,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(36.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = if (searchQuery.isNotEmpty()) "Aucun utilisateur trouvé" else "Aucune discussion",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = if (searchQuery.isNotEmpty()) 
+                                    "Essayez de modifier votre recherche pour trouver un autre membre de la communauté."
+                                else 
+                                    "Lancez une discussion en visitant le profil d'un membre de la communauté ou en cherchant un utilisateur !",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = if (searchQuery.isNotEmpty()) "Aucun utilisateur trouvé" else "Aucune discussion",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = if (searchQuery.isNotEmpty()) 
-                                "Essayez de modifier votre recherche pour trouver un autre membre de la communauté."
-                            else 
-                                "Lancez une discussion en visitant le profil d'un membre de la communauté ou en cherchant un utilisateur !",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 16.dp)
-                ) {
-                    items(filteredConversations, key = { it.id }) { conv ->
-                        ConversationItem(
-                            conv = conv,
-                            onClick = { navController.navigate("chat/${conv.user_id}") }
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 80.dp),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-                        )
-                    }
+                items(filteredConversations, key = { it.id }) { conv ->
+                    ConversationItem(
+                        conv = conv,
+                        onClick = { navController.navigate("chat/${conv.user_id}") }
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 80.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+                    )
                 }
             }
         }
@@ -319,7 +329,7 @@ fun ConversationItem(conv: ConversationNetwork, onClick: () -> Unit) {
             ) {
                 if (!conv.avatar_url.isNullOrBlank()) {
                     AsyncImage(
-                        model = conv.avatar_url,
+                        model = conv.avatar_url?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                         contentDescription = "Photo de profil",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -468,3 +478,124 @@ fun ConversationItem(conv: ConversationNetwork, onClick: () -> Unit) {
     }
 }
 
+
+@Composable
+fun StoriesRow(
+    conversations: List<ConversationNetwork>,
+    navController: NavController
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            CreateStoryCard()
+        }
+        lazyRowItems(conversations.take(15)) { conv ->
+            StoryCard(conv = conv)
+        }
+    }
+}
+
+@Composable
+fun CreateStoryCard() {
+    Card(
+        modifier = Modifier
+            .width(100.dp)
+            .height(150.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.65f).background(MaterialTheme.colorScheme.primaryContainer)
+            )
+            
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                border = BorderStroke(2.dp, MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier.size(32.dp).align(Alignment.Center).offset(y = 10.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Story", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(4.dp))
+            }
+            
+            Text(
+                text = "Créer une\nstory",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun StoryCard(conv: ConversationNetwork) {
+    val randomImgId = conv.user_id.hashCode().let { if (it < 0) -it else it } % 1000
+    val backgroundUrl = "https://picsum.photos/seed/$randomImgId/200/300"
+    
+    Card(
+        modifier = Modifier
+            .width(100.dp)
+            .height(150.dp),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                model = backgroundUrl,
+                contentDescription = "Story image",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
+                            startY = 150f
+                        )
+                    )
+            )
+            
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                modifier = Modifier.padding(8.dp).size(32.dp).align(Alignment.TopStart)
+            ) {
+                if (!conv.avatar_url.isNullOrBlank()) {
+                    AsyncImage(
+                        model = conv.avatar_url?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = conv.username.firstOrNull()?.toString()?.uppercase() ?: "?",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+            
+            Text(
+                text = conv.username,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
+            )
+        }
+    }
+}

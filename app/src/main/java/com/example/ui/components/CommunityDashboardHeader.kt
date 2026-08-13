@@ -44,7 +44,7 @@ fun CommunityDashboardHeader(
                 .fillMaxWidth()
                 .height(160.dp)
         ) {
-            val bannerModel = if (!community.bannerUrl.isNullOrBlank()) community.bannerUrl else getCategoryDefaultBanner(community.category)
+            val bannerModel = if (!community.bannerUrl.isNullOrBlank()) com.example.utils.UrlHelper.fixCloudinaryUrl(community.bannerUrl) else getCategoryDefaultBanner(community.category)
             AsyncImage(
                 model = bannerModel,
                 contentDescription = "Community Banner",
@@ -88,7 +88,7 @@ fun CommunityDashboardHeader(
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    val iconModel = if (!community.iconUrl.isNullOrBlank()) community.iconUrl else getCategoryDefaultIcon(community.category)
+                    val iconModel = if (!community.iconUrl.isNullOrBlank()) com.example.utils.UrlHelper.fixCloudinaryUrl(community.iconUrl) else getCategoryDefaultIcon(community.category)
                     AsyncImage(
                         model = iconModel,
                         contentDescription = "Community Icon",

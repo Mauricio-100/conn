@@ -524,7 +524,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "${user.followersCount}",
+                                    text = "${com.example.utils.FormatUtils.formatCount(user.followersCount)}",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -555,7 +555,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "${user.followingCount}",
+                                    text = "${com.example.utils.FormatUtils.formatCount(user.followingCount)}",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -586,7 +586,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "$totalLikes",
+                                    text = "${com.example.utils.FormatUtils.formatCount(totalLikes)}",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -617,7 +617,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "$totalViews",
+                                    text = "${com.example.utils.FormatUtils.formatCount(totalViews)}",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface

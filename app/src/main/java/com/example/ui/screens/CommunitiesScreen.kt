@@ -349,7 +349,7 @@ fun CommunityCardItem(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                val iconModel = if (!community.iconUrl.isNullOrBlank()) community.iconUrl else getCategoryDefaultIcon(community.category)
+                val iconModel = if (!community.iconUrl.isNullOrBlank()) com.example.utils.UrlHelper.fixCloudinaryUrl(community.iconUrl) else getCategoryDefaultIcon(community.category)
                 AsyncImage(
                     model = iconModel,
                     contentDescription = "Community Icon",

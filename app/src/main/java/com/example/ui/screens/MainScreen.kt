@@ -243,13 +243,13 @@ fun MainScreen(viewModel: IddetViewModel) {
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Text(
-                                text = "${currentUser?.followingCount ?: 0} abonnements",
+                                text = "${com.example.utils.FormatUtils.formatCount(currentUser?.followingCount ?: 0)} abonnements",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                             )
                             Text(
-                                text = "${currentUser?.followersCount ?: 0} abonnés",
+                                text = "${com.example.utils.FormatUtils.formatCount(currentUser?.followersCount ?: 0)} abonnés",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)

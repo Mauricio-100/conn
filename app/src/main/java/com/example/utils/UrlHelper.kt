@@ -3,15 +3,18 @@ package com.example.utils
 object UrlHelper {
     fun fixCloudinaryUrl(url: String?): String? {
         if (url == null) return null
-        if (url.contains("res.cloudinary.com")) {
-            val lastSlash = url.lastIndexOf('/')
-            val lastDot = url.lastIndexOf('.')
+        
+        val baseUrl = if (url.contains("?")) url.substringBefore("?") else url
+
+        if (baseUrl.contains("res.cloudinary.com")) {
+            val lastSlash = baseUrl.lastIndexOf('/')
+            val lastDot = baseUrl.lastIndexOf('.')
             if (lastDot > lastSlash) {
-                return url.substring(0, lastDot) + ".webp"
+                return baseUrl.substring(0, lastDot) + ".webp"
             } else {
-                return "$url.webp"
+                return "$baseUrl.webp"
             }
         }
-        return url
+        return baseUrl
     }
 }

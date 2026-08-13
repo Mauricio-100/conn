@@ -762,7 +762,7 @@ fun CommunitySuggestionItem(
                     .height(80.dp)
             ) {
                 val bannerModel = if (!community.bannerUrl.isNullOrBlank()) {
-                    community.bannerUrl
+                    com.example.utils.UrlHelper.fixCloudinaryUrl(community.bannerUrl)
                 } else {
                     getCategoryDefaultBanner(community.category)
                 }
@@ -786,7 +786,7 @@ fun CommunitySuggestionItem(
                         contentAlignment = Alignment.Center
                     ) {
                         val iconModel = if (!community.iconUrl.isNullOrBlank()) {
-                            community.iconUrl
+                            com.example.utils.UrlHelper.fixCloudinaryUrl(community.iconUrl)
                         } else {
                             getCategoryDefaultIcon(community.category)
                         }

@@ -303,6 +303,36 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         }
     }
 
+    fun signupFull(
+        username: String, 
+        password: String?, 
+        avatarUrl: String?,
+        bio: String,
+        email: String?,
+        phoneNumber: String?,
+        birthDate: String?,
+        zodiacSign: String?
+    ) {
+        viewModelScope.launch {
+            try {
+                repository.signup(username, password)
+                repository.updateProfile(
+                    username = null,
+                    avatarUrl = avatarUrl,
+                    bio = bio,
+                    privacySetting = "public",
+                    email = email,
+                    phoneNumber = phoneNumber,
+                    birthDate = birthDate,
+                    zodiacSign = zodiacSign
+                )
+                _authError.value = null
+            } catch (e: Exception) {
+                _authError.value = e.message
+            }
+        }
+    }
+
     val notifications = repository.getNotifications().stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),

@@ -308,7 +308,7 @@ fun ActfileCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "${actfile.viewsCount}",
+                        text = "${com.example.utils.FormatUtils.formatCount(actfile.viewsCount)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
@@ -404,7 +404,7 @@ fun ActfileCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "${actfile.likesCount}",
+                            text = "${com.example.utils.FormatUtils.formatCount(actfile.likesCount)}",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
                             color = if (actfile.isLikedByMe) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurfaceVariant
@@ -427,7 +427,7 @@ fun ActfileCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "${actfile.commentsCount}",
+                            text = "${com.example.utils.FormatUtils.formatCount(actfile.commentsCount)}",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant

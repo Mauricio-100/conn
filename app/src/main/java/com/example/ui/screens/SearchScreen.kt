@@ -345,7 +345,7 @@ fun UserCard(user: User, isFollowing: Boolean, onFollowClick: () -> Unit, onClic
                 VerificationBadge(userName = user.username, isVerified = user.isVerified)
             }
             Text(
-                text = "${user.followersCount} followers",
+                text = "${com.example.utils.FormatUtils.formatCount(user.followersCount)} followers",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )

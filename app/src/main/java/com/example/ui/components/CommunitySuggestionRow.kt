@@ -122,7 +122,7 @@ fun CommunitySuggestionCard(
                     .background(cardColor.copy(alpha = 0.2f))
             ) {
                 val coverUrl = remember(community.bannerUrl, community.category) {
-                    if (!community.bannerUrl.isNullOrBlank()) community.bannerUrl else {
+                    if (!community.bannerUrl.isNullOrBlank()) com.example.utils.UrlHelper.fixCloudinaryUrl(community.bannerUrl) else {
                         // Deterministic visual category banners from Unsplash
                         when (community.category) {
                             "Fun" -> "https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=400&q=80"
@@ -185,7 +185,7 @@ fun CommunitySuggestionCard(
                             if (!community.iconUrl.isNullOrBlank()) community.iconUrl else getCategoryDefaultIcon(community.category)
                         }
                         AsyncImage(
-                            model = iconUrl,
+                            model = iconUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
