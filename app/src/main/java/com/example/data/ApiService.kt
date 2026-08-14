@@ -1,6 +1,8 @@
 package com.example.data
 
 
+import retrofit2.Response
+import okhttp3.ResponseBody
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
@@ -164,6 +166,30 @@ data class UpdateProfileRequest(
     val zodiac_sign: String? = null
 )
 
+data class StoryResponse(
+    val id: String,
+    val media_url: String,
+    val media_type: String = "image",
+    val effect: String? = null,
+    val created_at: String = "",
+    val user: StoryUserResponse
+)
+
+data class StoryUserResponse(
+    val id: String,
+    val username: String,
+    val avatar_url: String? = null,
+    val is_verified: Boolean? = false
+)
+
+data class CreateStoryResponse(
+    val status: String? = null,
+    val story_id: String? = null,
+    val media_url: String? = null,
+    val media_type: String? = null,
+    val effect_applied: String? = null
+)
+
 interface ApiService {
     @POST("/api/users/profile")
     suspend fun updateProfile(
@@ -310,7 +336,7 @@ interface ApiService {
     suspend fun createCommunity(
         @retrofit2.http.Header("Authorization") token: String,
         @Body request: Map<String, @JvmSuppressWildcards Any>
-    ): Community
+    ): Response<ResponseBody>
 
     @retrofit2.http.GET("/api/communities")
     suspend fun searchCommunities(
@@ -373,6 +399,19 @@ interface ApiService {
         @retrofit2.http.Path("slug") slug: String,
         @retrofit2.http.Part icon: okhttp3.MultipartBody.Part
     ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.GET("/api/stories")
+    suspend fun getStories(
+        @retrofit2.http.Header("Authorization") token: String?
+    ): List<StoryResponse>
+
+    @Multipart
+    @POST("/api/stories")
+    suspend fun createStory(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @Part file: okhttp3.MultipartBody.Part,
+        @Part("effect") effect: okhttp3.RequestBody? = null
+    ): CreateStoryResponse
 }
 
 object RetrofitClient {

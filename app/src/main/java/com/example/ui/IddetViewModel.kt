@@ -42,6 +42,104 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     private val _isFeedLoading = MutableStateFlow(true)
     val isFeedLoading: StateFlow<Boolean> = _isFeedLoading.asStateFlow()
 
+    // Trending Topics powered by Google News & Search for Tech, AI & Markdown
+    private val _trendingTopics = MutableStateFlow<List<com.example.data.TrendingTopic>>(emptyList())
+    val trendingTopics: StateFlow<List<com.example.data.TrendingTopic>> = _trendingTopics.asStateFlow()
+
+    private val _selectedTrendingCategory = MutableStateFlow(com.example.data.TrendingCategory.ALL)
+    val selectedTrendingCategory: StateFlow<com.example.data.TrendingCategory> = _selectedTrendingCategory.asStateFlow()
+
+    private val _isTrendingLoading = MutableStateFlow(false)
+    val isTrendingLoading: StateFlow<Boolean> = _isTrendingLoading.asStateFlow()
+
+    private val _composerInitialContent = MutableStateFlow<String?>(null)
+    val composerInitialContent: StateFlow<String?> = _composerInitialContent.asStateFlow()
+
+    fun setComposerInitialContent(content: String?) {
+        _composerInitialContent.value = content
+    }
+
+    fun selectTrendingCategory(category: com.example.data.TrendingCategory) {
+        _selectedTrendingCategory.value = category
+        loadTrendingTopics(category)
+    }
+
+    fun refreshTrendingTopics() {
+        loadTrendingTopics(_selectedTrendingCategory.value)
+    }
+
+    fun loadTrendingTopics(category: com.example.data.TrendingCategory = _selectedTrendingCategory.value) {
+        viewModelScope.launch {
+            _isTrendingLoading.value = true
+            try {
+                val topics = com.example.data.TrendingTopicsService.fetchTrendingTopics(category)
+                _trendingTopics.value = topics
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isTrendingLoading.value = false
+            }
+        }
+    }
+
+    // Friends Live Radar / Real-Time Map & Real GPS Location
+    private var realLocationProvider: com.example.data.RealLocationProvider? = null
+    private val _realLocation = MutableStateFlow(com.example.data.UserRealLocation())
+    val realLocation: StateFlow<com.example.data.UserRealLocation> = _realLocation.asStateFlow()
+
+    val friendsLocations = com.example.data.FriendsLocationService.friends
+    val isGhostMode = com.example.data.FriendsLocationService.isGhostMode
+    val currentUserVibe = com.example.data.FriendsLocationService.currentUserVibe
+
+    fun initLocationTracking(context: android.content.Context) {
+        if (realLocationProvider == null) {
+            val provider = com.example.data.RealLocationProvider(context.applicationContext)
+            realLocationProvider = provider
+            viewModelScope.launch {
+                provider.locationFlow.collect { loc ->
+                    _realLocation.value = loc
+                }
+            }
+            provider.startLocationUpdates()
+        } else {
+            realLocationProvider?.startLocationUpdates()
+        }
+    }
+
+    fun stopLocationTracking() {
+        realLocationProvider?.stopLocationUpdates()
+    }
+
+    private val _lastWavedFriend = MutableStateFlow<String?>(null)
+    val lastWavedFriend: StateFlow<String?> = _lastWavedFriend.asStateFlow()
+
+    fun setGhostMode(enabled: Boolean) {
+        com.example.data.FriendsLocationService.setGhostMode(enabled)
+    }
+
+    fun updateUserVibe(emoji: String, text: String, activityType: String) {
+        com.example.data.FriendsLocationService.updateVibe(emoji, text, activityType)
+    }
+
+    fun toggleFavoriteFriend(friendId: String) {
+        com.example.data.FriendsLocationService.toggleFavorite(friendId)
+    }
+
+    fun sendWaveToFriend(friend: com.example.data.FriendLocation) {
+        viewModelScope.launch {
+            _lastWavedFriend.value = friend.displayName
+            // Trigger a simulated friendly response or notification
+            kotlinx.coroutines.delay(3000)
+            if (_lastWavedFriend.value == friend.displayName) {
+                _lastWavedFriend.value = null
+            }
+        }
+    }
+
+    fun refreshFriendsRadar() {
+        com.example.data.FriendsLocationService.simulateRadarPing()
+    }
+
     fun setFeedTab(tab: Int) {
         _feedTab.value = tab
     }
@@ -94,6 +192,15 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         emptyList()
     )
 
+    private val _stories = MutableStateFlow<List<com.example.data.Story>>(emptyList())
+    val stories: StateFlow<List<com.example.data.Story>> = _stories.asStateFlow()
+
+    private val _isStoriesLoading = MutableStateFlow(false)
+    val isStoriesLoading: StateFlow<Boolean> = _isStoriesLoading.asStateFlow()
+
+    private val _isUploadingStory = MutableStateFlow(false)
+    val isUploadingStory: StateFlow<Boolean> = _isUploadingStory.asStateFlow()
+
     fun refreshActfiles() {
         viewModelScope.launch {
             _isFeedLoading.value = true
@@ -114,6 +221,8 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     init {
         viewModelScope.launch {
             repository.refreshActfiles()
+            loadStories()
+            loadTrendingTopics()
         }
         viewModelScope.launch {
             while (true) {
@@ -639,6 +748,99 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         viewModelScope.launch {
             val success = repository.updateCommunityIcon(slug, iconFile)
             onResult(success)
+        }
+    }
+
+    fun loadStories() {
+        viewModelScope.launch {
+            _isStoriesLoading.value = true
+            try {
+                val list = repository.getStories()
+                _stories.value = list
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isStoriesLoading.value = false
+            }
+        }
+    }
+
+    fun createStory(
+        context: android.content.Context,
+        uri: android.net.Uri,
+        effect: String?,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isUploadingStory.value = true
+            try {
+                val contentResolver = context.contentResolver
+                val mimeType = contentResolver.getType(uri) ?: "image/jpeg"
+                val extension = when {
+                    mimeType.contains("png") -> "png"
+                    mimeType.contains("video") || mimeType.contains("mp4") -> "mp4"
+                    mimeType.contains("audio") || mimeType.contains("m4a") -> "m4a"
+                    mimeType.contains("webm") -> "webm"
+                    else -> "jpg"
+                }
+                val tempFile = java.io.File.createTempFile("story_upload_", ".$extension", context.cacheDir)
+                contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                val success = repository.createStory(tempFile, mimeType, effect)
+                try { tempFile.delete() } catch (_: Exception) {}
+
+                if (success) {
+                    loadStories()
+                    onComplete(true, null)
+                } else {
+                    onComplete(false, "Impossible d'envoyer la story")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(false, e.message ?: "Erreur inconnue")
+            } finally {
+                _isUploadingStory.value = false
+            }
+        }
+    }
+
+    fun sendStoryReaction(
+        receiverId: String,
+        reaction: String,
+        onComplete: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                repository.sendMessage(receiverId, reaction, "text")
+                onComplete()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun sendStoryReply(
+        receiverId: String,
+        replyText: String,
+        storyMediaUrl: String?,
+        onComplete: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                val formattedMessage = if (!storyMediaUrl.isNullOrBlank()) {
+                    "📷 Réponse à votre story: $replyText"
+                } else {
+                    replyText
+                }
+                repository.sendMessage(receiverId, formattedMessage, "text")
+                onComplete()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 }

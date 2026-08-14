@@ -42,6 +42,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import com.example.ui.components.CommunityDashboardHeader
 import com.example.ui.components.ActfileCard
 import com.example.ui.components.VerificationBadge
+import com.example.utils.FormatUtils
 import androidx.compose.foundation.lazy.itemsIndexed
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +54,7 @@ fun CommunityDetailScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var refreshTrigger by remember { mutableStateOf(0) }
+    var showComposerDialog by remember { mutableStateOf(false) }
     
     // Fetch community details using collectAsState
     val communityState by remember(slug, refreshTrigger) {
@@ -116,6 +118,19 @@ fun CommunityDetailScreen(
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
+        },
+        floatingActionButton = {
+            if (selectedTab == 0 && community != null) {
+                ExtendedFloatingActionButton(
+                    onClick = { showComposerDialog = true },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text("Publier") },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.testTag("publish_in_community_fab")
+                )
+            }
         }
     ) { paddingValues ->
         if (community == null) {
@@ -173,6 +188,12 @@ fun CommunityDetailScreen(
                             onClick = { selectedTab = 1 },
                             text = { Text("Canaux", fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.Chat, contentDescription = null) }
+                        )
+                        Tab(
+                            selected = selectedTab == 2,
+                            onClick = { selectedTab = 2 },
+                            text = { Text("À propos", fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Info, contentDescription = null) }
                         )
                     }
                 }
@@ -240,7 +261,7 @@ fun CommunityDetailScreen(
                             )
                         }
                     }
-                } else {
+                } else if (selectedTab == 1) {
                     // Channel divider text
                     item {
                         Row(
@@ -312,6 +333,106 @@ fun CommunityDetailScreen(
                             )
                         }
                     }
+                } else {
+                    // TAB 2: À PROPOS & MEMBRES
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            // Info Card
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text(
+                                        text = "À propos de la communauté",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    
+                                    if (!com.description.isNullOrBlank()) {
+                                        Text(
+                                            text = com.description,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text("Catégorie", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(com.category, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                        }
+                                        Column {
+                                            Text("Confidentialité", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(if (com.isPrivate) "Privée 🔒" else "Publique 🌍", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                        }
+                                        Column {
+                                            Text("Mon Statut", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(
+                                                text = if (com.isMember) (if (com.myRole == "admin") "Admin 👑" else "Membre ⭐") else "Non-membre",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (com.isMember) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text("Total Membres", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(FormatUtils.formatCount(com.membersCount), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                                        }
+                                        Column {
+                                            Text("Total Discussions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(FormatUtils.formatCount(com.postsCount), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                                        }
+                                        Column {
+                                            Text("Canaux", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text("${channels.size}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Rules Quick Access Card
+                            Card(
+                                onClick = { showRulesDialog = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Gavel, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text("Règles du groupe", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                            Text("Consulter les règles et directives", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -323,6 +444,28 @@ fun CommunityDetailScreen(
                 community = community,
                 viewModel = viewModel,
                 onDismiss = { selectedChannel = null }
+            )
+        }
+
+        if (showComposerDialog && community != null) {
+            val allCategories by viewModel.allCategories.collectAsState()
+            ActfileComposer(
+                viewModel = viewModel,
+                allCategories = allCategories,
+                onDismiss = { showComposerDialog = false },
+                onPublish = { content, category, imageUrl ->
+                    showComposerDialog = false
+                    val taggedContent = if (!content.contains("@c/${community.slug}")) {
+                        "$content\n\n@c/${community.slug}"
+                    } else content
+                    viewModel.publishActfile(
+                        content = taggedContent,
+                        category = category,
+                        communityId = community.id,
+                        channelId = null
+                    )
+                    refreshTrigger++
+                }
             )
         }
 

@@ -59,6 +59,8 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.AutoAwesome
 
 import com.example.ui.components.PersistentSearchBar
+import com.example.ui.components.TrendingTopicsSection
+import com.example.data.TrendingCategory
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +75,10 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
     val showComposer by viewModel.showComposer.collectAsStateWithLifecycle()
     val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsStateWithLifecycle()
     val allCategories by viewModel.allCategories.collectAsStateWithLifecycle()
+
+    val trendingTopics by viewModel.trendingTopics.collectAsStateWithLifecycle()
+    val isTrendingLoading by viewModel.isTrendingLoading.collectAsStateWithLifecycle()
+    val selectedTrendingCategory by viewModel.selectedTrendingCategory.collectAsStateWithLifecycle()
     
     LaunchedEffect(Unit) {
         viewModel.loadCategories()
@@ -191,6 +197,31 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Section Sujets Tendance (Tech & IA via Recherche Google pour la communauté Markdown)
+                if (searchQuery.isBlank()) {
+                    item(key = "trending_topics_section") {
+                        TrendingTopicsSection(
+                            topics = trendingTopics,
+                            isLoading = isTrendingLoading,
+                            selectedCategory = selectedTrendingCategory,
+                            onSelectCategory = { category ->
+                                viewModel.selectTrendingCategory(category)
+                            },
+                            onRefresh = {
+                                viewModel.refreshTrendingTopics()
+                            },
+                            onOpenArticle = { url ->
+                                val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                navController.navigate("browser/$encodedUrl")
+                            },
+                            onDiscussInPost = { topic ->
+                                val discussionTemplate = "> 📰 **[${topic.title}](${topic.link})**\n> *Source: ${topic.source}*\n\nQue pensez-vous de cette actualité ?\n\n${topic.tags.joinToString(" ")}"
+                                viewModel.setComposerInitialContent(discussionTemplate)
+                                viewModel.setShowComposer(true)
+                            }
+                        )
+                    }
+                }
 
                 if (recommendedUsers.isNotEmpty() && (feedTab == 0 || activeActfiles.isEmpty())) {
                     item {

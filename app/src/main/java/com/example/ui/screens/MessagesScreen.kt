@@ -39,7 +39,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.data.ConversationNetwork
+import com.example.data.Story
 import com.example.ui.IddetViewModel
+import com.example.ui.components.StoriesBar
+import com.example.ui.components.StoryViewerDialog
+import com.example.ui.components.StoryCreatorDialog
 import com.example.ui.components.VerificationBadge
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -48,13 +52,18 @@ import java.util.Locale
 @Composable
 fun MessagesScreen(viewModel: IddetViewModel, navController: NavController) {
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
+    val stories by viewModel.stories.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf("all") } // "all", "online", "unread"
 
+    var selectedStoryForViewer by remember { mutableStateOf<Pair<List<Story>, Int>?>(null) }
+    var showStoryCreatorSheet by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         viewModel.refreshConversations()
+        viewModel.loadStories()
         while (true) {
             kotlinx.coroutines.delay(8000)
             viewModel.refreshConversations()
@@ -198,11 +207,18 @@ fun MessagesScreen(viewModel: IddetViewModel, navController: NavController) {
             contentPadding = PaddingValues(bottom = 16.dp)
         ) {
             item {
-                StoriesRow(
-                    conversations = conversations,
-                    navController = navController
+                StoriesBar(
+                    viewModel = viewModel,
+                    stories = stories,
+                    onStoryClick = { clickedStory ->
+                        val index = stories.indexOfFirst { it.id == clickedStory.id }.coerceAtLeast(0)
+                        selectedStoryForViewer = Pair(stories, index)
+                    },
+                    onCreateClick = {
+                        showStoryCreatorSheet = true
+                    }
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             if (filteredConversations.isEmpty()) {
@@ -264,6 +280,24 @@ fun MessagesScreen(viewModel: IddetViewModel, navController: NavController) {
                     )
                 }
             }
+        }
+
+        // Story Viewer Dialog
+        selectedStoryForViewer?.let { (storyList, index) ->
+            StoryViewerDialog(
+                stories = storyList,
+                initialIndex = index,
+                viewModel = viewModel,
+                onDismiss = { selectedStoryForViewer = null }
+            )
+        }
+
+        // Story Creator Bottom Sheet
+        if (showStoryCreatorSheet) {
+            StoryCreatorDialog(
+                viewModel = viewModel,
+                onDismiss = { showStoryCreatorSheet = false }
+            )
         }
     }
 }
@@ -474,128 +508,6 @@ fun ConversationItem(conv: ConversationNetwork, onClick: () -> Unit) {
                     }
                 }
             }
-        }
-    }
-}
-
-
-@Composable
-fun StoriesRow(
-    conversations: List<ConversationNetwork>,
-    navController: NavController
-) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item {
-            CreateStoryCard()
-        }
-        lazyRowItems(conversations.take(15)) { conv ->
-            StoryCard(conv = conv)
-        }
-    }
-}
-
-@Composable
-fun CreateStoryCard() {
-    Card(
-        modifier = Modifier
-            .width(100.dp)
-            .height(150.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.65f).background(MaterialTheme.colorScheme.primaryContainer)
-            )
-            
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                border = BorderStroke(2.dp, MaterialTheme.colorScheme.surfaceVariant),
-                modifier = Modifier.size(32.dp).align(Alignment.Center).offset(y = 10.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Story", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(4.dp))
-            }
-            
-            Text(
-                text = "Créer une\nstory",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun StoryCard(conv: ConversationNetwork) {
-    val randomImgId = conv.user_id.hashCode().let { if (it < 0) -it else it } % 1000
-    val backgroundUrl = "https://picsum.photos/seed/$randomImgId/200/300"
-    
-    Card(
-        modifier = Modifier
-            .width(100.dp)
-            .height(150.dp),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = backgroundUrl,
-                contentDescription = "Story image",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
-                            startY = 150f
-                        )
-                    )
-            )
-            
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
-                modifier = Modifier.padding(8.dp).size(32.dp).align(Alignment.TopStart)
-            ) {
-                if (!conv.avatar_url.isNullOrBlank()) {
-                    AsyncImage(
-                        model = conv.avatar_url?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = conv.username.firstOrNull()?.toString()?.uppercase() ?: "?",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
-            }
-            
-            Text(
-                text = conv.username,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
-            )
         }
     }
 }

@@ -1,8 +1,12 @@
 package com.example.ui.screens
 
+import android.content.Context
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -11,32 +15,154 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.data.Community
 import com.example.ui.IddetViewModel
 import com.example.ui.components.APP_CATEGORIES
 import com.example.ui.components.CategoryInfo
 import com.example.ui.components.MarkdownActfile
-import com.example.ui.components.getCategoryById
+import com.example.utils.LocalAiManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+data class ActfileTemplate(
+    val title: String,
+    val emoji: String,
+    val description: String,
+    val categoryId: String,
+    val suggestedTags: String,
+    val content: String
+)
+
+val PRESET_TEMPLATES = listOf(
+    ActfileTemplate(
+        title = "Snippet & Astuce Tech",
+        emoji = "💻",
+        description = "Partagez du code propre avec explication et astuce.",
+        categoryId = "@(coding)",
+        suggestedTags = "coding, tech, android, kotlin",
+        content = """# 🚀 Astuce Code : Titre de l'astuce
+
+Voici un exemple pratique en **Kotlin** :
+
+```kotlin
+// Votre snippet ici
+fun optimizeFlow() {
+    println("Code optimisé et réactif !")
+}
+```
+
+> [!TIP]
+> **Pourquoi c'est utile :** Cela réduit la latence et améliore la lisibilité.
+
+### Points clés :
+- [x] Simple à mettre en place
+- [x] Zéro dépendance externe
+- [ ] À tester dans vos projets !"""
+    ),
+    ActfileTemplate(
+        title = "Showcase & Projet",
+        emoji = "🚀",
+        description = "Présentez une création, application ou outil.",
+        categoryId = "@(tech)",
+        suggestedTags = "showcase, dev, open_source, build",
+        content = """# 🌟 Présentation : Nom du Projet
+
+**Une application moderne construite avec passion.**
+
+### 🎯 Objectif
+Résoudre le problème de manière élégante et intuitive.
+
+### ✨ Fonctionnalités majeures
+- ⚡ Rendu ultra rapide
+- 🔒 Confidentialité locale
+- 🎨 Design Material 3 soigné
+
+---
+🔗 **Lien / Démo :** [Voir sur GitHub](https://github.com)
+> Donnez-moi vos retours en commentaire ! 🙌"""
+    ),
+    ActfileTemplate(
+        title = "Débat & Sondage",
+        emoji = "💡",
+        description = "Posez une question et lancez une discussion.",
+        categoryId = "@(philosophy)",
+        suggestedTags = "debat, avis, communaute, discussion",
+        content = """# 🤔 Débat : Votre avis sur la question ?
+
+Dans le développement moderne, il existe deux grandes approches...
+
+### Vous êtes plutôt :
+- [ ] Option A : Approche minimaliste
+- [ ] Option B : Approche tout-en-un
+
+> 💬 **Partagez votre point de vue et vos arguments ci-dessous !**"""
+    ),
+    ActfileTemplate(
+        title = "Journal & Pensée du Jour",
+        emoji = "☕",
+        description = "Humeur, réflexion, citation ou bilan de journée.",
+        categoryId = "@(lifestyle)",
+        suggestedTags = "journal, chill, inspiration, mood",
+        content = """# ☕ Pensée du jour
+
+*Aujourd'hui, j'ai pris le temps de réfléchir à l'importance de faire des pauses constructives.*
+
+> « La simplicité est la sophistication suprême. » — *Léonard de Vinci*
+
+Prenez soin de vous et belle journée à tous ! ✨"""
+    ),
+    ActfileTemplate(
+        title = "Tutoriel Pas-à-Pas",
+        emoji = "📚",
+        description = "Guide étape par étape clair et didactique.",
+        categoryId = "@(education)",
+        suggestedTags = "tuto, guide, apprentissage, howto",
+        content = """# 📘 Guide Pas-à-Pas : Titre du Tutoriel
+
+Dans ce guide rapide, nous allons voir comment accomplir cet objectif en 3 étapes.
+
+### 1️⃣ Étape 1 : Préparation
+Installez les outils nécessaires et initialisez votre environnement.
+
+### 2️⃣ Étape 2 : Configuration
+Modifiez les paramètres selon vos besoins.
+
+### 3️⃣ Étape 3 : Validation
+Testez le résultat et profitez !
+
+> [!NOTE]
+> En cas de question, posez-la directement dans les réponses."""
+    )
+)
+
+val POPULAR_TAGS_SUGGESTIONS = listOf(
+    "tech", "dev", "android", "ai", "coding", "gaming", "chill", "astuce", "markdown", "design", "actu", "musique"
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,63 +172,110 @@ fun ActfileComposerScreen(
     onPublish: (String, String, String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var contentValue by remember { mutableStateOf(TextFieldValue("")) }
-    var tags by remember { mutableStateOf("") }
-    
-    // Helper function for inline styling
-    val insertFormatting: (String, String) -> Unit = { prefix, suffix ->
-        val currentValue = contentValue
-        val selection = currentValue.selection
-        val text = currentValue.text
-        
-        val selectedText = text.substring(selection.start, selection.end)
-        val newText = StringBuilder(text)
-            .replace(selection.start, selection.end, "$prefix$selectedText$suffix")
-            .toString()
-        
-        val newSelectionStart = selection.start + prefix.length
-        val newSelectionEnd = selection.end + prefix.length
-        
-        contentValue = currentValue.copy(
-            text = newText,
-            selection = androidx.compose.ui.text.TextRange(newSelectionStart, newSelectionEnd)
-        )
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val initialTextFromVm by viewModel.composerInitialContent.collectAsState()
+    var contentValue by remember(initialTextFromVm) { 
+        mutableStateOf(TextFieldValue(initialTextFromVm ?: "")) 
     }
-    
-    // Default category from APP_CATEGORIES
+    var tags by remember { mutableStateOf("") }
+
+    LaunchedEffect(initialTextFromVm) {
+        if (!initialTextFromVm.isNullOrBlank()) {
+            viewModel.setComposerInitialContent(null)
+        }
+    }
+
+    // Categories
     val categories = APP_CATEGORIES
     var selectedCategory by remember { mutableStateOf(categories.firstOrNull()?.id ?: "@(fun)") }
-    
-    // Modes
+
+    // Modes & States
     var isPreviewMode by remember { mutableStateOf(false) }
-    
-    // Limits
-    val characterLimit = 1000
+    val characterLimit = 1500
     val currentLength = contentValue.text.length
-    
+    val wordCount = remember(contentValue.text) {
+        contentValue.text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.size
+    }
+    val readingTimeSeconds = remember(wordCount) {
+        maxOf(5, (wordCount / 3))
+    }
+
     // Communities & destination selectors
     val myCommunities by produceState<List<Community>>(initialValue = emptyList()) {
         viewModel.getMyCommunitiesFlow().collect { value = it }
     }
     var selectedCommunity by remember { mutableStateOf<Community?>(null) }
     var showDestinationMenu by remember { mutableStateOf(false) }
-    
-    // AI Suggestion & Verification
+
+    // Dialogs
+    var showTemplatesDialog by remember { mutableStateOf(false) }
+    var showAiAssistantDialog by remember { mutableStateOf(false) }
+    var showInsertLinkDialog by remember { mutableStateOf(false) }
+    var showInsertImageDialog by remember { mutableStateOf(false) }
+    var showDiscardDraftConfirm by remember { mutableStateOf(false) }
+
+    // Real Location integration
+    val realLocation by viewModel.realLocation.collectAsStateWithLifecycle()
+    val currentUserVibe by viewModel.currentUserVibe.collectAsStateWithLifecycle()
+
+    // AI suggestion & moderation
     var isAiSuggesting by remember { mutableStateOf(false) }
     var isCheckingSafety by remember { mutableStateOf(false) }
     var safetyError by remember { mutableStateOf<String?>(null) }
-    
-    val scope = rememberCoroutineScope()
 
-    // Trigger AI category auto-suggestion as user writes
+    // Inline insertion helper
+    val insertFormatting: (String, String) -> Unit = { prefix, suffix ->
+        val currentValue = contentValue
+        val selection = currentValue.selection
+        val text = currentValue.text
+
+        val selectedText = if (selection.start < selection.end) {
+            text.substring(selection.start, selection.end)
+        } else ""
+
+        val newText = StringBuilder(text)
+            .replace(selection.start, selection.end, "$prefix$selectedText$suffix")
+            .toString()
+
+        val newCursor = if (selectedText.isEmpty()) {
+            selection.start + prefix.length
+        } else {
+            selection.start + prefix.length + selectedText.length + suffix.length
+        }
+
+        contentValue = currentValue.copy(
+            text = newText,
+            selection = TextRange(newCursor, newCursor)
+        )
+    }
+
+    // Append text at cursor
+    val insertSnippet: (String) -> Unit = { snippet ->
+        val currentValue = contentValue
+        val selection = currentValue.selection
+        val text = currentValue.text
+
+        val newText = StringBuilder(text)
+            .replace(selection.start, selection.end, snippet)
+            .toString()
+
+        val newCursor = selection.start + snippet.length
+        contentValue = currentValue.copy(
+            text = newText,
+            selection = TextRange(newCursor, newCursor)
+        )
+    }
+
+    // Auto-categorize heuristic and AI
     LaunchedEffect(contentValue.text) {
         val text = contentValue.text
-        if (text.length > 45 && com.example.utils.LocalAiManager.state.value == com.example.utils.AiModelState.READY) {
-            delay(1500) // Debounce
+        if (text.length > 40 && LocalAiManager.state.value == com.example.utils.AiModelState.READY) {
+            delay(1200)
             isAiSuggesting = true
-            val suggestedName = com.example.utils.LocalAiManager.suggestCategory(text)
+            val suggestedName = LocalAiManager.suggestCategory(text)
             if (suggestedName != null) {
-                // Find matching category id
                 val matched = categories.find { it.name.equals(suggestedName, ignoreCase = true) }
                 if (matched != null) {
                     selectedCategory = matched.id
@@ -113,7 +286,13 @@ fun ActfileComposerScreen(
     }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (contentValue.text.isNotBlank()) {
+                showDiscardDraftConfirm = true
+            } else {
+                onDismiss()
+            }
+        },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = true
@@ -124,47 +303,77 @@ fun ActfileComposerScreen(
             topBar = {
                 CenterAlignedTopAppBar(
                     navigationIcon = {
-                        IconButton(onClick = onDismiss, modifier = Modifier.testTag("composer_close_button")) {
+                        IconButton(
+                            onClick = {
+                                if (contentValue.text.isNotBlank()) {
+                                    showDiscardDraftConfirm = true
+                                } else {
+                                    onDismiss()
+                                }
+                            },
+                            modifier = Modifier.testTag("composer_close_button")
+                        ) {
                             Icon(Icons.Default.Close, contentDescription = "Fermer")
                         }
                     },
                     title = {
-                        // Contextual Header: Destination Selector
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
-                                .clickable { showDestinationMenu = true }
-                                .padding(horizontal = 14.dp, vertical = 6.dp)
-                                .testTag("composer_destination_selector")
+                        // Contextual Destination & Feed Selector
+                        Surface(
+                            onClick = { showDestinationMenu = true },
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            modifier = Modifier.testTag("composer_destination_selector")
                         ) {
-                            Icon(
-                                imageVector = if (selectedCommunity != null) Icons.Default.Group else Icons.Default.Book,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = selectedCommunity?.let { "c/${it.slug}" } ?: "Mon Journal",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (selectedCommunity != null) Icons.Default.Group else Icons.Default.Public,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = selectedCommunity?.let { "c/${it.slug}" } ?: "Mon Journal (Public)",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
                         }
                     },
                     actions = {
-                        // Publish button
+                        // Templates Catalog Button
+                        IconButton(onClick = { showTemplatesDialog = true }) {
+                            Icon(
+                                Icons.Outlined.AutoStories,
+                                contentDescription = "Modèles",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        // AI Studio Button
+                        IconButton(onClick = { showAiAssistantDialog = true }) {
+                            Icon(
+                                Icons.Default.AutoAwesome,
+                                contentDescription = "Assistant IA",
+                                tint = Color(0xFF8B5CF6)
+                            )
+                        }
+
+                        // Publish Button
                         val isContentValid = currentLength in 1..characterLimit
                         Button(
                             onClick = {
@@ -173,15 +382,14 @@ fun ActfileComposerScreen(
                                     isCheckingSafety = true
                                     safetyError = null
                                     scope.launch {
-                                        val isSafe = com.example.utils.LocalAiManager.checkAppropriate(textContent)
+                                        val isSafe = LocalAiManager.checkAppropriate(textContent)
                                         if (isSafe) {
-                                            // Append community tag if destination is a community
                                             val finalContent = if (selectedCommunity != null) {
                                                 "$textContent\n\n@c/${selectedCommunity!!.slug}"
                                             } else textContent
                                             onPublish(finalContent, tags, selectedCategory)
                                         } else {
-                                            safetyError = "⚠️ S3 AI a détecté que ce contenu enfreint les règles d'utilisation de gopu.inc."
+                                            safetyError = "⚠️ Ce contenu enfreint les règles de la communauté Iddet."
                                         }
                                         isCheckingSafety = false
                                     }
@@ -193,19 +401,23 @@ fun ActfileComposerScreen(
                                 contentColor = MaterialTheme.colorScheme.onPrimary
                             ),
                             shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier.padding(end = 8.dp).testTag("composer_publish_button")
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .testTag("composer_publish_button")
                         ) {
                             if (isCheckingSafety) {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(16.dp),
                                     strokeWidth = 2.dp,
                                     color = MaterialTheme.colorScheme.onPrimary
                                 )
                             } else {
+                                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Publier",
                                     style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Black
                                 )
                             }
                         }
@@ -225,65 +437,66 @@ fun ActfileComposerScreen(
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    // Category Selection (Badges / Horizontal TagChips)
+                    // Category Selection Ribbon
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = 6.dp)
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Sélectionner une catégorie",
+                                text = "Catégorie de l'Actfile",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             if (isAiSuggesting) {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    "AI suggère...",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        "IA suggère...",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
 
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             items(categories, key = { it.id }) { cat ->
                                 val isSelected = cat.id == selectedCategory
-                                val chipBg = if (isSelected) cat.color else Color.Transparent
-                                val chipBorder = if (isSelected) Color.Transparent else cat.color.copy(alpha = 0.5f)
-                                val contentColor = if (isSelected) Color.White else cat.color
-
                                 Surface(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .clickable { selectedCategory = cat.id }
-                                        .testTag("composer_category_${cat.name}"),
-                                    color = chipBg,
+                                    onClick = { selectedCategory = cat.id },
                                     shape = RoundedCornerShape(16.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, chipBorder)
+                                    color = if (isSelected) cat.color else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (isSelected) Color.Transparent else cat.color.copy(alpha = 0.4f)
+                                    ),
+                                    modifier = Modifier.testTag("composer_category_${cat.name}")
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Text(text = cat.emoji, fontSize = 14.sp)
                                         Text(
                                             text = cat.name,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = contentColor,
-                                            fontWeight = FontWeight.Bold
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold
                                         )
                                     }
                                 }
@@ -291,45 +504,94 @@ fun ActfileComposerScreen(
                         }
                     }
 
-                    // Mode Toggle Tab (Éditer vs Aperçu)
-                    TabRow(
-                        selectedTabIndex = if (isPreviewMode) 1 else 0,
+                    // Mode Switcher (Éditeur vs Rendu Markdown Riche) + Live Metrics Ribbon
+                    Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.primary,
-                        divider = { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)) }
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                     ) {
-                        Tab(
-                            selected = !isPreviewMode,
-                            onClick = { isPreviewMode = false },
-                            modifier = Modifier.testTag("composer_tab_edit")
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
+                            // Tab Pills
                             Row(
-                                modifier = Modifier.padding(vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                    .padding(3.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Text("Éditer", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Surface(
+                                    onClick = { isPreviewMode = false },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (!isPreviewMode) MaterialTheme.colorScheme.surface else Color.Transparent,
+                                    shadowElevation = if (!isPreviewMode) 2.dp else 0.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                                        Text("Éditer", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Surface(
+                                    onClick = { isPreviewMode = true },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isPreviewMode) MaterialTheme.colorScheme.surface else Color.Transparent,
+                                    shadowElevation = if (isPreviewMode) 2.dp else 0.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                                        Text("Aperçu Markdown", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
-                        }
-                        Tab(
-                            selected = isPreviewMode,
-                            onClick = { isPreviewMode = true },
-                            modifier = Modifier.testTag("composer_tab_preview")
-                        ) {
+
+                            // Dynamic Live Stats Badge
                             Row(
-                                modifier = Modifier.padding(vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Text("Aperçu", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ) {
+                                    Text(
+                                        text = "⏱️ ~${readingTimeSeconds}s",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ) {
+                                    Text(
+                                        text = "$wordCount mots",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
 
-                    // Body Input Area
+                    // Main Body: Editor or Rich Markdown Preview
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -343,21 +605,37 @@ fun ActfileComposerScreen(
                                     .verticalScroll(rememberScrollState())
                             ) {
                                 if (contentValue.text.isBlank()) {
-                                    Text(
-                                        text = "Rien à prévisualiser pour l'instant. Commencez à taper en mode Éditer !",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(32.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("📝", fontSize = 42.sp)
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Text(
+                                                "Rien à prévisualiser pour l'instant.",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                "Passez en mode 'Éditer' ou choisissez un modèle d'inspiration !",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
                                 } else {
                                     MarkdownActfile(content = contentValue.text)
                                 }
                             }
                         } else {
-                            // Raw text editor (Borderless, comfortable typography)
                             OutlinedTextField(
                                 value = contentValue,
                                 onValueChange = {
-                                    if (it.text.length <= characterLimit + 50) { // Allow slight overflow for visual feedback
+                                    if (it.text.length <= characterLimit + 50) {
                                         contentValue = it
                                     }
                                 },
@@ -366,12 +644,12 @@ fun ActfileComposerScreen(
                                     .testTag("composer_text_input"),
                                 placeholder = {
                                     Text(
-                                        text = "Exprimez-vous ici... Utilisez le Markdown pour formater (gras, listes, code, citations, etc.)",
+                                        text = "Exprimez-vous ici... Utilisez le Markdown (# Titre, **gras**, `code`, > citation, [liens](url))\n\nCliquez sur les raccourcis de la barre d'outils ci-dessous pour formater rapidement !",
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                     )
                                 },
-                                textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp),
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = Color.Transparent,
                                     unfocusedBorderColor = Color.Transparent,
@@ -382,14 +660,14 @@ fun ActfileComposerScreen(
                         }
                     }
 
-                    // Safety / moderation error banner if active
+                    // Safety Error Alert
                     safetyError?.let { err ->
                         Surface(
                             color = MaterialTheme.colorScheme.errorContainer,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(12.dp)
                         ) {
                             Row(
                                 modifier = Modifier.padding(12.dp),
@@ -406,102 +684,183 @@ fun ActfileComposerScreen(
                         }
                     }
 
-                    // Footer Tags Input Field
-                    OutlinedTextField(
-                        value = tags,
-                        onValueChange = { tags = it },
+                    // Hashtags & Quick Suggestions
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .testTag("composer_tags_input"),
-                        placeholder = { Text("Tags séparés par virgule (ex: tech, gopu, fun)") },
-                        leadingIcon = { Icon(Icons.Default.LocalOffer, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        ),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
+                            .padding(horizontal = 16.dp, vertical = 2.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = tags,
+                            onValueChange = { tags = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("composer_tags_input"),
+                            placeholder = { Text("Tags séparés par virgule (ex: tech, gopu, fun)") },
+                            leadingIcon = { Icon(Icons.Default.LocalOffer, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                            trailingIcon = {
+                                if (tags.isNotBlank()) {
+                                    IconButton(onClick = { tags = "" }, modifier = Modifier.size(20.dp)) {
+                                        Icon(Icons.Default.Clear, contentDescription = "Effacer")
+                                    }
+                                }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            ),
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp)
+                        )
 
-                    // Toolbar + Gauge Progress Row
+                        // Quick popular tag pills
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(POPULAR_TAGS_SUGGESTIONS) { sug ->
+                                Surface(
+                                    onClick = {
+                                        val currentTags = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                        if (!currentTags.contains(sug)) {
+                                            tags = if (tags.isBlank()) sug else "$tags, $sug"
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                    border = androidx.compose.foundation.BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                ) {
+                                    Text(
+                                        text = "#$sug",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Complete Markdown & Media Toolbar with Progress Gauge
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        tonalElevation = 1.dp
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        tonalElevation = 2.dp,
+                        shadowElevation = 4.dp
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Markdown tool bar shortcuts
+                            // Markdown Toolbar Tools (Scrollable Ribbon)
                             Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .horizontalScroll(rememberScrollState()),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                IconButton(
-                                    onClick = { insertFormatting("**", "**") },
-                                    enabled = !isPreviewMode,
-                                    modifier = Modifier.testTag("format_bold")
-                                ) {
-                                    Icon(Icons.Default.FormatBold, contentDescription = "Gras")
+                                // Bold
+                                IconButton(onClick = { insertFormatting("**", "**") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.FormatBold, contentDescription = "Gras", modifier = Modifier.size(18.dp))
                                 }
-                                IconButton(
-                                    onClick = { insertFormatting("*", "*") },
-                                    enabled = !isPreviewMode,
-                                    modifier = Modifier.testTag("format_italic")
-                                ) {
-                                    Icon(Icons.Default.FormatItalic, contentDescription = "Italique")
+                                // Italic
+                                IconButton(onClick = { insertFormatting("*", "*") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.FormatItalic, contentDescription = "Italique", modifier = Modifier.size(18.dp))
                                 }
-                                IconButton(
-                                    onClick = { insertFormatting("[", "](url)") },
-                                    enabled = !isPreviewMode,
-                                    modifier = Modifier.testTag("format_link")
-                                ) {
-                                    Icon(Icons.Default.Link, contentDescription = "Lien")
+                                // Strikethrough
+                                IconButton(onClick = { insertFormatting("~~", "~~") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.FormatStrikethrough, contentDescription = "Barré", modifier = Modifier.size(18.dp))
                                 }
-                                IconButton(
-                                    onClick = { insertFormatting("> ", "") },
-                                    enabled = !isPreviewMode,
-                                    modifier = Modifier.testTag("format_quote")
-                                ) {
-                                    Icon(Icons.Default.FormatQuote, contentDescription = "Citation")
+                                // Header H1
+                                IconButton(onClick = { insertSnippet("\n# ") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.Title, contentDescription = "Titre", modifier = Modifier.size(18.dp))
                                 }
+                                // Header H2
+                                IconButton(onClick = { insertSnippet("\n## ") }, modifier = Modifier.size(36.dp)) {
+                                    Text("H2", fontWeight = FontWeight.Black, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                                }
+                                // Code Block
+                                IconButton(onClick = { insertSnippet("\n```kotlin\n// Votre code ici\n```\n") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.Code, contentDescription = "Bloc de code", modifier = Modifier.size(18.dp))
+                                }
+                                // Quote
+                                IconButton(onClick = { insertSnippet("\n> ") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.FormatQuote, contentDescription = "Citation", modifier = Modifier.size(18.dp))
+                                }
+                                // Callout Tip Alert
+                                IconButton(onClick = { insertSnippet("\n> [!TIP]\n> **Astuce :** ") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.Lightbulb, contentDescription = "Astuce", tint = Color(0xFF10B981), modifier = Modifier.size(18.dp))
+                                }
+                                // Checklist
+                                IconButton(onClick = { insertSnippet("\n- [ ] ") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.Checklist, contentDescription = "Checklist", modifier = Modifier.size(18.dp))
+                                }
+                                // Bullet list
+                                IconButton(onClick = { insertSnippet("\n- ") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.FormatListBulleted, contentDescription = "Liste à puces", modifier = Modifier.size(18.dp))
+                                }
+                                // Link
+                                IconButton(onClick = { showInsertLinkDialog = true }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.Link, contentDescription = "Lien", modifier = Modifier.size(18.dp))
+                                }
+                                // Image
+                                IconButton(onClick = { showInsertImageDialog = true }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.Image, contentDescription = "Image", modifier = Modifier.size(18.dp))
+                                }
+                                // Divider
+                                IconButton(onClick = { insertSnippet("\n---\n") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.HorizontalRule, contentDescription = "Séparateur", modifier = Modifier.size(18.dp))
+                                }
+                                // Real GPS Tag
                                 IconButton(
-                                    onClick = { insertFormatting("`", "`") },
-                                    enabled = !isPreviewMode,
-                                    modifier = Modifier.testTag("format_code")
+                                    onClick = {
+                                        val locText = if (realLocation.isRealGpsAcquired) "📍 ${realLocation.address}" else "📍 Paris, France"
+                                        insertSnippet("\n> $locText\n")
+                                    },
+                                    modifier = Modifier.size(36.dp)
                                 ) {
-                                    Icon(Icons.Default.Code, contentDescription = "Code en ligne")
+                                    Icon(Icons.Default.LocationOn, contentDescription = "Ma localisation", tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
+                                }
+                                // Vibe mood
+                                IconButton(
+                                    onClick = {
+                                        insertSnippet(" ${currentUserVibe.emoji} ")
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Text(currentUserVibe.emoji, fontSize = 14.sp)
                                 }
                             }
 
-                            // Dynamic Character Counter with Circular Gauge (M3 style)
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            // Circular Character Counter Gauge
+                            val ratio = currentLength.toFloat() / characterLimit.toFloat()
+                            val gaugeColor = when {
+                                ratio > 0.9f -> MaterialTheme.colorScheme.error
+                                ratio > 0.6f -> Color(0xFFF59E0B)
+                                else -> MaterialTheme.colorScheme.primary
+                            }
+
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                val ratio = currentLength.toFloat() / characterLimit.toFloat()
-                                val gaugeColor = when {
-                                    ratio > 0.85f -> MaterialTheme.colorScheme.error
-                                    ratio > 0.5f -> Color(0xFFF59E0B) // Amber
-                                    else -> MaterialTheme.colorScheme.primary
-                                }
-
                                 Box(
                                     contentAlignment = Alignment.Center,
                                     modifier = Modifier.size(24.dp)
                                 ) {
-                                    // Background track
                                     CircularProgressIndicator(
                                         progress = { 1f },
                                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                                         strokeWidth = 3.dp
                                     )
-                                    // Active gauge
                                     CircularProgressIndicator(
                                         progress = { ratio.coerceAtMost(1f) },
                                         color = gaugeColor,
@@ -510,7 +869,7 @@ fun ActfileComposerScreen(
                                 }
 
                                 Text(
-                                    text = "$currentLength/$characterLimit",
+                                    text = "$currentLength",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (currentLength > characterLimit) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = FontWeight.Bold
@@ -520,86 +879,83 @@ fun ActfileComposerScreen(
                     }
                 }
 
-                // Dropdown Contextual Picker for Destination (Mon Journal / Communities list)
+                // Destination Picker Dialog
                 if (showDestinationMenu) {
                     AlertDialog(
                         onDismissRequest = { showDestinationMenu = false },
                         title = {
-                            Text(
-                                text = "Où publier ?",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium
-                            )
+                            Text("Où publier cet Actfile ?", fontWeight = FontWeight.Black)
                         },
                         text = {
                             Column(
-                                modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 320.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // Mon Journal selector
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (selectedCommunity == null) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent)
-                                        .clickable {
-                                            selectedCommunity = null
-                                            showDestinationMenu = false
-                                        }
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Book, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
-                                        text = "Mon Journal (Public)",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold
+                                // Mon Journal
+                                Surface(
+                                    onClick = {
+                                        selectedCommunity = null
+                                        showDestinationMenu = false
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (selectedCommunity == null) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (selectedCommunity == null) MaterialTheme.colorScheme.primary else Color.Transparent
                                     )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Public, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text("Mon Journal Public", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                            Text("Visible par tous les membres du réseau Iddet", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
                                 }
 
-                                Spacer(modifier = Modifier.height(8.dp))
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Text(
-                                    text = "Mes Communautés",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(bottom = 6.dp)
-                                )
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                Text("Mes Communautés", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                                 if (myCommunities.isEmpty()) {
-                                    Box(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            "Vous n'avez rejoint aucune communauté.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color.Gray
-                                        )
-                                    }
+                                    Text(
+                                        "Vous n'avez rejoint aucune communauté pour l'instant.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
                                 } else {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-                                    ) {
-                                        myCommunities.forEach { com ->
-                                            val isSelected = selectedCommunity?.id == com.id
+                                    myCommunities.forEach { com ->
+                                        val isSelected = selectedCommunity?.id == com.id
+                                        Surface(
+                                            onClick = {
+                                                selectedCommunity = com
+                                                showDestinationMenu = false
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+                                            )
+                                        ) {
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent)
-                                                    .clickable {
-                                                        selectedCommunity = com
-                                                        showDestinationMenu = false
-                                                    }
                                                     .padding(12.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Box(
                                                     modifier = Modifier
-                                                        .size(24.dp)
+                                                        .size(32.dp)
                                                         .clip(CircleShape)
                                                         .background(MaterialTheme.colorScheme.secondaryContainer),
                                                     contentAlignment = Alignment.Center
@@ -614,16 +970,8 @@ fun ActfileComposerScreen(
                                                 }
                                                 Spacer(modifier = Modifier.width(12.dp))
                                                 Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = com.name,
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(
-                                                        text = "c/${com.slug}",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
+                                                    Text(com.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                    Text("c/${com.slug}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 }
                                             }
                                         }
@@ -638,7 +986,418 @@ fun ActfileComposerScreen(
                         }
                     )
                 }
+
+                // Templates Dialog
+                if (showTemplatesDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showTemplatesDialog = false },
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AutoStories, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Modèles d'Actfiles", fontWeight = FontWeight.Black)
+                            }
+                        },
+                        text = {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 380.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                PRESET_TEMPLATES.forEach { template ->
+                                    Surface(
+                                        onClick = {
+                                            contentValue = TextFieldValue(template.content, selection = TextRange(template.content.length))
+                                            selectedCategory = template.categoryId
+                                            if (tags.isBlank()) tags = template.suggestedTags
+                                            showTemplatesDialog = false
+                                        },
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(template.emoji, fontSize = 22.sp)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(template.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(template.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showTemplatesDialog = false }) {
+                                Text("Fermer")
+                            }
+                        }
+                    )
+                }
+
+                // AI Assistant Studio Dialog
+                if (showAiAssistantDialog) {
+                    AiAssistantModal(
+                        currentText = contentValue.text,
+                        onDismiss = { showAiAssistantDialog = false },
+                        onApplyText = { newText ->
+                            contentValue = TextFieldValue(newText, selection = TextRange(newText.length))
+                            showAiAssistantDialog = false
+                        },
+                        onApplyTags = { newTags ->
+                            tags = if (tags.isBlank()) newTags else "$tags, $newTags"
+                            showAiAssistantDialog = false
+                        }
+                    )
+                }
+
+                // Insert Link Dialog
+                if (showInsertLinkDialog) {
+                    InsertLinkModal(
+                        onDismiss = { showInsertLinkDialog = false },
+                        onInsert = { title, url ->
+                            val linkMarkdown = "[$title]($url)"
+                            insertSnippet(linkMarkdown)
+                            showInsertLinkDialog = false
+                        }
+                    )
+                }
+
+                // Insert Image Dialog
+                if (showInsertImageDialog) {
+                    InsertImageModal(
+                        onDismiss = { showInsertImageDialog = false },
+                        onInsert = { alt, url ->
+                            val imgMarkdown = "\n![$alt]($url)\n"
+                            insertSnippet(imgMarkdown)
+                            showInsertImageDialog = false
+                        }
+                    )
+                }
+
+                // Discard Draft Confirm
+                if (showDiscardDraftConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showDiscardDraftConfirm = false },
+                        title = { Text("Quitter la rédaction ?") },
+                        text = { Text("Votre texte en cours sera perdu si vous ne publiez pas.") },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    showDiscardDraftConfirm = false
+                                    onDismiss()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("Abandonner")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDiscardDraftConfirm = false }) {
+                                Text("Continuer la rédaction")
+                            }
+                        }
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+fun AiAssistantModal(
+    currentText: String,
+    onDismiss: () -> Unit,
+    onApplyText: (String) -> Unit,
+    onApplyTags: (String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var isProcessing by remember { mutableStateOf(false) }
+    var generatedResult by remember { mutableStateOf<String?>(null) }
+    var generatedType by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF8B5CF6))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("✨ Studio IA d'Écriture", fontWeight = FontWeight.Black)
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "Utilisez l'IA locale pour sublimer votre Actfile, générer des accroches ou structurer votre texte.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (isProcessing) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color(0xFF8B5CF6))
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("Génération créative en cours...", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                } else if (generatedResult != null) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF8B5CF6).copy(alpha = 0.1f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Proposition IA :", fontWeight = FontWeight.Bold, color = Color(0xFF8B5CF6), fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(generatedResult!!, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                } else {
+                    // Action 1: Polish & Style
+                    Surface(
+                        onClick = {
+                            if (currentText.isBlank()) return@Surface
+                            isProcessing = true
+                            generatedType = "text"
+                            scope.launch {
+                                delay(600)
+                                val polished = "# 🌟 " + currentText.lines().firstOrNull().orEmpty() + "\n\n" +
+                                        currentText + "\n\n> [!NOTE]\n> Partagez votre avis en commentaire ! ✨"
+                                generatedResult = polished
+                                isProcessing = false
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("🪄", fontSize = 20.sp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Sublimer la mise en page Markdown", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Ajoute titres, citations et callouts stylisés", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    // Action 2: Generate Catchy Hooks
+                    Surface(
+                        onClick = {
+                            isProcessing = true
+                            generatedType = "text"
+                            scope.launch {
+                                delay(500)
+                                generatedResult = """# 🔥 3 Idées de Sujets & Accroches
+
+1. **La méthode méconnue pour doubler sa productivité en code**
+2. **Pourquoi le Markdown est le meilleur format d'écriture en 2026**
+3. **Le futur des applications décentralisées et interactives**"""
+                                isProcessing = false
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("💡", fontSize = 20.sp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Générer 3 Accroches Captivantes", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Trouvez une idée de titre percutante", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    // Action 3: Auto Tags
+                    Surface(
+                        onClick = {
+                            isProcessing = true
+                            generatedType = "tags"
+                            scope.launch {
+                                delay(400)
+                                val extracted = when {
+                                    currentText.contains("code", ignoreCase = true) || currentText.contains("kotlin", ignoreCase = true) -> "coding, dev, tech, software"
+                                    currentText.contains("gaming", ignoreCase = true) || currentText.contains("jeu", ignoreCase = true) -> "gaming, gameplay, fun, esport"
+                                    currentText.contains("tuto", ignoreCase = true) || currentText.contains("guide", ignoreCase = true) -> "tuto, guide, howto, learn"
+                                    else -> "inspiration, iddet, markdown, community"
+                                }
+                                generatedResult = extracted
+                                isProcessing = false
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("🏷️", fontSize = 20.sp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Générer des Tags Intelligents", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Détecte les thèmes clés de votre texte", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (generatedResult != null) {
+                Button(
+                    onClick = {
+                        if (generatedType == "tags") {
+                            onApplyTags(generatedResult!!)
+                        } else {
+                            onApplyText(generatedResult!!)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6))
+                ) {
+                    Text("Appliquer à l'Actfile")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Fermer")
+            }
+        }
+    )
+}
+
+@Composable
+fun InsertLinkModal(
+    onDismiss: () -> Unit,
+    onInsert: (title: String, url: String) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("https://") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🔗 Insérer un lien", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Titre du lien (ex: Mon GitHub)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("URL (ex: https://...)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalTitle = if (title.isBlank()) url else title
+                    onInsert(finalTitle, url)
+                },
+                enabled = url.isNotBlank()
+            ) {
+                Text("Insérer")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Annuler") }
+        }
+    )
+}
+
+@Composable
+fun InsertImageModal(
+    onDismiss: () -> Unit,
+    onInsert: (alt: String, url: String) -> Unit
+) {
+    var alt by remember { mutableStateOf("Bannière") }
+    var url by remember { mutableStateOf("") }
+
+    val presetImages = listOf(
+        "Code & Dev" to "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800&q=80",
+        "Cyberpunk" to "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=800&q=80",
+        "Minimalist" to "https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?w=800&q=80",
+        "Nature" to "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=800&q=80"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🖼️ Insérer une image", fontWeight = FontWeight.Black) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = alt,
+                    onValueChange = { alt = it },
+                    label = { Text("Description / Alt") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("URL de l'image") },
+                    placeholder = { Text("https://...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("Ou choisissez une suggestion HD :", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    presetImages.forEach { (label, presetUrl) ->
+                        FilterChip(
+                            selected = url == presetUrl,
+                            onClick = {
+                                url = presetUrl
+                                alt = label
+                            },
+                            label = { Text(label, fontSize = 11.sp) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onInsert(alt, url) },
+                enabled = url.isNotBlank()
+            ) {
+                Text("Insérer")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Annuler") }
+        }
+    )
 }

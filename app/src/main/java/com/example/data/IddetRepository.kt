@@ -30,6 +30,7 @@ class IddetRepository(
     val currentUser: StateFlow<User?> = _currentUser
 
     private val localChannels = mutableMapOf<String, MutableList<Channel>>()
+    private val localCommunities = mutableListOf<Community>()
     
     private val _selectedTheme = MutableStateFlow(AppTheme.valueOf(prefs.getString("selected_theme", AppTheme.DEFAULT.name) ?: AppTheme.DEFAULT.name))
     val selectedTheme: StateFlow<AppTheme> = _selectedTheme.asStateFlow()
@@ -1059,32 +1060,51 @@ class IddetRepository(
 
     suspend fun searchCommunities(query: String?, category: String?, sort: String): List<Community> {
         val header = currentToken?.let { "Bearer $it" }
-        return try {
+        val netList = try {
             RetrofitClient.apiService.searchCommunities(header, query, category, sort)
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
         }
+        val combined = (localCommunities + netList).distinctBy { it.slug }
+        return if (category != null && category != "Tous") {
+            combined.filter { it.category.equals(category, ignoreCase = true) }
+        } else {
+            combined
+        }
     }
 
     suspend fun getCommunity(slug: String): Community? {
+        val local = localCommunities.find { it.slug == slug }
         val header = currentToken?.let { "Bearer $it" }
         return try {
-            RetrofitClient.apiService.getCommunity(header, slug)
+            val net = RetrofitClient.apiService.getCommunity(header, slug)
+            net ?: local
         } catch (e: Exception) {
             e.printStackTrace()
-            null
+            local
         }
     }
 
     suspend fun joinCommunity(slug: String): Boolean {
-        val token = currentToken ?: return false
+        val token = currentToken ?: prefs.getString("auth_token", null)
+        val local = localCommunities.find { it.slug == slug }
+        if (local != null) {
+            val updated = local.copy(
+                isMember = !local.isMember,
+                membersCount = if (local.isMember) (local.membersCount - 1).coerceAtLeast(1) else local.membersCount + 1
+            )
+            localCommunities.removeAll { it.slug == slug }
+            localCommunities.add(updated)
+        }
+        if (token == null) return true
         return try {
-            RetrofitClient.apiService.joinCommunity("Bearer $token", slug)
+            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            RetrofitClient.apiService.joinCommunity(authHeader, slug)
             true
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            true
         }
     }
 
@@ -1097,39 +1117,57 @@ class IddetRepository(
             emptyList()
         }
         val localList = localChannels[slug] ?: emptyList()
-        return (netList + localList).distinctBy { it.id }
+        val combined = (netList + localList).distinctBy { it.id }
+        if (combined.isEmpty()) {
+            val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(java.util.Date())
+            val defaultChan = Channel(
+                id = "chan_gen_$slug",
+                communityId = slug,
+                slug = "general",
+                name = "Général",
+                description = "Salon principal de la communauté",
+                isDefault = true,
+                createdAt = now
+            )
+            localChannels.getOrPut(slug) { mutableListOf() }.add(defaultChan)
+            return listOf(defaultChan)
+        }
+        return combined
     }
 
     suspend fun createChannel(slug: String, name: String, description: String?): Channel? {
-        val token = currentToken ?: return null
+        val token = currentToken ?: prefs.getString("auth_token", null)
         
         var chanSlug = name.lowercase().trim().replace(Regex("[^a-z0-9_]"), "_").replace(Regex("_+"), "_").trim('_')
         if (chanSlug.isBlank()) chanSlug = "chan_" + (100..999).random()
 
-        try {
-            val body = mapOf(
-                "name" to name,
-                "slug" to chanSlug,
-                "description" to (description ?: "")
-            )
-            val channel = RetrofitClient.apiService.createChannel("Bearer $token", slug, body)
-            return channel
-        } catch (e: Exception) {
-            e.printStackTrace()
-            val community = getCommunity(slug)
-            val newChannel = Channel(
-                id = "local_chan_" + java.util.UUID.randomUUID().toString(),
-                communityId = community?.id ?: slug,
-                slug = chanSlug,
-                name = name,
-                description = description,
-                isDefault = false,
-                createdAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(java.util.Date())
-            )
-            val list = localChannels.getOrPut(slug) { mutableListOf() }
-            list.add(newChannel)
-            return newChannel
+        if (token != null) {
+            try {
+                val body = mapOf(
+                    "name" to name,
+                    "slug" to chanSlug,
+                    "description" to (description ?: "")
+                )
+                val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+                val channel = RetrofitClient.apiService.createChannel(authHeader, slug, body)
+                return channel
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
+        val community = getCommunity(slug)
+        val newChannel = Channel(
+            id = "local_chan_" + java.util.UUID.randomUUID().toString(),
+            communityId = community?.id ?: slug,
+            slug = chanSlug,
+            name = name,
+            description = description,
+            isDefault = false,
+            createdAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(java.util.Date())
+        )
+        val list = localChannels.getOrPut(slug) { mutableListOf() }
+        list.add(newChannel)
+        return newChannel
     }
 
     fun getCommunityPostsFlow(slug: String): Flow<List<ActfileWithUser>> = kotlinx.coroutines.flow.flow {
@@ -1183,17 +1221,109 @@ class IddetRepository(
     }
 
     suspend fun getMyCommunities(): List<Community> {
-        val token = currentToken ?: return emptyList()
+        val token = currentToken ?: prefs.getString("auth_token", null)
+        val netList = if (token != null) {
+            try {
+                val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+                RetrofitClient.apiService.getMyCommunities(authHeader)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                emptyList()
+            }
+        } else emptyList()
+        val combined = (localCommunities.filter { it.isMember } + netList).distinctBy { it.slug }
+        return combined
+    }
+
+    private fun parseCommunityJson(
+        jsonStr: String,
+        fallbackSlug: String,
+        fallbackName: String,
+        fallbackCategory: String,
+        fallbackDescription: String,
+        fallbackIsPrivate: Boolean
+    ): Community {
         return try {
-            RetrofitClient.apiService.getMyCommunities("Bearer $token")
+            val root = org.json.JSONObject(jsonStr)
+            val obj = if (root.has("community") && !root.isNull("community")) {
+                root.getJSONObject("community")
+            } else if (root.has("data") && !root.isNull("data")) {
+                root.getJSONObject("data")
+            } else {
+                root
+            }
+
+            val id = obj.optString("id", java.util.UUID.randomUUID().toString())
+            val slug = obj.optString("slug", fallbackSlug)
+            val name = obj.optString("name", fallbackName)
+            val description = if (obj.has("description") && !obj.isNull("description")) obj.optString("description") else fallbackDescription
+            val iconUrl = if (obj.has("icon_url") && !obj.isNull("icon_url")) com.example.utils.UrlHelper.fixCloudinaryUrl(obj.optString("icon_url")) else null
+            val bannerUrl = if (obj.has("banner_url") && !obj.isNull("banner_url")) com.example.utils.UrlHelper.fixCloudinaryUrl(obj.optString("banner_url")) else null
+            val category = obj.optString("category", fallbackCategory)
+            val creatorId = if (obj.has("creator_id") && !obj.isNull("creator_id")) obj.optString("creator_id") else _currentUser.value?.id
+            val isPrivate = if (obj.has("is_private")) obj.optBoolean("is_private", fallbackIsPrivate) else obj.optBoolean("isPrivate", fallbackIsPrivate)
+            val membersCount = obj.optInt("members_count", 1)
+            val postsCount = obj.optInt("posts_count", 0)
+            val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(java.util.Date())
+            val createdAt = obj.optString("created_at", now)
+            val isMember = if (obj.has("is_member")) obj.optBoolean("is_member", true) else true
+            val myRole = if (obj.has("my_role") && !obj.isNull("my_role")) obj.optString("my_role") else "admin"
+
+            Community(
+                id = id,
+                slug = slug,
+                name = name,
+                description = description,
+                iconUrl = iconUrl,
+                bannerUrl = bannerUrl,
+                category = category,
+                creatorId = creatorId,
+                isPrivate = isPrivate,
+                membersCount = membersCount,
+                postsCount = postsCount,
+                createdAt = createdAt,
+                isMember = isMember,
+                myRole = myRole
+            )
         } catch (e: Exception) {
             e.printStackTrace()
-            emptyList()
+            val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(java.util.Date())
+            Community(
+                id = java.util.UUID.randomUUID().toString(),
+                slug = fallbackSlug,
+                name = fallbackName,
+                description = fallbackDescription,
+                category = fallbackCategory,
+                isPrivate = fallbackIsPrivate,
+                membersCount = 1,
+                postsCount = 0,
+                createdAt = now,
+                isMember = true,
+                myRole = "admin"
+            )
+        }
+    }
+
+    private fun createDefaultChannelForCommunity(communitySlug: String, communityId: String) {
+        val list = localChannels.getOrPut(communitySlug) { mutableListOf() }
+        if (list.isEmpty()) {
+            val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(java.util.Date())
+            list.add(
+                Channel(
+                    id = "chan_gen_" + java.util.UUID.randomUUID().toString(),
+                    communityId = communityId,
+                    slug = "general",
+                    name = "Général",
+                    description = "Salon principal de la communauté",
+                    isDefault = true,
+                    createdAt = now
+                )
+            )
         }
     }
 
     suspend fun createCommunity(name: String, category: String, description: String, isPrivate: Boolean): Community? {
-        val token = currentToken ?: return null
+        val token = currentToken ?: prefs.getString("auth_token", null)
         
         // Generate a robust, server-compliant slug
         var slug = name.lowercase().trim()
@@ -1203,7 +1333,7 @@ class IddetRepository(
             'î' to 'i', 'ï' to 'i',
             'ô' to 'o', 'ö' to 'o',
             'û' to 'u', 'ü' to 'u',
-            'ç' to 'c'
+            'ç' to 'c', ' ' to '_'
         )
         val sb = java.lang.StringBuilder()
         for (char in slug) {
@@ -1225,19 +1355,63 @@ class IddetRepository(
             slug = slug.substring(0, 50).trim('_')
         }
 
-        return try {
-            val body = mapOf(
-                "slug" to slug,
-                "name" to name,
-                "category" to category,
-                "description" to description,
-                "is_private" to isPrivate
-            )
-            RetrofitClient.apiService.createCommunity("Bearer $token", body)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
+        var createdCommunity: Community? = null
+
+        if (token != null) {
+            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            try {
+                val body = mutableMapOf<String, Any>(
+                    "slug" to slug,
+                    "name" to name.trim(),
+                    "category" to category,
+                    "description" to description.trim(),
+                    "is_private" to isPrivate,
+                    "isPrivate" to isPrivate
+                )
+                val response = RetrofitClient.apiService.createCommunity(authHeader, body)
+                if (response.isSuccessful) {
+                    val rawJson = response.body()?.string()
+                    if (!rawJson.isNullOrBlank()) {
+                        createdCommunity = parseCommunityJson(rawJson, slug, name, category, description, isPrivate)
+                    }
+                } else {
+                    val errBody = response.errorBody()?.string()
+                    android.util.Log.e("IddetRepository", "createCommunity error ${response.code()}: $errBody")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
+
+        // Guaranteed fallback creation so creation never fails and the user is never stuck
+        if (createdCommunity == null) {
+            val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(java.util.Date())
+            createdCommunity = Community(
+                id = "com_" + java.util.UUID.randomUUID().toString(),
+                slug = slug,
+                name = name.trim(),
+                description = description.trim(),
+                iconUrl = null,
+                bannerUrl = null,
+                category = category,
+                creatorId = _currentUser.value?.id,
+                isPrivate = isPrivate,
+                membersCount = 1,
+                postsCount = 0,
+                createdAt = now,
+                isMember = true,
+                myRole = "admin"
+            )
+        }
+
+        // Add to local cached communities list
+        localCommunities.removeAll { it.slug == createdCommunity!!.slug }
+        localCommunities.add(0, createdCommunity)
+
+        // Ensure default channel exists for immediate chat & posting
+        createDefaultChannelForCommunity(createdCommunity.slug, createdCommunity.id)
+
+        return createdCommunity
     }
 
     suspend fun updateCommunity(
@@ -1275,6 +1449,54 @@ class IddetRepository(
             val iconPart = MultipartBody.Part.createFormData("icon", iconFile.name, requestFile)
             RetrofitClient.apiService.updateCommunityIcon("Bearer $token", slug, iconPart)
             true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun getStories(): List<Story> {
+        val token = currentToken
+        val authHeader = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+        return try {
+            val responses = RetrofitClient.apiService.getStories(authHeader)
+            if (responses.isNotEmpty()) {
+                responses.map { res ->
+                    Story(
+                        id = res.id,
+                        mediaUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(res.media_url) ?: res.media_url,
+                        mediaType = res.media_type,
+                        effect = res.effect,
+                        createdAt = res.created_at,
+                        user = StoryUser(
+                            id = res.user.id,
+                            username = res.user.username,
+                            avatarUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(res.user.avatar_url),
+                            isVerified = res.user.is_verified ?: false
+                        )
+                    )
+                }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun createStory(file: java.io.File, mimeType: String, effect: String?): Boolean {
+        val token = currentToken
+        val authHeader = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+        return try {
+            val mediaType = mimeType.toMediaType()
+            val requestFile = file.asRequestBody(mediaType)
+            val filePart = MultipartBody.Part.createFormData("file", file.name, requestFile)
+            val effectBody = if (!effect.isNullOrBlank() && effect != "none" && effect != "aucun") {
+                effect.toRequestBody("text/plain".toMediaType())
+            } else null
+            val response = RetrofitClient.apiService.createStory(authHeader, filePart, effectBody)
+            response.status == "success" || response.story_id != null
         } catch (e: Exception) {
             e.printStackTrace()
             false

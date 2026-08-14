@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -86,11 +87,16 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     val scope = rememberCoroutineScope()
     
     val userActfiles by viewModel.getUserActfiles(user.id).collectAsStateWithLifecycle(initialValue = emptyList())
+    val friends by viewModel.friendsLocations.collectAsStateWithLifecycle()
+    val isGhostMode by viewModel.isGhostMode.collectAsStateWithLifecycle()
+    val currentUserVibe by viewModel.currentUserVibe.collectAsStateWithLifecycle()
     
     var showEditDialog by remember { mutableStateOf(false) }
     var showVerificationDialog by remember { mutableStateOf(false) }
     var showImageOptions by remember { mutableStateOf(false) }
     var showFullScreenAvatar by remember { mutableStateOf(false) }
+    var showVibeEditorDialog by remember { mutableStateOf(false) }
+    var showBadgesDialog by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     
     var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
@@ -428,26 +434,211 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 1. Live Status / Vibe Banner
+                    Surface(
+                        onClick = { showVibeEditorDialog = true },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
                     ) {
-                        SuggestionChip(
-                            onClick = {},
-                            label = { Text("Niveau ${user.level} (XP: ${user.xp})") },
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                labelColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                        if (!user.zodiacSign.isNullOrBlank()) {
-                            SuggestionChip(
-                                onClick = {},
-                                label = { Text("✨ ${user.zodiacSign}") },
-                                colors = SuggestionChipDefaults.suggestionChipColors(
-                                    labelColor = MaterialTheme.colorScheme.tertiary
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(currentUserVibe.emoji, fontSize = 22.sp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Statut & Vibe du jour", 
+                                    style = MaterialTheme.typography.labelSmall, 
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                Text(
+                                    currentUserVibe.text, 
+                                    style = MaterialTheme.typography.bodyMedium, 
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Icon(
+                                Icons.Outlined.Edit, 
+                                contentDescription = "Modifier statut", 
+                                modifier = Modifier.size(16.dp), 
+                                tint = MaterialTheme.colorScheme.primary
                             )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 2. Live Friends Radar Map Hero Card
+                    Surface(
+                        onClick = { navController.navigate("friends_map") },
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFF0F172A),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.4f)),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF0284C7).copy(alpha = 0.25f))
+                                    .border(1.5.dp, Color(0xFF38BDF8), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("🗺️", fontSize = 22.sp)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "Radar des Potes en direct",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF10B981))
+                                    )
+                                }
+                                val onlineCount = friends.count { it.isOnline }
+                                Text(
+                                    text = "$onlineCount potes actifs à proximité !",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF94A3B8)
+                                )
+                            }
+                            Button(
+                                onClick = { navController.navigate("friends_map") },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7), contentColor = Color.White),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("Carte 📍", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 3. Gamified Level & Daily Streak Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text("⚡", fontSize = 16.sp)
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        val rankTitle = when (user.level) {
+                                            1 -> "Initié Markdown"
+                                            2 -> "Apprenti Rédacteur"
+                                            3 -> "Maître des Balises"
+                                            4 -> "Expert Synthax"
+                                            else -> "Légende IDDET"
+                                        }
+                                        Text(rankTitle, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                        Text("Niveau ${user.level}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                                // Streak Flame
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF97316).copy(alpha = 0.15f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("🔥", fontSize = 13.sp)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Série 5j", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = Color(0xFFEA580C))
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            val xpInLevel = (user.xp % 100)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Progression de rang", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("$xpInLevel / 100 XP", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LinearProgressIndicator(
+                                progress = { (xpInLevel / 100f).coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 4. Badges & Trophies Showcase
+                    Surface(
+                        onClick = { showBadgesDialog = true },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("🏆", fontSize = 20.sp)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text("Badges & Succès Débloqués", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                    Text("5 trophées actifs", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf("🌟", "✍️", "🔥", "🤝", "⚡").forEach { emoji ->
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(emoji, fontSize = 14.sp)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -1262,6 +1453,83 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
             }
         }
     }
+
+    if (showVibeEditorDialog) {
+        VibeStatusEditorDialog(
+            currentVibe = currentUserVibe,
+            onDismiss = { showVibeEditorDialog = false },
+            onSave = { emoji, text, type ->
+                viewModel.updateUserVibe(emoji, text, type)
+                showVibeEditorDialog = false
+                Toast.makeText(context, "Statut du jour mis à jour ! $emoji", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showBadgesDialog) {
+        FriendlyBadgesDialog(onDismiss = { showBadgesDialog = false })
+    }
+}
+
+@Composable
+fun FriendlyBadgesDialog(onDismiss: () -> Unit) {
+    val badgesList = listOf(
+        Triple("🌟", "Pionnier Markdown", "Parmi les premiers explorateurs de la plateforme IDDET."),
+        Triple("✍️", "Rédacteur Pro", "A rédigé plus de 10 publications et actfiles de qualité."),
+        Triple("🔥", "Streak Master", "Connexion quotidienne continue pendant plus de 5 jours."),
+        Triple("🤝", "Ami Connecté", "Actif sur la carte des potes et toujours prêt à faire un coucou."),
+        Triple("⚡", "Super Développeur", "Expert en code Markdown, balises enrichies et tech."),
+        Triple("💬", "Roi du Débat", "Auteur de commentaires pertinents et constructifs.")
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🏆 Trophées & Badges Débloqués", fontWeight = FontWeight.Black)
+            }
+        },
+        text = {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
+            ) {
+                items(badgesList) { (emoji, title, desc) ->
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(emoji, fontSize = 20.sp)
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                                Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss, shape = RoundedCornerShape(12.dp)) {
+                Text("Super !")
+            }
+        }
+    )
 }
 
 fun getZodiacSign(day: Int, month: Int): String {

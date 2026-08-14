@@ -114,30 +114,47 @@ data class Notification(
 
 
 data class Community(
-    val id: String,
-    val slug: String,
-    val name: String,
-    val description: String?,
-    @Json(name = "icon_url") val iconUrl: String?,
-    @Json(name = "banner_url") val bannerUrl: String?,
-    val category: String,
-    @Json(name = "creator_id") val creatorId: String?,
-    @Json(name = "is_private") val isPrivate: Boolean,
-    @Json(name = "members_count") val membersCount: Int,
-    @Json(name = "posts_count") val postsCount: Int,
-    @Json(name = "created_at") val createdAt: String,
-    @Json(name = "is_member") val isMember: Boolean,
-    @Json(name = "my_role") val myRole: String?
+    val id: String = "",
+    val slug: String = "",
+    val name: String = "",
+    val description: String? = null,
+    @Json(name = "icon_url") val iconUrl: String? = null,
+    @Json(name = "banner_url") val bannerUrl: String? = null,
+    val category: String = "Général",
+    @Json(name = "creator_id") val creatorId: String? = null,
+    @Json(name = "is_private") val isPrivate: Boolean = false,
+    @Json(name = "members_count") val membersCount: Int = 1,
+    @Json(name = "posts_count") val postsCount: Int = 0,
+    @Json(name = "created_at") val createdAt: String = "",
+    @Json(name = "is_member") val isMember: Boolean = true,
+    @Json(name = "my_role") val myRole: String? = "admin"
 )
 
 data class Channel(
+    val id: String = "",
+    @Json(name = "community_id") val communityId: String = "",
+    val slug: String = "",
+    val name: String = "",
+    val description: String? = null,
+    @Json(name = "is_default") val isDefault: Boolean = false,
+    @Json(name = "created_at") val createdAt: String = ""
+)
+
+data class Story(
     val id: String,
-    @Json(name = "community_id") val communityId: String,
-    val slug: String,
-    val name: String,
-    val description: String?,
-    @Json(name = "is_default") val isDefault: Boolean,
-    @Json(name = "created_at") val createdAt: String
+    @Json(name = "media_url") val mediaUrl: String,
+    @Json(name = "media_type") val mediaType: String = "image", // "image", "video", "audio"
+    val effect: String? = null,
+    @Json(name = "created_at") val createdAt: String = "",
+    val user: StoryUser,
+    val isViewed: Boolean = false
+)
+
+data class StoryUser(
+    val id: String,
+    val username: String,
+    @Json(name = "avatar_url") val avatarUrl: String? = null,
+    @Json(name = "is_verified") val isVerified: Boolean = false
 )
 
 data class Tag(val name: String, val usesCount: Int)

@@ -1,5 +1,9 @@
 package com.example.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,12 +17,14 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -76,28 +82,39 @@ fun ActfileCard(
     val coroutineScope = rememberCoroutineScope()
     val relativeTime = remember(actfile.createdAt) { getRelativeTimeString(actfile.createdAt) }
     
+    // Animated like scale
+    val likeScale by animateFloatAsState(
+        targetValue = if (actfile.isLikedByMe) 1.15f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "like_scale"
+    )
+    val likeColor by animateColorAsState(
+        targetValue = if (actfile.isLikedByMe) Color(0xFFFF2D55) else MaterialTheme.colorScheme.onSurfaceVariant,
+        label = "like_color"
+    )
+
     // Automatically register views
     LaunchedEffect(actfile.id) {
         onView(actfile.id)
     }
 
     val isCommunityPost = !actfile.communityId.isNullOrBlank() || !actfile.channelSlug.isNullOrBlank()
-    val avatarSize = if (isDetailView) 56.dp else 40.dp
+    val avatarSize = if (isDetailView) 52.dp else 42.dp
     val miniAvatarSize = 20.dp
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("actfile_card_${actfile.id}"),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp, pressedElevation = 3.dp)
     ) {
         Column(
             modifier = Modifier
@@ -111,12 +128,12 @@ fun ActfileCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (!isCommunityPost) {
-                    // CAS 1 : Publication standard (community_id == null / blank)
-                    // Author Avatar
+                    // Standard Author Avatar
                     Box(
                         modifier = Modifier
                             .size(avatarSize)
                             .clip(CircleShape)
+                            .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), CircleShape)
                             .background(MaterialTheme.colorScheme.primaryContainer)
                             .clickable { onUserClick(actfile.userId) },
                         contentAlignment = Alignment.Center
@@ -132,8 +149,8 @@ fun ActfileCard(
                             Text(
                                 text = actfile.username.firstOrNull()?.toString()?.uppercase() ?: "?",
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Bold
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold
                             )
                         }
                     }
@@ -153,7 +170,7 @@ fun ActfileCard(
                             Text(
                                 text = actfile.username,
                                 fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 modifier = Modifier.weight(1f, fill = false)
@@ -167,15 +184,14 @@ fun ActfileCard(
                         }
                         
                         Text(
-                            text = relativeTime,
+                            text = "@${actfile.username} • $relativeTime",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
 
                 } else {
-                    // CAS 2 : Publication communautaire (community_id != null / channelSlug is present)
-                    // Community Icon / Avatar (using category default icon as fallback)
+                    // CAS 2 : Publication communautaire
                     val commIconUrl = remember(actfile.category) {
                         getCategoryDefaultIcon(actfile.category ?: "general")
                     }
@@ -183,7 +199,8 @@ fun ActfileCard(
                     Box(
                         modifier = Modifier
                             .size(avatarSize)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.secondaryContainer)
                             .clickable { onCategoryClick?.invoke(actfile.channelSlug ?: "") },
                         contentAlignment = Alignment.Center
@@ -210,7 +227,7 @@ fun ActfileCard(
                             Text(
                                 text = "c/${actfile.channelSlug ?: "communaute"}",
                                 fontWeight = FontWeight.ExtraBold,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.clickable { onCategoryClick?.invoke(actfile.channelSlug ?: "") }
                             )
@@ -218,16 +235,16 @@ fun ActfileCard(
                             if (!actfile.channelName.isNullOrBlank()) {
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
-                                    modifier = Modifier.padding(vertical = 2.dp)
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(vertical = 1.dp)
                                 ) {
                                     Text(
                                         text = "#${actfile.channelName}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
                             }
@@ -272,7 +289,7 @@ fun ActfileCard(
                             Text(
                                 text = actfile.username,
                                 style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
 
@@ -295,23 +312,30 @@ fun ActfileCard(
                     }
                 }
 
-                // View count
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(end = if (onDelete != null) 8.dp else 0.dp)
+                // View count pill
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    modifier = Modifier.padding(end = if (onDelete != null) 4.dp else 0.dp)
                 ) {
-                    Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.Info,
-                        contentDescription = "Vues",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${com.example.utils.FormatUtils.formatCount(actfile.viewsCount)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Visibility,
+                            contentDescription = "Vues",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${com.example.utils.FormatUtils.formatCount(actfile.viewsCount)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
                 }
 
                 // Delete button for post owner
@@ -359,7 +383,7 @@ fun ActfileCard(
             }
 
             if (tagsList.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
                 androidx.compose.foundation.layout.FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -375,7 +399,7 @@ fun ActfileCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Horizontal bottom action bar & Category badge aligned to the right
             Row(
@@ -386,63 +410,76 @@ fun ActfileCard(
                 // Interactive Buttons
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Like Button
-                    Row(
+                    // Like Button with responsive glow
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (actfile.isLikedByMe) Color(0xFFFF2D55).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable { onLike(actfile.id) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (actfile.isLikedByMe) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                            contentDescription = if (actfile.isLikedByMe) "Ne plus aimer" else "Aimer",
-                            tint = if (actfile.isLikedByMe) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "${com.example.utils.FormatUtils.formatCount(actfile.likesCount)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (actfile.isLikedByMe) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            modifier = Modifier
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .scale(likeScale),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (actfile.isLikedByMe) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                contentDescription = if (actfile.isLikedByMe) "Ne plus aimer" else "Aimer",
+                                tint = likeColor,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "${com.example.utils.FormatUtils.formatCount(actfile.likesCount)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = likeColor
+                            )
+                        }
                     }
 
                     // Comment Button
-                    Row(
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable { onComment(actfile.id) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Forum,
-                            contentDescription = "Commenter",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "${com.example.utils.FormatUtils.formatCount(actfile.commentsCount)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Forum,
+                                contentDescription = "Commenter",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "${com.example.utils.FormatUtils.formatCount(actfile.commentsCount)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     // Share Button
-                    Row(
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable {
                                 if (onShare != null) {
                                     onShare(actfile.id)
                                 } else {
-                                    // Trigger default Share Sheet
                                     val sendIntent = android.content.Intent().apply {
                                         action = android.content.Intent.ACTION_SEND
                                         putExtra(
@@ -456,28 +493,26 @@ fun ActfileCard(
                                     context.startActivity(shareIntent)
                                 }
                             }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Share,
-                            contentDescription = "Partager",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Partager",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Share,
+                                contentDescription = "Partager",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
                     }
 
                     // Translate Button
-                    Row(
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (!showOriginal) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable {
                                 if (showOriginal) {
                                     if (translatedContent == null) {
@@ -499,18 +534,21 @@ fun ActfileCard(
                                     showOriginal = true
                                 }
                             }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (isTranslating) {
-                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
-                        } else {
-                            Icon(
-                                imageVector = Icons.Outlined.Translate,
-                                contentDescription = "Traduire",
-                                tint = if (!showOriginal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
+                        Box(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isTranslating) {
+                                CircularProgressIndicator(modifier = Modifier.size(15.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Outlined.Translate,
+                                    contentDescription = "Traduire",
+                                    tint = if (!showOriginal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -519,7 +557,7 @@ fun ActfileCard(
                 val catInfo = com.example.ui.components.getCategoryById(actfile.category)
                 if (catInfo != null) {
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(10.dp),
                         color = catInfo.color.copy(alpha = 0.12f),
                         border = androidx.compose.foundation.BorderStroke(
                             width = 1.dp,
@@ -543,3 +581,4 @@ fun ActfileCard(
         }
     }
 }
+

@@ -26,6 +26,8 @@ import com.example.data.Community
 import com.example.data.getCategoryDefaultBanner
 import com.example.data.getCategoryDefaultIcon
 
+import com.example.utils.FormatUtils
+
 @Composable
 fun CommunityDashboardHeader(
     community: Community,
@@ -178,7 +180,7 @@ fun CommunityDashboardHeader(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "${community.membersCount} Membres",
+                        text = "${FormatUtils.formatCount(community.membersCount)} Membres",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
@@ -193,7 +195,7 @@ fun CommunityDashboardHeader(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "${community.postsCount} Discussions",
+                        text = "${FormatUtils.formatCount(community.postsCount)} Discussions",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium

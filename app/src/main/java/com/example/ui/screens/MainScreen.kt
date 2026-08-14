@@ -546,6 +546,7 @@ fun MainScreen(viewModel: IddetViewModel) {
 
                     // Drawer menu list
                     val drawerItems = listOf(
+                        Triple("Radar des Potes 🗺️", "friends_map", Icons.Outlined.Place),
                         Triple("Rechercher", "search", Icons.Outlined.Search),
                         Triple("Discussions", "messages", Icons.Outlined.Message),
                         Triple("Communautés", "communities", Icons.Outlined.Group),
@@ -687,6 +688,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                         onOpenDrawer = { scope.launch { drawerState.open() } }
                     ) 
                 }
+                composable("friends_map") { FriendsMapScreen(viewModel, navController) }
                 composable("search") { SearchScreen(viewModel, navController) }
                 composable("messages") { MessagesScreen(viewModel, navController) }
                 composable("profile") { ProfileScreen(viewModel, navController) }

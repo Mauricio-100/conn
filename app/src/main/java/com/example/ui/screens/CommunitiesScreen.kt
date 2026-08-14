@@ -32,6 +32,7 @@ import com.example.data.Community
 import com.example.data.getCategoryDefaultIcon
 import com.example.data.getCategoryDefaultBanner
 import com.example.ui.IddetViewModel
+import com.example.utils.FormatUtils
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -47,6 +48,10 @@ fun CommunitiesScreen(
     
     // Refresh trigger state
     var refreshTrigger by remember { mutableStateOf(0) }
+    
+    val myCommunities by produceState<List<Community>>(initialValue = emptyList(), refreshTrigger) {
+        viewModel.getMyCommunitiesFlow().collect { value = it }
+    }
     
     val communities by produceState<List<Community>>(initialValue = emptyList(), searchQuery, selectedCategory, selectedSort, refreshTrigger) {
         viewModel.searchCommunitiesFlow(
@@ -265,6 +270,72 @@ fun CommunitiesScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    if (myCommunities.isNotEmpty() && searchQuery.isBlank() && selectedCategory == null) {
+                        item {
+                            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                                Text(
+                                    text = "MES COMMUNAUTÉS (${myCommunities.size})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(myCommunities, key = { "my_" + it.id }) { myCom ->
+                                        Card(
+                                            onClick = { navController.navigate("community/${myCom.slug}") },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                            ),
+                                            modifier = Modifier.testTag("my_community_chip_${myCom.slug}")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(28.dp)
+                                                        .clip(CircleShape)
+                                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    val iconModel = if (!myCom.iconUrl.isNullOrBlank()) com.example.utils.UrlHelper.fixCloudinaryUrl(myCom.iconUrl) else getCategoryDefaultIcon(myCom.category)
+                                                    AsyncImage(
+                                                        model = iconModel,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        contentScale = ContentScale.Crop
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Column {
+                                                    Text(
+                                                        text = myCom.name,
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = "c/${myCom.slug}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            }
+                        }
+                    }
+
                     items(communities, key = { it.id }) { community ->
                         CommunityCardItem(
                             community = community,
@@ -415,7 +486,7 @@ fun CommunityCardItem(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "${community.membersCount}",
+                            text = FormatUtils.formatCount(community.membersCount),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -431,7 +502,7 @@ fun CommunityCardItem(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "${community.postsCount}",
+                            text = FormatUtils.formatCount(community.postsCount),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -449,6 +520,21 @@ fun CommunityCardItem(
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
+                    }
+                    
+                    if (community.isMember && !community.myRole.isNullOrBlank()) {
+                        Surface(
+                            color = if (community.myRole == "admin") MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = if (community.myRole == "admin") "Admin" else if (community.myRole == "moderator") "Modo" else "Membre",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                color = if (community.myRole == "admin") MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
                     }
                 }
             }
@@ -487,11 +573,12 @@ fun CreateCommunityDialog(
     var description by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(categories.firstOrNull() ?: "Autres") }
     var isPrivate by remember { mutableStateOf(false) }
+    var isSubmitting by remember { mutableStateOf(false) }
     
     var categoryExpanded by remember { mutableStateOf(false) }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
@@ -516,7 +603,7 @@ fun CreateCommunityDialog(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 
-                Divider(color = MaterialTheme.colorScheme.outlineVariant)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                 // Community Name
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -656,6 +743,7 @@ fun CreateCommunityDialog(
                 ) {
                     TextButton(
                         onClick = onDismiss,
+                        enabled = !isSubmitting,
                         modifier = Modifier.testTag("create_community_cancel")
                     ) {
                         Text("Annuler")
@@ -663,15 +751,26 @@ fun CreateCommunityDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            if (name.isNotBlank()) {
+                            if (name.isNotBlank() && !isSubmitting) {
+                                isSubmitting = true
                                 onCreate(name, selectedCategory, description, isPrivate)
                             }
                         },
-                        enabled = name.isNotBlank(),
+                        enabled = name.isNotBlank() && !isSubmitting,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.testTag("create_community_confirm")
                     ) {
-                        Text("Créer la communauté")
+                        if (isSubmitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Création...")
+                        } else {
+                            Text("Créer la communauté")
+                        }
                     }
                 }
             }
