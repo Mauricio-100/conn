@@ -60,7 +60,11 @@ import androidx.compose.material.icons.filled.AutoAwesome
 
 import com.example.ui.components.PersistentSearchBar
 import com.example.ui.components.TrendingTopicsSection
+import com.example.ui.components.StoriesBar
+import com.example.ui.components.StoryViewerDialog
+import com.example.ui.components.StoryCreatorDialog
 import com.example.data.TrendingCategory
+import com.example.data.Story
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,12 +80,23 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
     val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsStateWithLifecycle()
     val allCategories by viewModel.allCategories.collectAsStateWithLifecycle()
 
+    val stories by viewModel.stories.collectAsStateWithLifecycle()
+    val sortedStories = remember(stories) { stories.sortedBy { it.user.id } }
+    val groupedStories = remember(sortedStories) {
+        sortedStories.groupBy { it.user.id }.values.mapNotNull { it.firstOrNull() }
+    }
+    
+    var showStoryViewer by remember { mutableStateOf(false) }
+    var selectedStory by remember { mutableStateOf<Story?>(null) }
+    var showStoryCreator by remember { mutableStateOf(false) }
+
     val trendingTopics by viewModel.trendingTopics.collectAsStateWithLifecycle()
     val isTrendingLoading by viewModel.isTrendingLoading.collectAsStateWithLifecycle()
     val selectedTrendingCategory by viewModel.selectedTrendingCategory.collectAsStateWithLifecycle()
     
     LaunchedEffect(Unit) {
         viewModel.loadCategories()
+        viewModel.loadStories()
     }
 
     var discoverySeed by remember { mutableStateOf((1..100000).random()) }
@@ -109,8 +124,8 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
             return@remember searchActfilesResult
         }
         
-        val filteredActfiles = actfiles.filter { it.channelId.isNullOrBlank() }
-        val filteredFollowed = followedActfiles.filter { it.channelId.isNullOrBlank() }
+        val filteredActfiles = actfiles
+        val filteredFollowed = followedActfiles
         
         val baseList = when (feedTab) {
             0 -> {
@@ -197,6 +212,21 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Section Stories (Statuts éphémères Markdown / Multimédia)
+                item(key = "stories_section_bar") {
+                    StoriesBar(
+                        viewModel = viewModel,
+                        stories = groupedStories,
+                        onStoryClick = { story ->
+                            selectedStory = story
+                            showStoryViewer = true
+                        },
+                        onCreateClick = {
+                            showStoryCreator = true
+                        }
+                    )
+                }
+
                 // Section Sujets Tendance (Tech & IA via Recherche Google pour la communauté Markdown)
                 if (searchQuery.isBlank()) {
                     item(key = "trending_topics_section") {
@@ -271,7 +301,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                 }
 
                 itemsIndexed(activeActfiles, key = { _, actfile -> actfile.id }) { index, actfile ->
-                    val isMine = actfile.userId == currentUser?.id
+                    val isMine = actfile.userId == currentUser?.id || (currentUser?.username != null && actfile.username.equals(currentUser?.username, ignoreCase = true))
                     val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
                     val aiState by viewModel.aiState.collectAsStateWithLifecycle()
                     Column {
@@ -367,6 +397,27 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                     viewModel.publishActfile(content, tags, category)
                     viewModel.setShowComposer(false)
                 }
+            )
+        }
+
+        if (showStoryViewer && selectedStory != null) {
+            val userStories = sortedStories.filter { it.user.id == selectedStory?.user?.id }
+            val startIndex = userStories.indexOfFirst { it.id == selectedStory?.id }.coerceAtLeast(0)
+            StoryViewerDialog(
+                stories = userStories,
+                initialIndex = startIndex,
+                viewModel = viewModel,
+                onDismiss = {
+                    showStoryViewer = false
+                    selectedStory = null
+                }
+            )
+        }
+
+        if (showStoryCreator) {
+            StoryCreatorDialog(
+                viewModel = viewModel,
+                onDismiss = { showStoryCreator = false }
             )
         }
     }

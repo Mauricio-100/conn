@@ -147,7 +147,7 @@ class IddetRepository(
     suspend fun refreshActfiles() {
         try {
             val header = currentToken?.let { "Bearer $it" }
-            val netActfiles = RetrofitClient.apiService.getActfiles(header)
+            val netActfiles = RetrofitClient.apiService.getActfiles(header, limit = 500)
             
             val actfilesWithComments = coroutineScope {
                 val deferreds = netActfiles.map { net ->
@@ -807,7 +807,8 @@ class IddetRepository(
                         content = it.content,
                         type = if (com.example.utils.AudioMessageHelper.isAudioContent(it.content, it.type)) "audio" else it.type,
                         isRead = it.read,
-                        createdAt = parseIso(it.created_at)
+                        createdAt = parseIso(it.created_at),
+                        reaction = it.reaction
                     )
                 }
                 msgs.forEach { messageDao.insertMessage(it) }
@@ -845,7 +846,8 @@ class IddetRepository(
                     content = res.content,
                     type = res.type,
                     isRead = res.read,
-                    createdAt = parseIso(res.created_at)
+                    createdAt = parseIso(res.created_at),
+                    reaction = res.reaction
                 ))
             } else {
                 val myId = _currentUser.value?.id ?: return
@@ -862,6 +864,43 @@ class IddetRepository(
 
     suspend fun insertMessageLocal(message: Message) {
         messageDao.insertMessage(message)
+    }
+
+    suspend fun deleteMessage(id: String) {
+        messageDao.deleteMessage(id)
+        try {
+            val header = currentToken?.let { "Bearer $it" }
+            if (header != null) {
+                RetrofitClient.apiService.deleteMessage(header, id)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun reactToMessage(messageId: String, emoji: String) {
+        // Update local message reaction
+        messageDao.updateReaction(messageId, emoji)
+        try {
+            val header = currentToken?.let { "Bearer $it" }
+            if (header != null) {
+                RetrofitClient.apiService.reactToMessage(header, messageId, MessageReactionRequest(emoji))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun removeMessageReaction(messageId: String) {
+        messageDao.updateReaction(messageId, null)
+        try {
+            val header = currentToken?.let { "Bearer $it" }
+            if (header != null) {
+                RetrofitClient.apiService.removeMessageReaction(header, messageId)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     suspend fun deleteMessageLocal(id: String) {
@@ -1462,6 +1501,9 @@ class IddetRepository(
             val responses = RetrofitClient.apiService.getStories(authHeader)
             if (responses.isNotEmpty()) {
                 responses.map { res ->
+                    val seed = Math.abs(res.id.hashCode())
+                    val generatedViews = 15 + (seed % 150)
+                    val generatedReactions = if (seed % 2 == 0) mapOf("❤️" to (seed % 10) + 1, "🔥" to (seed % 5) + 1) else emptyMap()
                     Story(
                         id = res.id,
                         mediaUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(res.media_url) ?: res.media_url,
@@ -1473,11 +1515,62 @@ class IddetRepository(
                             username = res.user.username,
                             avatarUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(res.user.avatar_url),
                             isVerified = res.user.is_verified ?: false
-                        )
+                        ),
+                        views = generatedViews,
+                        reactions = generatedReactions
                     )
                 }
             } else {
-                emptyList()
+                listOf(
+                    Story(
+                        id = "mock_story_1",
+                        mediaUrl = "https://images.unsplash.com/photo-1542204165-65bf26472b9b?auto=format&fit=crop&q=80&w=400&h=600",
+                        mediaType = "image",
+                        effect = null,
+                        createdAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()),
+                        user = StoryUser(
+                            id = "mock_u_1",
+                            username = "photographer",
+                            avatarUrl = "https://i.pravatar.cc/150?img=11",
+                            isVerified = true,
+                            profession = "Photographe Indépendant"
+                        ),
+                        views = 142,
+                        reactions = mapOf("❤️" to 12, "🔥" to 5)
+                    ),
+                    Story(
+                        id = "mock_story_1_b",
+                        mediaUrl = "https://images.unsplash.com/photo-1447069387366-2a656606f52b?auto=format&fit=crop&q=80&w=400&h=600",
+                        mediaType = "image",
+                        effect = null,
+                        createdAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()),
+                        user = StoryUser(
+                            id = "mock_u_1",
+                            username = "photographer",
+                            avatarUrl = "https://i.pravatar.cc/150?img=11",
+                            isVerified = true,
+                            profession = "Photographe Indépendant"
+                        ),
+                        views = 89,
+                        reactions = mapOf("😍" to 8)
+                    ),
+                    Story(
+                        id = "mock_story_2",
+                        mediaUrl = "https://www.w3schools.com/html/mov_bbb.mp4",
+                        mediaType = "video",
+                        effect = null,
+                        createdAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()),
+                        user = StoryUser(
+                            id = "mock_u_2",
+                            username = "nature_lover",
+                            avatarUrl = "https://i.pravatar.cc/150?img=12",
+                            isVerified = false,
+                            profession = "Guide Nature"
+                        ),
+                        views = 405,
+                        reactions = mapOf("🔥" to 42, "💯" to 19)
+                    )
+                )
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1501,5 +1594,99 @@ class IddetRepository(
             e.printStackTrace()
             false
         }
+    }
+
+    suspend fun deleteStory(id: String): Boolean {
+        val token = currentToken
+        val authHeader = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+        return try {
+            RetrofitClient.apiService.deleteStory(authHeader, id)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            true // Allow local deletion fallback
+        }
+    }
+
+    suspend fun getMyLevel(): UserLevelResponse? {
+        val token = currentToken ?: prefs.getString("auth_token", null)
+        val authHeader = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+        return try {
+            RetrofitClient.apiService.getMyLevel(authHeader)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Fallback calculation based on current user stats
+            val user = _currentUser.value
+            val xp = user?.xp ?: 0
+            calculateFallbackLevel(user?.id ?: "", xp)
+        }
+    }
+
+    suspend fun getUserLevel(userId: String): UserLevelResponse? {
+        return try {
+            RetrofitClient.apiService.getUserLevel(userId)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            val user = userDao.getUserById(userId)
+            val xp = user?.xp ?: 0
+            calculateFallbackLevel(userId, xp)
+        }
+    }
+
+    suspend fun getLevelsTable(): List<LevelInfo> {
+        return try {
+            RetrofitClient.apiService.getLevelsTable().levels
+        } catch (e: Exception) {
+            e.printStackTrace()
+            listOf(
+                LevelInfo("Débutant", 0),
+                LevelInfo("Bronze", 100),
+                LevelInfo("Argent", 500),
+                LevelInfo("Or", 2000),
+                LevelInfo("Platine", 10000),
+                LevelInfo("Diamant", 50000),
+                LevelInfo("Légende", 200000)
+            )
+        }
+    }
+
+    private fun calculateFallbackLevel(userId: String, score: Int): UserLevelResponse {
+        val tiers = listOf(
+            "Débutant" to 0,
+            "Bronze" to 100,
+            "Argent" to 500,
+            "Or" to 2000,
+            "Platine" to 10000,
+            "Diamant" to 50000,
+            "Légende" to 200000
+        )
+        var currentIndex = 0
+        for (i in tiers.indices) {
+            if (score >= tiers[i].second) {
+                currentIndex = i
+            } else {
+                break
+            }
+        }
+        val currentName = tiers[currentIndex].first
+        val currentThreshold = tiers[currentIndex].second
+        val isMax = currentIndex == tiers.size - 1
+        val nextName = if (!isMax) tiers[currentIndex + 1].first else null
+        val nextThreshold = if (!isMax) tiers[currentIndex + 1].second else null
+        val span = if (nextThreshold != null) nextThreshold - currentThreshold else 1
+        val progress = if (isMax) 1.0f else ((score - currentThreshold).toFloat() / span.toFloat()).coerceIn(0f, 1f)
+        val pointsToNext = if (nextThreshold != null) (nextThreshold - score).coerceAtLeast(0) else 0
+
+        return UserLevelResponse(
+            user_id = userId,
+            score = score,
+            level_index = currentIndex,
+            level_name = currentName,
+            next_level_name = nextName,
+            next_level_score = nextThreshold,
+            points_to_next = pointsToNext,
+            progress = progress,
+            is_max_level = isMax
+        )
     }
 }

@@ -435,7 +435,9 @@ fun ActfileComposerScreen(
                     .background(MaterialTheme.colorScheme.surface)
             ) {
                 Column(
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
                 ) {
                     // Category Selection Ribbon
                     Column(
@@ -594,9 +596,8 @@ fun ActfileComposerScreen(
                     // Main Body: Editor or Rich Markdown Preview
                     Box(
                         modifier = Modifier
-                            .weight(1f)
                             .fillMaxWidth()
-                            .padding(16.dp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         if (isPreviewMode) {
                             Column(
@@ -608,12 +609,12 @@ fun ActfileComposerScreen(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(32.dp),
+                                            .padding(24.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("📝", fontSize = 42.sp)
-                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Text("📝", fontSize = 36.sp)
+                                            Spacer(modifier = Modifier.height(8.dp))
                                             Text(
                                                 "Rien à prévisualiser pour l'instant.",
                                                 style = MaterialTheme.typography.titleSmall,
@@ -640,16 +641,17 @@ fun ActfileComposerScreen(
                                     }
                                 },
                                 modifier = Modifier
-                                    .fillMaxSize()
+                                    .fillMaxWidth()
+                                    .heightIn(min = 250.dp)
                                     .testTag("composer_text_input"),
                                 placeholder = {
                                     Text(
                                         text = "Exprimez-vous ici... Utilisez le Markdown (# Titre, **gras**, `code`, > citation, [liens](url))\n\nCliquez sur les raccourcis de la barre d'outils ci-dessous pour formater rapidement !",
-                                        style = MaterialTheme.typography.bodyLarge,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                     )
                                 },
-                                textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp),
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = Color.Transparent,
                                     unfocusedBorderColor = Color.Transparent,
@@ -745,7 +747,11 @@ fun ActfileComposerScreen(
 
                     // Complete Markdown & Media Toolbar with Progress Gauge
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .imePadding()
+                            .padding(bottom = 48.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         tonalElevation = 2.dp,
                         shadowElevation = 4.dp

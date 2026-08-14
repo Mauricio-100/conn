@@ -106,7 +106,7 @@ fun ActfileCard(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("actfile_card_${actfile.id}"),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -119,7 +119,7 @@ fun ActfileCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(12.dp)
         ) {
             
             // Header Section

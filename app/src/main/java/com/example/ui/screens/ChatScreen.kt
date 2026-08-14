@@ -2,7 +2,9 @@ package com.example.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +23,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,7 +34,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -191,6 +198,16 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
                     val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
                     navController.navigate("browser/$encodedUrl")
                 },
+                onReact = { msgId, emoji ->
+                    if (emoji != null) {
+                        viewModel.reactToMessage(msgId, emoji)
+                    } else {
+                        viewModel.removeMessageReaction(msgId)
+                    }
+                },
+                onDeleteMessage = { msgId ->
+                    viewModel.deleteMessage(msgId)
+                },
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -245,6 +262,8 @@ fun ScrollableConversationView(
     currentUserId: String,
     listState: LazyListState,
     onLinkClick: (String) -> Unit,
+    onReact: (String, String?) -> Unit,
+    onDeleteMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isLight = MaterialTheme.colorScheme.background.red > 0.5f
@@ -321,7 +340,9 @@ fun ScrollableConversationView(
                 MessageBubbleItem(
                     message = msg,
                     isMine = isMine,
-                    onLinkClick = onLinkClick
+                    onLinkClick = onLinkClick,
+                    onReact = { emoji -> onReact(msg.id, emoji) },
+                    onDelete = { onDeleteMessage(msg.id) }
                 )
             }
         }
@@ -329,17 +350,27 @@ fun ScrollableConversationView(
 }
 
 /**
- * Individual message bubble supporting text, markdown, links, audio voice notes, and delivery status.
+ * Individual message bubble supporting text, markdown, links, audio voice notes, quick reactions, and deletion.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubbleItem(
     message: Message,
     isMine: Boolean,
-    onLinkClick: (String) -> Unit
+    onLinkClick: (String) -> Unit,
+    onReact: (String?) -> Unit,
+    onDelete: () -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val isAudio = com.example.utils.AudioMessageHelper.isAudioContent(message.content, message.type) || 
                   message.type == "audio_sending" || 
                   message.type == "audio_error"
+
+    var showActionDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+    val quickEmojis = listOf("❤️", "👍", "🔥", "😂", "😮", "😢", "👏", "💯")
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -359,6 +390,23 @@ fun MessageBubbleItem(
                 shadowElevation = 1.dp,
                 modifier = Modifier
                     .widthIn(max = 290.dp)
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 16.dp,
+                            topEnd = 16.dp,
+                            bottomStart = if (isMine) 16.dp else 2.dp,
+                            bottomEnd = if (isMine) 2.dp else 16.dp
+                        )
+                    )
+                    .combinedClickable(
+                        onClick = {
+                            // Single tap opens quick reaction options if not audio
+                            showActionDialog = true
+                        },
+                        onLongClick = {
+                            showActionDialog = true
+                        }
+                    )
                     .testTag("message_bubble_${message.id}")
             ) {
                 Column(modifier = Modifier.padding(2.dp)) {
@@ -441,7 +489,126 @@ fun MessageBubbleItem(
                     }
                 }
             }
+
+            // Attached reaction pill badge
+            if (!message.reaction.isNullOrBlank()) {
+                Surface(
+                    onClick = { showActionDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 2.dp,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .padding(top = 2.dp, start = if (!isMine) 8.dp else 0.dp, end = if (isMine) 8.dp else 0.dp)
+                ) {
+                    Text(
+                        text = message.reaction,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
         }
+    }
+
+    // Reaction and Message Options Modal Dialog
+    if (showActionDialog) {
+        AlertDialog(
+            onDismissRequest = { showActionDialog = false },
+            title = {
+                Text(
+                    text = "Réagir au message",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Quick Emoji Reaction Bar
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        items(quickEmojis.size) { idx ->
+                            val emoji = quickEmojis[idx]
+                            Surface(
+                                onClick = {
+                                    if (message.reaction == emoji) {
+                                        onReact(null)
+                                    } else {
+                                        onReact(emoji)
+                                    }
+                                    showActionDialog = false
+                                },
+                                shape = CircleShape,
+                                color = if (message.reaction == emoji) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(text = emoji, fontSize = 18.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (!isAudio) {
+                        ListItem(
+                            headlineContent = { Text("Copier le texte") },
+                            leadingContent = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
+                            modifier = Modifier.clickable {
+                                clipboardManager.setText(AnnotatedString(message.content))
+                                showActionDialog = false
+                            }
+                        )
+                    }
+
+                    if (isMine) {
+                        ListItem(
+                            headlineContent = { Text("Supprimer le message", color = MaterialTheme.colorScheme.error) },
+                            leadingContent = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                            modifier = Modifier.clickable {
+                                showActionDialog = false
+                                showDeleteConfirmDialog = true
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showActionDialog = false }) {
+                    Text("Fermer")
+                }
+            }
+        )
+    }
+
+    // Delete confirmation dialog
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Supprimer le message ?") },
+            text = { Text("Ce message sera définitivement supprimé.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDelete()
+                        showDeleteConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Supprimer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Annuler")
+                }
+            }
+        )
     }
 }
 

@@ -59,6 +59,17 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         _composerInitialContent.value = content
     }
 
+    private val _realtimeStoryViews = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val realtimeStoryViews: StateFlow<Map<String, Int>> = _realtimeStoryViews.asStateFlow()
+
+    fun trackStoryView(storyId: String, initialViews: Int) {
+        val currentViews = _realtimeStoryViews.value[storyId] ?: initialViews
+        // Simulate real-time increment on view
+        val increment = (1..3).random()
+        _realtimeStoryViews.value = _realtimeStoryViews.value + (storyId to (currentViews + increment))
+    }
+
+    // Existing selectTrendingCategory
     fun selectTrendingCategory(category: com.example.data.TrendingCategory) {
         _selectedTrendingCategory.value = category
         loadTrendingTopics(category)
@@ -842,5 +853,59 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
                 e.printStackTrace()
             }
         }
+    }
+
+    fun deleteMessage(id: String) {
+        viewModelScope.launch {
+            repository.deleteMessage(id)
+        }
+    }
+
+    fun reactToMessage(messageId: String, emoji: String) {
+        viewModelScope.launch {
+            repository.reactToMessage(messageId, emoji)
+        }
+    }
+
+    fun removeMessageReaction(messageId: String) {
+        viewModelScope.launch {
+            repository.removeMessageReaction(messageId)
+        }
+    }
+
+    fun deleteStory(id: String, onComplete: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val success = repository.deleteStory(id)
+            if (success) {
+                _stories.value = _stories.value.filter { it.id != id }
+            }
+            onComplete(success)
+        }
+    }
+
+    // ── NIVEAUX & RANGS ──────────────────────────────────────────
+    private val _myLevel = MutableStateFlow<com.example.data.UserLevelResponse?>(null)
+    val myLevel: StateFlow<com.example.data.UserLevelResponse?> = _myLevel.asStateFlow()
+
+    private val _levelsTable = MutableStateFlow<List<com.example.data.LevelInfo>>(emptyList())
+    val levelsTable: StateFlow<List<com.example.data.LevelInfo>> = _levelsTable.asStateFlow()
+
+    fun refreshMyLevel() {
+        viewModelScope.launch {
+            val res = repository.getMyLevel()
+            if (res != null) {
+                _myLevel.value = res
+            }
+        }
+    }
+
+    fun loadLevelsTable() {
+        viewModelScope.launch {
+            _levelsTable.value = repository.getLevelsTable()
+        }
+    }
+
+    fun getUserLevelFlow(userId: String): Flow<com.example.data.UserLevelResponse?> = flow {
+        emit(repository.getUserLevel(userId))
     }
 }

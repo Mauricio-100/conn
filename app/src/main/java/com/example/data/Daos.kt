@@ -131,6 +131,9 @@ interface MessageDao {
     @Query("DELETE FROM messages WHERE id = :id")
     suspend fun deleteMessage(id: String)
 
+    @Query("UPDATE messages SET reaction = :reaction WHERE id = :id")
+    suspend fun updateReaction(id: String, reaction: String?)
+
     @Query("SELECT * FROM messages WHERE (senderId = :user1 AND receiverId = :user2) OR (senderId = :user2 AND receiverId = :user1) ORDER BY createdAt ASC")
     fun getMessagesBetween(user1: String, user2: String): Flow<List<Message>>
 }

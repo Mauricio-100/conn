@@ -101,8 +101,9 @@ data class MessageNetwork(
     val receiver_id: String,
     val read: Boolean,
     val created_at: String,
-    val sender_username: String?,
-    val sender_avatar: String?
+    val sender_username: String? = null,
+    val sender_avatar: String? = null,
+    val reaction: String? = null
 )
 
 data class SendMessageRequest(
@@ -164,6 +165,31 @@ data class UpdateProfileRequest(
     val email: String? = null,
     val birth_date: String? = null,
     val zodiac_sign: String? = null
+)
+
+data class MessageReactionRequest(
+    val emoji: String
+)
+
+data class UserLevelResponse(
+    val user_id: String? = null,
+    val score: Int = 0,
+    val level_index: Int = 0,
+    val level_name: String = "Débutant",
+    val next_level_name: String? = "Bronze",
+    val next_level_score: Int? = 100,
+    val points_to_next: Int = 100,
+    val progress: Float = 0f,
+    val is_max_level: Boolean = false
+)
+
+data class LevelInfo(
+    val name: String,
+    val min_score: Int
+)
+
+data class LevelsTableResponse(
+    val levels: List<LevelInfo>
 )
 
 data class StoryResponse(
@@ -306,6 +332,25 @@ interface ApiService {
         @Body request: SendMessageRequest
     ): MessageNetwork
 
+    @retrofit2.http.DELETE("/api/messages/{id}")
+    suspend fun deleteMessage(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String
+    ): Map<String, Any>
+
+    @POST("/api/messages/{id}/react")
+    suspend fun reactToMessage(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String,
+        @Body body: MessageReactionRequest
+    ): Map<String, Any>
+
+    @retrofit2.http.DELETE("/api/messages/{id}/react")
+    suspend fun removeMessageReaction(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String
+    ): Map<String, Any>
+
     @Multipart
     @POST("/api/upload")
     suspend fun uploadAudio(
@@ -412,6 +457,25 @@ interface ApiService {
         @Part file: okhttp3.MultipartBody.Part,
         @Part("effect") effect: okhttp3.RequestBody? = null
     ): CreateStoryResponse
+
+    @retrofit2.http.DELETE("/api/stories/{id}")
+    suspend fun deleteStory(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String
+    ): Map<String, Any>
+
+    @retrofit2.http.GET("/api/users/me/level")
+    suspend fun getMyLevel(
+        @retrofit2.http.Header("Authorization") token: String?
+    ): UserLevelResponse
+
+    @retrofit2.http.GET("/api/users/{user_id}/level")
+    suspend fun getUserLevel(
+        @retrofit2.http.Path("user_id") userId: String
+    ): UserLevelResponse
+
+    @retrofit2.http.GET("/api/levels")
+    suspend fun getLevelsTable(): LevelsTableResponse
 }
 
 object RetrofitClient {

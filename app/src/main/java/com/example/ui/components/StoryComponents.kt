@@ -106,8 +106,8 @@ fun CreateStoryItem(
     Card(
         onClick = onClick,
         modifier = Modifier
-            .width(105.dp)
-            .height(160.dp)
+            .width(70.dp)
+            .height(105.dp)
             .testTag("create_story_card"),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
@@ -203,8 +203,8 @@ fun StoryCardItem(
     Card(
         onClick = onClick,
         modifier = Modifier
-            .width(105.dp)
-            .height(160.dp)
+            .width(70.dp)
+            .height(105.dp)
             .testTag("story_card_${story.id}"),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -329,10 +329,14 @@ fun StoryViewerDialog(
     val currentStory = stories[currentIndex]
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val currentUser by viewModel.currentUser.collectAsState()
 
     var isPaused by remember { mutableStateOf(false) }
     var replyText by remember { mutableStateOf("") }
     var showReplyInput by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+    val isMyStory = currentUser?.id == currentStory.user.id || currentUser?.username == currentStory.user.username
 
     // Progress timer for current story (5 seconds per story)
     val storyDurationMs = 5000L
@@ -518,6 +522,13 @@ fun StoryViewerDialog(
                                     )
                                 }
                             }
+                            if (!currentStory.user.profession.isNullOrBlank()) {
+                                Text(
+                                    text = currentStory.user.profession!!,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.8f)
+                                )
+                            }
                             if (!currentStory.effect.isNullOrBlank() && currentStory.effect != "none") {
                                 val effect = StoryEffects.find { it.id == currentStory.effect }
                                 Text(
@@ -529,18 +540,44 @@ fun StoryViewerDialog(
                         }
                     }
 
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.testTag("close_story_button")
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Fermer",
-                            tint = Color.White,
-                            modifier = Modifier.size(26.dp)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isMyStory) {
+                            IconButton(
+                                onClick = {
+                                    isPaused = true
+                                    showDeleteConfirmDialog = true
+                                },
+                                modifier = Modifier.testTag("delete_story_button")
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Delete,
+                                    contentDescription = "Supprimer la story",
+                                    tint = Color.White.copy(alpha = 0.9f),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.testTag("close_story_button")
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Fermer",
+                                tint = Color.White,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
                     }
                 }
+            }
+
+            val realtimeViews by viewModel.realtimeStoryViews.collectAsState()
+            val currentViews = realtimeViews[currentStory.id] ?: currentStory.views
+
+            LaunchedEffect(currentStory.id) {
+                viewModel.trackStoryView(currentStory.id, currentStory.views)
             }
 
             // Bottom Gradient & Interactions
@@ -554,9 +591,32 @@ fun StoryViewerDialog(
                         )
                     )
                     .navigationBarsPadding()
-                    .padding(16.dp)
+                    .imePadding()
+                    .padding(bottom = 60.dp, start = 16.dp, end = 16.dp, top = 16.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Views and Reactions Stats
+                    if (currentViews > 0 || currentStory.reactions.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Visibility, contentDescription = null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("$currentViews", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
+                            
+                            if (currentStory.reactions.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(12.dp))
+                                val topReactions = currentStory.reactions.entries.sortedByDescending { it.value }.take(3)
+                                topReactions.forEach { (emoji, count) ->
+                                    Text("$emoji $count", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                            }
+                        }
+                    }
+
                     // Quick Emoji Reactions
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -642,6 +702,41 @@ fun StoryViewerDialog(
                 }
             }
         }
+
+        if (showDeleteConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showDeleteConfirmDialog = false
+                    isPaused = false
+                },
+                title = { Text("Supprimer cette story ?") },
+                text = { Text("Votre story sera définitivement supprimée.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteConfirmDialog = false
+                            viewModel.deleteStory(currentStory.id) { success ->
+                                if (success) {
+                                    Toast.makeText(context, "Story supprimée", Toast.LENGTH_SHORT).show()
+                                }
+                                onDismiss()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Supprimer")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showDeleteConfirmDialog = false
+                        isPaused = false
+                    }) {
+                        Text("Annuler")
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -710,12 +805,12 @@ fun StoryCreatorDialog(
             Card(
                 onClick = {
                     if (!isUploading) {
-                        mediaPickerLauncher.launch("image/*")
+                        mediaPickerLauncher.launch("*/*")
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp)
+                    .height(160.dp)
                     .testTag("story_media_picker_card"),
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(

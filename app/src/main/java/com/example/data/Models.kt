@@ -53,7 +53,8 @@ data class Message(
     val content: String,
     val type: String = "text",
     val isRead: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val reaction: String? = null
 )
 
 @Entity(tableName = "follows")
@@ -147,14 +148,17 @@ data class Story(
     val effect: String? = null,
     @Json(name = "created_at") val createdAt: String = "",
     val user: StoryUser,
-    val isViewed: Boolean = false
+    val isViewed: Boolean = false,
+    val views: Int = 0,
+    val reactions: Map<String, Int> = emptyMap()
 )
 
 data class StoryUser(
     val id: String,
     val username: String,
     @Json(name = "avatar_url") val avatarUrl: String? = null,
-    @Json(name = "is_verified") val isVerified: Boolean = false
+    @Json(name = "is_verified") val isVerified: Boolean = false,
+    val profession: String? = null
 )
 
 data class Tag(val name: String, val usesCount: Int)
