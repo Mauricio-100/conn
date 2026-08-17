@@ -230,11 +230,7 @@ class IddetRepository(
                 )
             }
 
-            // Clear old data to start from zero as requested
-            if (actfilesToInsert.isNotEmpty()) {
-                actfileDao.deleteAllActfiles()
-            }
-
+            // Insert new and updated actfiles without wiping out old cached profile actfiles
             if (usersToInsert.isNotEmpty()) {
                 userDao.insertUsers(usersToInsert)
             }
@@ -394,6 +390,29 @@ class IddetRepository(
         prefs.edit().clear().apply()
     }
 
+    fun normalizeCategory(raw: String?): String {
+        if (raw.isNullOrBlank()) return "Autres"
+        val validCategories = listOf("Fun", "Amour", "Motivation", "Tech", "Sport", "Musique", "Actu", "Business", "Spiritualité", "Autres")
+        if (validCategories.contains(raw)) return raw
+
+        val cleaned = raw.replace("@(", "").replace(")", "").trim()
+        val exactMatch = validCategories.firstOrNull { it.equals(cleaned, ignoreCase = true) }
+        if (exactMatch != null) return exactMatch
+
+        return when {
+            cleaned.contains("fun", ignoreCase = true) || cleaned.contains("humour", ignoreCase = true) -> "Fun"
+            cleaned.contains("amour", ignoreCase = true) || cleaned.contains("love", ignoreCase = true) -> "Amour"
+            cleaned.contains("moti", ignoreCase = true) -> "Motivation"
+            cleaned.contains("tech", ignoreCase = true) || cleaned.contains("cod", ignoreCase = true) || cleaned.contains("dev", ignoreCase = true) -> "Tech"
+            cleaned.contains("sport", ignoreCase = true) -> "Sport"
+            cleaned.contains("musi", ignoreCase = true) || cleaned.contains("sound", ignoreCase = true) || cleaned.contains("song", ignoreCase = true) -> "Musique"
+            cleaned.contains("actu", ignoreCase = true) || cleaned.contains("news", ignoreCase = true) -> "Actu"
+            cleaned.contains("biz", ignoreCase = true) || cleaned.contains("busines", ignoreCase = true) -> "Business"
+            cleaned.contains("spirit", ignoreCase = true) || cleaned.contains("philo", ignoreCase = true) -> "Spiritualité"
+            else -> "Autres"
+        }
+    }
+
     suspend fun publishActfile(
         content: String,
         tags: String = "",
@@ -402,6 +421,7 @@ class IddetRepository(
         channelId: String? = null
     ) {
         val user = _currentUser.value ?: return
+        val validCategory = normalizeCategory(category)
         
         try {
             val header = currentToken?.let { "Bearer $it" }
@@ -410,21 +430,21 @@ class IddetRepository(
                     token = header,
                     request = PublishActfileRequest(
                         content = content,
-                        category = category,
-                        community_id = communityId,
-                        channel_id = channelId
+                        category = validCategory,
+                        community_slug = communityId?.takeIf { it.isNotBlank() },
+                        channel_slug = channelId?.takeIf { it.isNotBlank() }
                     )
                 )
                 actfileDao.insertActfile(
                     Actfile(
                         id = netActfile.id,
-                        userId = netActfile.user_id,
-                        content = netActfile.content,
+                        userId = if (netActfile.user_id.isNotBlank()) netActfile.user_id else user.id,
+                        content = if (netActfile.content.isNotBlank()) netActfile.content else content,
                         tags = tags,
                         likesCount = netActfile.likes_count,
                         viewsCount = netActfile.views_count,
-                        createdAt = parseIso(netActfile.created_at),
-                        category = netActfile.category ?: category,
+                        createdAt = if (netActfile.created_at.isNotBlank()) parseIso(netActfile.created_at) else System.currentTimeMillis(),
+                        category = netActfile.category ?: validCategory,
                         communityId = netActfile.community_id ?: communityId,
                         channelId = netActfile.channel_id ?: channelId,
                         channelSlug = netActfile.channel_slug,
@@ -437,7 +457,7 @@ class IddetRepository(
                         userId = user.id,
                         content = content,
                         tags = tags,
-                        category = category,
+                        category = validCategory,
                         communityId = communityId,
                         channelId = channelId
                     )
@@ -451,7 +471,7 @@ class IddetRepository(
                     userId = user.id,
                     content = content,
                     tags = tags,
-                    category = category,
+                    category = validCategory,
                     communityId = communityId,
                     channelId = channelId
                 )

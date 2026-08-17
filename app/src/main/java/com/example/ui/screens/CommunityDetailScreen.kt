@@ -461,7 +461,7 @@ fun CommunityDetailScreen(
                     viewModel.publishActfile(
                         content = taggedContent,
                         category = category,
-                        communityId = community.id,
+                        communityId = community.slug,
                         channelId = null
                     )
                     refreshTrigger++
@@ -827,8 +827,8 @@ fun ChannelChatRoomDialog(
                                         viewModel.publishActfile(
                                             content = taggedContent,
                                             category = community?.category,
-                                            communityId = community?.id,
-                                            channelId = channel.id
+                                            communityId = community?.slug,
+                                            channelId = channel.slug
                                         )
                                         messageText = ""
                                         refreshCount++

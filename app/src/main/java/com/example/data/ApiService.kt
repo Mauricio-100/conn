@@ -6,6 +6,7 @@ import okhttp3.ResponseBody
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.Json
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
@@ -46,10 +47,10 @@ data class ActfileNetwork(
 )
 
 data class PublishActfileRequest(
-    val content: String,
-    val category: String? = null,
-    val community_id: String? = null,
-    val channel_id: String? = null
+    @field:Json(name = "content") val content: String,
+    @field:Json(name = "category") val category: String = "Autres",
+    @field:Json(name = "community_slug") val community_slug: String? = null,
+    @field:Json(name = "channel_slug") val channel_slug: String? = null
 )
 
 data class UserProfileNetwork(

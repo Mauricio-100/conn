@@ -13,22 +13,67 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+
+/**
+ * Custom Shape creating a spiked / scalloped starburst seal badge ("épines").
+ */
+class StarburstBadgeShape(
+    private val spikes: Int = 12,
+    private val innerRadiusRatio: Float = 0.82f
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density
+    ): Outline {
+        val path = Path()
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+        val outerRadius = minOf(centerX, centerY)
+        val innerRadius = outerRadius * innerRadiusRatio
+        val totalPoints = spikes * 2
+        val angleStep = (2 * PI / totalPoints).toFloat()
+
+        for (i in 0 until totalPoints) {
+            val radius = if (i % 2 == 0) outerRadius else innerRadius
+            val angle = i * angleStep - (PI / 2).toFloat() // Start pointing top
+            val x = centerX + radius * cos(angle)
+            val y = centerY + radius * sin(angle)
+            if (i == 0) {
+                path.moveTo(x, y)
+            } else {
+                path.lineTo(x, y)
+            }
+        }
+        path.close()
+        return Outline.Generic(path)
+    }
+}
 
 // Verification state representing different levels of verification
 enum class VerificationState {
-    OFFICIAL,
-    VERIFIED,
+    OFFICIAL, // Admin / Founder / Official (Badge Vert à épines avec coche blanche)
+    VERIFIED, // Regular Verified User (Badge Bleu à épines avec coche blanche)
     NONE
 }
 
-// Special usernames that get the Niveau 1 White badge (Official)
-private val FOUNDER_USERNAMES = listOf("C.M.O", "Doffranel", "doffranel", "Crislem", "Mauricio-100")
+// Special usernames that get the Official/Admin Green Badge
+private val FOUNDER_USERNAMES = listOf("C.M.O", "Doffranel", "doffranel", "Crislem", "Mauricio-100", "admin")
 
 /**
  * Resolves the verification state based on username and verification flag.
@@ -57,7 +102,15 @@ fun VerificationBadge(
     var showBottomSheet by remember { mutableStateOf(false) }
     val name = userName ?: ""
 
-    // Wrap in a box with a minimum interactive component size of 48.dp for accessibility (minimum touch targets)
+    // Badge Colors:
+    // Official/Admin: Green (0xFF16A34A) with white checkmark and spikes
+    // Verified: Blue (0xFF1DA1F2) with white checkmark and spikes
+    val badgeColor = when (resolvedState) {
+        VerificationState.OFFICIAL -> Color(0xFF16A34A) // Green for Admin/Founder/Official
+        VerificationState.VERIFIED -> Color(0xFF1DA1F2) // Blue for Default Verified
+        VerificationState.NONE -> Color.Transparent
+    }
+
     Box(
         modifier = Modifier
             .minimumInteractiveComponentSize()
@@ -65,43 +118,18 @@ fun VerificationBadge(
             .testTag("verification_badge_click_area_$name"),
         contentAlignment = Alignment.Center
     ) {
-        when (resolvedState) {
-            VerificationState.OFFICIAL -> {
-                // Niveau 1 (Badge Blanc Officiel) : White background, subtle dark contour, dark checkmark
-                Box(
-                    modifier = modifier
-                        .background(Color.White, CircleShape)
-                        .border(1.dp, Color.Black.copy(alpha = 0.25f), CircleShape)
-                        .testTag("verification_badge_founder_$name"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Badge officiel $name",
-                        tint = Color(0xFF111827), // Dark Gray/Black for perfect visibility
-                        modifier = Modifier.size(11.dp)
-                    )
-                }
-            }
-            VerificationState.VERIFIED -> {
-                // Niveau 2 (Badge Rouge Standard) : Red background, white checkmark
-                Box(
-                    modifier = modifier
-                        .background(Color(0xFFE53935), CircleShape)
-                        .testTag("verification_badge_verified_$name"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Compte vérifié",
-                        tint = Color.White,
-                        modifier = Modifier.size(11.dp)
-                    )
-                }
-            }
-            VerificationState.NONE -> {
-                // Should not reach here
-            }
+        Box(
+            modifier = modifier
+                .background(badgeColor, StarburstBadgeShape(spikes = 12, innerRadiusRatio = 0.82f))
+                .testTag("verification_badge_${resolvedState.name.lowercase()}_$name"),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = if (resolvedState == VerificationState.OFFICIAL) "Badge officiel/admin" else "Badge vérifié",
+                tint = Color.White, // Coche blanche
+                modifier = Modifier.size(11.dp)
+            )
         }
     }
 
@@ -123,6 +151,8 @@ fun VerificationBottomSheet(
 ) {
     if (verificationState == VerificationState.NONE) return
 
+    val badgeColor = if (verificationState == VerificationState.OFFICIAL) Color(0xFF16A34A) else Color(0xFF1DA1F2)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -137,25 +167,20 @@ fun VerificationBottomSheet(
                 .padding(bottom = 48.dp, top = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header Icon / Badge representation
+            // Header Icon / Badge representation with spikes
             Box(
                 modifier = Modifier
                     .size(64.dp)
                     .background(
-                        color = if (verificationState == VerificationState.OFFICIAL) Color.White else Color(0xFFE53935),
-                        shape = CircleShape
-                    )
-                    .border(
-                        width = if (verificationState == VerificationState.OFFICIAL) 2.dp else 0.dp,
-                        color = Color.Black.copy(alpha = 0.15f),
-                        shape = CircleShape
+                        color = badgeColor,
+                        shape = StarburstBadgeShape(spikes = 14, innerRadiusRatio = 0.82f)
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = null,
-                    tint = if (verificationState == VerificationState.OFFICIAL) Color(0xFF111827) else Color.White,
+                    tint = Color.White,
                     modifier = Modifier.size(38.dp)
                 )
             }
@@ -164,7 +189,7 @@ fun VerificationBottomSheet(
 
             // Title
             Text(
-                text = if (verificationState == VerificationState.OFFICIAL) "Compte officiel $userName" else "Compte vérifié",
+                text = if (verificationState == VerificationState.OFFICIAL) "Compte Officiel / Admin ($userName)" else "Compte Vérifié",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -176,9 +201,9 @@ fun VerificationBottomSheet(
             // Body Description text
             Text(
                 text = if (verificationState == VerificationState.OFFICIAL) {
-                    "Ce badge distingue les comptes fondateurs et l'équipe officielle de C.M.O."
+                    "Ce badge vert à épines avec coche blanche distingue les administrateurs, fondateurs et membres officiels de la plateforme."
                 } else {
-                    "Ce compte est vérifié car il remplit les critères d'Iddet : profil complet, +10k abonnés, +100k vues cumulées, 18+ ans."
+                    "Ce badge bleu à épines avec coche blanche atteste de l'authenticité de ce profil vérifié."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,

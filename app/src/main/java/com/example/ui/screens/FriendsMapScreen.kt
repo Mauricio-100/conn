@@ -345,10 +345,15 @@ fun FriendsMapScreen(
                             allowFileAccess = true
                             setGeolocationEnabled(true)
                         }
+                        setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                         webViewClient = object : WebViewClient() {
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
                                 isMapLoaded = true
+                            }
+
+                            override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                                return true
                             }
                         }
                         webChromeClient = WebChromeClient()

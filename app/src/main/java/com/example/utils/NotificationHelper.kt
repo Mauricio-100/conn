@@ -29,6 +29,23 @@ object NotificationHelper {
     fun initChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val savedUriString = prefs.getString("notification_ringtone_uri", null)
+            val vibrationEnabled = prefs.getBoolean("notification_vibration_enabled", true)
+            
+            val soundUri: android.net.Uri? = if (savedUriString == "silent") {
+                null
+            } else if (!savedUriString.isNullOrEmpty()) {
+                android.net.Uri.parse(savedUriString)
+            } else {
+                android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+            }
+
+            val audioAttributes = android.media.AudioAttributes.Builder()
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .build()
+
             val existing = manager.getNotificationChannel(CHANNEL_ID)
             if (existing == null) {
                 val channel = NotificationChannel(
@@ -38,12 +55,31 @@ object NotificationHelper {
                 ).apply {
                     description = CHANNEL_DESC
                     enableLights(true)
-                    lightColor = Color.BLUE
-                    enableVibration(true)
+                    lightColor = Color.RED
+                    enableVibration(vibrationEnabled)
+                    if (vibrationEnabled) {
+                        vibrationPattern = longArrayOf(0, 250, 250, 250)
+                    } else {
+                        vibrationPattern = longArrayOf(0)
+                    }
+                    setSound(soundUri, audioAttributes)
                     setShowBadge(true)
+                    lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
                 }
                 manager.createNotificationChannel(channel)
             }
+        }
+    }
+
+    fun updateNotificationSound(context: Context, soundUri: android.net.Uri?) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            try {
+                manager.deleteNotificationChannel(CHANNEL_ID)
+            } catch (e: Exception) {
+                android.util.Log.e("NotificationHelper", "Failed to delete notification channel for sound update", e)
+            }
+            initChannels(context)
         }
     }
 
@@ -99,6 +135,19 @@ object NotificationHelper {
                 .addMessage(text, System.currentTimeMillis(), user)
                 .setConversationTitle(title)
 
+            val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val savedUriString = prefs.getString("notification_ringtone_uri", null)
+            val vibrationEnabled = prefs.getBoolean("notification_vibration_enabled", true)
+            val meowEnabled = prefs.getBoolean("notification_meow_enabled", true)
+
+            val customSoundUri: android.net.Uri? = if (savedUriString == "silent") {
+                null
+            } else if (!savedUriString.isNullOrEmpty()) {
+                android.net.Uri.parse(savedUriString)
+            } else {
+                android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+            }
+
             // Build beautiful custom notification
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(smallIconRes)
@@ -109,10 +158,21 @@ object NotificationHelper {
                 .setColor(Color.parseColor("#DC2626")) // CMO Red branding color
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+
+            if (customSoundUri != null) {
+                builder.setSound(customSoundUri)
+            }
+            if (vibrationEnabled) {
+                builder.setVibrate(longArrayOf(0, 250, 250, 250))
+            } else {
+                builder.setVibrate(longArrayOf(0))
+            }
+
+            builder.setDefaults(NotificationCompat.DEFAULT_LIGHTS)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                .setSubText("S-3 CMO")
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setSubText("S-3 CMO IDDET")
 
             try {
                 val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -121,8 +181,10 @@ object NotificationHelper {
                 android.util.Log.e("NotificationHelper", "Failed to show system notification", e)
             }
 
-            // Play cute kitten meow sound!
-            CatSoundPlayer.playCuteMeow()
+            // Play cute kitten meow sound if enabled
+            if (meowEnabled) {
+                CatSoundPlayer.playCuteMeow()
+            }
         }
     }
 

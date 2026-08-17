@@ -340,8 +340,13 @@ private fun EmbeddedWebVideoView(videoInfo: VideoUrlHelper.VideoInfo) {
                     useWideViewPort = true
                     loadWithOverviewMode = true
                 }
+                setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                 webChromeClient = WebChromeClient()
-                webViewClient = WebViewClient()
+                webViewClient = object : WebViewClient() {
+                    override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                        return true
+                    }
+                }
                 loadDataWithBaseURL("https://www.youtube.com", htmlContent, "text/html", "UTF-8", null)
             }
         },

@@ -91,6 +91,30 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
         
         try {
+            // Schedule WorkManager for background notifications (WhatsApp-like background polling & persistent ringtone alerts)
+            try {
+                val constraints = androidx.work.Constraints.Builder()
+                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                    .build()
+                
+                val periodicWork = androidx.work.PeriodicWorkRequestBuilder<com.example.worker.NotificationWorker>(
+                    15, java.util.concurrent.TimeUnit.MINUTES
+                ).setConstraints(constraints).build()
+
+                androidx.work.WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+                    com.example.worker.NotificationWorker.WORK_NAME,
+                    androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+                    periodicWork
+                )
+
+                val immediateWork = androidx.work.OneTimeWorkRequestBuilder<com.example.worker.NotificationWorker>()
+                    .setConstraints(constraints)
+                    .build()
+                androidx.work.WorkManager.getInstance(applicationContext).enqueue(immediateWork)
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Failed to schedule NotificationWorker", e)
+            }
+
             val db = AppDatabase.getDatabase(this)
             val prefs = getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
             val repository = IddetRepository(db.userDao(), db.actfileDao(), db.messageDao(), db.followDao(), db.commentDao(), db.notificationDao(), prefs)

@@ -560,6 +560,7 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     ) {
         viewModelScope.launch {
             repository.publishActfile(content, tags, category, communityId, channelId)
+            repository.refreshActfiles()
         }
     }
 

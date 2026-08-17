@@ -153,6 +153,7 @@ fun CustomBrowserScreen(
                 AndroidView(
                     factory = { context ->
                         WebView(context).apply {
+                            setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                             webViewClient = object : WebViewClient() {
                                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                                     super.onPageStarted(view, url, favicon)
@@ -165,6 +166,10 @@ fun CustomBrowserScreen(
                                     currentUrl = url ?: ""
                                     canGoBack = view?.canGoBack() ?: false
                                     canGoForward = view?.canGoForward() ?: false
+                                }
+
+                                override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                                    return true
                                 }
                             }
                             webChromeClient = object : android.webkit.WebChromeClient() {
