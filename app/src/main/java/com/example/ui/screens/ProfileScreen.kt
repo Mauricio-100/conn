@@ -94,6 +94,8 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     val levelsTable by viewModel.levelsTable.collectAsStateWithLifecycle()
     
     LaunchedEffect(Unit) {
+        viewModel.refreshProfile()
+        viewModel.refreshActfiles()
         viewModel.refreshMyLevel()
         viewModel.loadLevelsTable()
     }

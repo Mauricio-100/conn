@@ -27,17 +27,17 @@ data class UpdateCategoriesRequest(val categories: List<String>)
 data class UpdateCategoriesResponse(val status: String, val preferred_categories: List<String>)
 
 data class ActfileNetwork(
-    val id: String,
-    val content: String,
-    val likes_count: Int,
-    val views_count: Int,
+    val id: String = "",
+    val content: String = "",
+    val likes_count: Int = 0,
+    val views_count: Int = 0,
     val comments_count: Int? = 0,
-    val created_at: String,
-    val user_id: String,
-    val username: String,
-    val avatar_url: String?,
-    val is_verified: Boolean,
-    val liked: Boolean,
+    val created_at: String = "",
+    val user_id: String = "",
+    val username: String = "",
+    val avatar_url: String? = null,
+    val is_verified: Boolean = false,
+    val liked: Boolean = false,
     val category: String? = null,
     val community_id: String? = null,
     val channel_id: String? = null,
@@ -198,7 +198,10 @@ data class StoryResponse(
     val media_type: String = "image",
     val effect: String? = null,
     val created_at: String = "",
-    val user: StoryUserResponse
+    val user: StoryUserResponse,
+    val views: Int? = null,
+    val view_count: Int? = null,
+    val reactions: Map<String, Int>? = null
 )
 
 data class StoryUserResponse(
@@ -236,7 +239,17 @@ interface ApiService {
     @retrofit2.http.GET("/api/actfile")
     suspend fun getActfiles(
         @retrofit2.http.Header("Authorization") token: String?,
-        @retrofit2.http.Query("limit") limit: Int = 20
+        @retrofit2.http.Query("limit") limit: Int? = 900,
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+        @retrofit2.http.Query("user_id") userId: String? = null
+    ): List<ActfileNetwork>
+
+    @retrofit2.http.GET("/api/actfiles")
+    suspend fun getActfilesPlural(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Query("limit") limit: Int? = 900,
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+        @retrofit2.http.Query("user_id") userId: String? = null
     ): List<ActfileNetwork>
 
     @POST("/api/actfile")
@@ -336,6 +349,12 @@ interface ApiService {
     suspend fun deleteMessage(
         @retrofit2.http.Header("Authorization") token: String?,
         @retrofit2.http.Path("id") id: String
+    ): Map<String, Any>
+
+    @retrofit2.http.DELETE("/api/messages/conversation/{userId}")
+    suspend fun deleteConversation(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("userId") userId: String
     ): Map<String, Any>
 
     @POST("/api/messages/{id}/react")

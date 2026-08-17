@@ -57,6 +57,9 @@ import com.example.data.getCategoryDefaultIcon
 import com.example.data.getCategoryDefaultBanner
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.ExperimentalMaterial3Api
 
 import com.example.ui.components.PersistentSearchBar
 import com.example.ui.components.TrendingTopicsSection
@@ -97,6 +100,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
     LaunchedEffect(Unit) {
         viewModel.loadCategories()
         viewModel.loadStories()
+        viewModel.refreshActfiles()
     }
 
     var discoverySeed by remember { mutableStateOf((1..100000).random()) }
@@ -128,12 +132,11 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
         val filteredFollowed = followedActfiles
         
         val baseList = when (feedTab) {
-            0 -> {
-                // Discovery mode: beautiful clean pseudo-random feed
-                filteredActfiles.shuffled(java.util.Random(discoverySeed.toLong()))
-            }
-            1 -> filteredFollowed
-            else -> filteredActfiles.sortedByDescending { it.likesCount + it.commentsCount * 2 + it.viewsCount }
+            0 -> filteredActfiles // Chronologique (nouveautés et publications récentes en premier)
+            1 -> filteredFollowed // Abonnements
+            2 -> filteredActfiles.sortedByDescending { it.likesCount + it.commentsCount * 2 + it.viewsCount } // Populaires
+            3 -> filteredActfiles.shuffled(java.util.Random(discoverySeed.toLong())) // Découverte
+            else -> filteredActfiles
         }
         val sortedList = baseList
         
@@ -207,11 +210,96 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
         ) {
             PersistentSearchBar(viewModel = viewModel)
             
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            // Feed Tabs & Active Category Filters
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                LazyRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    item {
+                        FilterChip(
+                            selected = feedTab == 0,
+                            onClick = { viewModel.setFeedTab(0) },
+                            label = { Text("✨ Récents", fontSize = 13.sp, fontWeight = if (feedTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = feedTab == 1,
+                            onClick = { viewModel.setFeedTab(1) },
+                            label = { Text("👥 Abonnements", fontSize = 13.sp, fontWeight = if (feedTab == 1) FontWeight.Bold else FontWeight.Normal) }
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = feedTab == 2,
+                            onClick = { viewModel.setFeedTab(2) },
+                            label = { Text("🔥 Tendances", fontSize = 13.sp, fontWeight = if (feedTab == 2) FontWeight.Bold else FontWeight.Normal) }
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = feedTab == 3,
+                            onClick = {
+                                discoverySeed = (1..100000).random()
+                                viewModel.setFeedTab(3)
+                            },
+                            label = { Text("🎲 Découverte", fontSize = 13.sp, fontWeight = if (feedTab == 3) FontWeight.Bold else FontWeight.Normal) }
+                        )
+                    }
+                    if (selectedCategoryFilter != null) {
+                        item {
+                            InputChip(
+                                selected = true,
+                                onClick = { viewModel.setSelectedCategoryFilter(null) },
+                                label = { Text("Catégorie: $selectedCategoryFilter", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                                trailingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Supprimer le filtre",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (isFeedLoading && activeActfiles.isNotEmpty()) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                )
+            }
+
+            PullToRefreshBox(
+                isRefreshing = isFeedLoading,
+                onRefresh = {
+                    viewModel.refreshActfiles()
+                    viewModel.refreshStories()
+                    viewModel.refreshTrendingTopics()
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+                    .testTag("feed_pull_to_refresh")
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                 // Section Stories (Statuts éphémères Markdown / Multimédia)
                 item(key = "stories_section_bar") {
                     StoriesBar(
@@ -368,7 +456,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                 }
 
                 if (isFeedLoading && activeActfiles.isEmpty()) {
-                    items(3) {
+                    items(4) {
                         com.example.ui.components.ShimmerActfileCard()
                     }
                 } else if (activeActfiles.isEmpty()) {
@@ -388,6 +476,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                 }
             }
         }
+    }
         
         if (showComposer) {
             ActfileComposerScreen(

@@ -10,6 +10,9 @@ import com.example.data.Message
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
@@ -59,14 +62,27 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         _composerInitialContent.value = content
     }
 
+    private val _viewedStoryIds = mutableSetOf<String>()
     private val _realtimeStoryViews = MutableStateFlow<Map<String, Int>>(emptyMap())
     val realtimeStoryViews: StateFlow<Map<String, Int>> = _realtimeStoryViews.asStateFlow()
 
+    private val _realtimeStoryReactions = MutableStateFlow<Map<String, Map<String, Int>>>(emptyMap())
+    val realtimeStoryReactions: StateFlow<Map<String, Map<String, Int>>> = _realtimeStoryReactions.asStateFlow()
+
     fun trackStoryView(storyId: String, initialViews: Int) {
         val currentViews = _realtimeStoryViews.value[storyId] ?: initialViews
-        // Simulate real-time increment on view
-        val increment = (1..3).random()
-        _realtimeStoryViews.value = _realtimeStoryViews.value + (storyId to (currentViews + increment))
+        if (!_viewedStoryIds.contains(storyId)) {
+            _viewedStoryIds.add(storyId)
+            _realtimeStoryViews.value = _realtimeStoryViews.value + (storyId to (currentViews + 1))
+        } else if (!_realtimeStoryViews.value.containsKey(storyId)) {
+            _realtimeStoryViews.value = _realtimeStoryViews.value + (storyId to currentViews)
+        }
+    }
+
+    fun recordStoryReaction(storyId: String, emoji: String, initialReactions: Map<String, Int>) {
+        val current = (_realtimeStoryReactions.value[storyId] ?: initialReactions).toMutableMap()
+        current[emoji] = (current[emoji] ?: 0) + 1
+        _realtimeStoryReactions.value = _realtimeStoryReactions.value + (storyId to current)
     }
 
     // Existing selectTrendingCategory
@@ -212,14 +228,20 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     private val _isUploadingStory = MutableStateFlow(false)
     val isUploadingStory: StateFlow<Boolean> = _isUploadingStory.asStateFlow()
 
-    fun refreshActfiles() {
+    fun refreshActfiles(targetUserId: String? = null) {
         viewModelScope.launch {
             _isFeedLoading.value = true
             try {
-                repository.refreshActfiles()
+                repository.refreshActfiles(targetUserId)
             } finally {
                 _isFeedLoading.value = false
             }
+        }
+    }
+
+    fun refreshUserProfile(userId: String) {
+        viewModelScope.launch {
+            repository.refreshUserProfile(userId)
         }
     }
 
@@ -776,6 +798,10 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         }
     }
 
+    fun refreshStories() {
+        loadStories()
+    }
+
     fun createStory(
         context: android.content.Context,
         uri: android.net.Uri,
@@ -821,12 +847,20 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
 
     fun sendStoryReaction(
         receiverId: String,
+        storyMediaUrl: String?,
+        storyAuthorUsername: String?,
         reaction: String,
         onComplete: () -> Unit = {}
     ) {
         viewModelScope.launch {
             try {
-                repository.sendMessage(receiverId, reaction, "text")
+                val formattedContent = if (!storyMediaUrl.isNullOrBlank()) {
+                    val userLabel = storyAuthorUsername ?: "Story"
+                    "[Story:$storyMediaUrl|$userLabel] $reaction"
+                } else {
+                    "❤️ $reaction Réaction à votre story"
+                }
+                repository.sendMessage(receiverId, formattedContent, "story_reaction")
                 onComplete()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -834,23 +868,89 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         }
     }
 
+    fun sendStoryReaction(
+        receiverId: String,
+        reaction: String,
+        onComplete: () -> Unit = {}
+    ) {
+        sendStoryReaction(receiverId, null, null, reaction, onComplete)
+    }
+
     fun sendStoryReply(
         receiverId: String,
         replyText: String,
         storyMediaUrl: String?,
+        storyAuthorUsername: String? = null,
         onComplete: () -> Unit = {}
     ) {
         viewModelScope.launch {
             try {
-                val formattedMessage = if (!storyMediaUrl.isNullOrBlank()) {
-                    "📷 Réponse à votre story: $replyText"
+                val formattedContent = if (!storyMediaUrl.isNullOrBlank()) {
+                    val userLabel = storyAuthorUsername ?: "Story"
+                    "[Story:$storyMediaUrl|$userLabel] $replyText"
                 } else {
-                    replyText
+                    "📷 Réponse à votre story: $replyText"
                 }
-                repository.sendMessage(receiverId, formattedMessage, "text")
+                repository.sendMessage(receiverId, formattedContent, "story_reply")
                 onComplete()
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    fun sendImageMessage(
+        receiverId: String,
+        context: android.content.Context,
+        imageUri: android.net.Uri,
+        caption: String = "",
+        onComplete: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val contentResolver = context.contentResolver
+                val mimeType = contentResolver.getType(imageUri) ?: "image/jpeg"
+                val extension = if (mimeType.contains("png")) "png" else "jpg"
+                val tempFile = java.io.File.createTempFile("chat_img_", ".$extension", context.cacheDir)
+                contentResolver.openInputStream(imageUri)?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                // Upload to cloudinary / server via Retrofit
+                val requestFile = tempFile.asRequestBody(mimeType.toMediaTypeOrNull())
+                val part = MultipartBody.Part.createFormData("file", tempFile.name, requestFile)
+                val token = repository.userToken?.let { "Bearer $it" }
+                val response = com.example.data.RetrofitClient.apiService.uploadAudio(token, part)
+                val uploadedUrl = response.url
+                try { tempFile.delete() } catch (_: Exception) {}
+
+                val finalContent = if (caption.isNotBlank()) {
+                    "![Image]($uploadedUrl)\n\n$caption"
+                } else {
+                    "![Image]($uploadedUrl)"
+                }
+                repository.sendMessage(receiverId, finalContent, "image")
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onComplete(true)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // Fallback: use local URI if network upload fails
+                try {
+                    val fallbackContent = if (caption.isNotBlank()) {
+                        "![Image]($imageUri)\n\n$caption"
+                    } else {
+                        "![Image]($imageUri)"
+                    }
+                    repository.sendMessage(receiverId, fallbackContent, "image")
+                } catch (ex: Exception) {
+                    ex.printStackTrace()
+                }
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onComplete(false)
+                }
             }
         }
     }
@@ -858,6 +958,18 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     fun deleteMessage(id: String) {
         viewModelScope.launch {
             repository.deleteMessage(id)
+        }
+    }
+
+    fun deleteConversation(userId: String, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                repository.deleteConversation(userId)
+                refreshConversations()
+                onComplete()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 

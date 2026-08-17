@@ -8,9 +8,10 @@ import kotlinx.coroutines.async
 import com.example.ui.theme.AppTheme
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.DelicateCoroutinesApi
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -25,6 +26,8 @@ class IddetRepository(
     private val notificationDao: NotificationDao,
     private val prefs: android.content.SharedPreferences
 ) {
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    
     // Current logged in user (in-memory mock)
     private val _currentUser = MutableStateFlow<User?>(null)
     val currentUser: StateFlow<User?> = _currentUser
@@ -55,7 +58,7 @@ class IddetRepository(
     init {
         val savedUserId = prefs.getString("user_id", null)
         if (savedUserId != null) {
-            kotlinx.coroutines.GlobalScope.launch {
+            repositoryScope.launch {
                 val user = userDao.getUserById(savedUserId)
                 _currentUser.value = user
                 try {
@@ -144,69 +147,78 @@ class IddetRepository(
         }
     }
 
-    suspend fun refreshActfiles() {
+    suspend fun refreshActfiles(targetUserId: String? = null) {
         try {
             val header = currentToken?.let { "Bearer $it" }
-            val netActfiles = RetrofitClient.apiService.getActfiles(header, limit = 500)
             
-            val actfilesWithComments = coroutineScope {
-                val deferreds = netActfiles.map { net ->
-                    async {
-                        val comments = try {
-                            val list = RetrofitClient.apiService.getActfileComments(header, net.id)
-                            list.map {
-                                ActfileComment(
-                                    id = it.id,
-                                    actfileId = net.id,
-                                    content = it.content,
-                                    userId = it.user_id,
-                                    username = it.username,
-                                    avatarUrl = it.avatar_url,
-                                    isVerified = it.is_verified,
-                                    createdAt = parseIso(it.created_at)
-                                )
-                            }
-                        } catch(e: Exception) {
-                            emptyList<ActfileComment>()
+            var currentCursor: String? = null
+            val allNetActfiles = mutableListOf<ActfileNetwork>()
+            
+            while (true) {
+                val batch = try {
+                    RetrofitClient.apiService.getActfiles(
+                        token = header,
+                        limit = 900,
+                        cursor = currentCursor
+                    )
+                } catch (e: Exception) {
+                    // Fallback without arguments just in case
+                    if (currentCursor == null) {
+                        try {
+                            RetrofitClient.apiService.getActfiles(token = header)
+                        } catch (e2: Exception) {
+                            emptyList()
                         }
-                        net to comments
+                    } else {
+                        emptyList()
                     }
                 }
-                deferreds.awaitAll()
+                
+                if (batch.isEmpty()) {
+                    break
+                }
+                
+                allNetActfiles.addAll(batch)
+                
+                val lastItem = batch.last()
+                val nextCursor = lastItem.id
+                if (currentCursor == nextCursor || batch.size < 900) {
+                    break
+                }
+                currentCursor = nextCursor
             }
+            
+            val usersToInsert = mutableListOf<User>()
+            val actfilesToInsert = mutableListOf<Actfile>()
 
-            for ((net, comments) in actfilesWithComments) {
-                val existing = userDao.getUserById(net.user_id)
-                val user = if (existing != null) {
+            for (net in allNetActfiles) {
+                val existing = userDao.getUserById(net.user_id) ?: userDao.getUserByUsername(net.username)
+                val userToInsert = if (existing != null) {
                     existing.copy(
-                        username = net.username,
-                        avatarUrl = net.avatar_url,
-                        isVerified = net.is_verified
+                        id = net.user_id,
+                        username = if (net.username.isNotBlank()) net.username else existing.username,
+                        avatarUrl = net.avatar_url ?: existing.avatarUrl,
+                        isVerified = net.is_verified || existing.isVerified
                     )
                 } else {
                     User(
                         id = net.user_id,
-                        username = net.username,
+                        username = net.username.ifBlank { "Utilisateur" },
                         passwordHash = "mocked",
                         avatarUrl = net.avatar_url,
                         isVerified = net.is_verified
                     )
                 }
-                userDao.insertUser(user)
-                
-                if (comments.isNotEmpty()) {
-                    commentDao.deleteCommentsForActfile(net.id)
-                    commentDao.insertComments(comments)
-                }
-                
-                actfileDao.insertActfile(
+                usersToInsert.add(userToInsert)
+
+                actfilesToInsert.add(
                     Actfile(
                         id = net.id,
                         userId = net.user_id,
                         content = net.content,
                         likesCount = net.likes_count,
                         viewsCount = net.views_count,
-                        commentsCount = comments.size,
+                        commentsCount = net.comments_count ?: 0,
                         createdAt = parseIso(net.created_at),
                         isLikedByMe = net.liked,
                         category = net.category,
@@ -216,6 +228,18 @@ class IddetRepository(
                         channelName = net.channel_name
                     )
                 )
+            }
+
+            // Clear old data to start from zero as requested
+            if (actfilesToInsert.isNotEmpty()) {
+                actfileDao.deleteAllActfiles()
+            }
+
+            if (usersToInsert.isNotEmpty()) {
+                userDao.insertUsers(usersToInsert)
+            }
+            if (actfilesToInsert.isNotEmpty()) {
+                actfileDao.insertActfiles(actfilesToInsert)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -576,7 +600,7 @@ class IddetRepository(
     }
 
     fun getComments(actfileId: String): Flow<List<ActfileComment>> {
-        kotlinx.coroutines.GlobalScope.launch {
+        repositoryScope.launch {
             try {
                 val header = currentToken?.let { "Bearer $it" }
                 val commentsList = RetrofitClient.apiService.getActfileComments(header, actfileId)
@@ -640,40 +664,50 @@ class IddetRepository(
     }
     
     fun getUserFlow(userId: String): Flow<User?> {
-        kotlinx.coroutines.GlobalScope.launch {
-            try {
-                val header = currentToken?.let { "Bearer $it" }
-                if (header != null) {
-                    val res = RetrofitClient.apiService.getUserProfile(header, userId)
-                    val existing = userDao.getUserById(userId)
-                    val user = if (existing != null) {
-                        existing.copy(
-                            username = res.username,
-                            avatarUrl = res.avatar_url,
-                            bio = res.bio ?: existing.bio,
-                            isVerified = res.is_verified,
-                            followersCount = res.followers_count,
-                            followingCount = res.following_count
-                        )
-                    } else {
-                        User(
-                            id = res.id ?: userId,
-                            username = res.username,
-                            passwordHash = "mocked",
-                            avatarUrl = res.avatar_url,
-                            bio = res.bio ?: "",
-                            isVerified = res.is_verified,
-                            followersCount = res.followers_count,
-                            followingCount = res.following_count
-                        )
-                    }
-                    userDao.insertUser(user)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+        repositoryScope.launch {
+            refreshUserProfile(userId)
         }
         return userDao.getUserByIdFlow(userId)
+    }
+
+    suspend fun refreshUserProfile(userId: String) {
+        try {
+            val header = currentToken?.let { "Bearer $it" }
+            val res = RetrofitClient.apiService.getUserProfile(header, userId)
+            val resolvedId = res.id ?: userId
+            val existing = userDao.getUserById(resolvedId) ?: userDao.getUserByUsername(res.username)
+            val user = if (existing != null) {
+                existing.copy(
+                    id = resolvedId,
+                    username = res.username,
+                    avatarUrl = res.avatar_url ?: existing.avatarUrl,
+                    bio = res.bio ?: existing.bio,
+                    isVerified = res.is_verified,
+                    followersCount = res.followers_count,
+                    followingCount = res.following_count
+                )
+            } else {
+                User(
+                    id = resolvedId,
+                    username = res.username,
+                    passwordHash = "mocked",
+                    avatarUrl = res.avatar_url,
+                    bio = res.bio ?: "",
+                    isVerified = res.is_verified,
+                    followersCount = res.followers_count,
+                    followingCount = res.following_count
+                )
+            }
+            userDao.insertUser(user)
+            
+            // Also sync and pull actfiles belonging to this user
+            refreshActfiles(targetUserId = resolvedId)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            try {
+                refreshActfiles()
+            } catch (_: Exception) {}
+        }
     }
 
     private val _conversations = MutableStateFlow<List<ConversationNetwork>>(emptyList())
@@ -800,6 +834,8 @@ class IddetRepository(
             if (header != null) {
                 val res = RetrofitClient.apiService.getMessages(header, otherUserId)
                 val msgs = res.map {
+                    val localMsg = messageDao.getMessageById(it.id)
+                    val effectiveReaction = it.reaction ?: localMsg?.reaction
                     Message(
                         id = it.id,
                         senderId = it.sender_id,
@@ -808,7 +844,7 @@ class IddetRepository(
                         type = if (com.example.utils.AudioMessageHelper.isAudioContent(it.content, it.type)) "audio" else it.type,
                         isRead = it.read,
                         createdAt = parseIso(it.created_at),
-                        reaction = it.reaction
+                        reaction = effectiveReaction
                     )
                 }
                 msgs.forEach { messageDao.insertMessage(it) }
@@ -820,7 +856,7 @@ class IddetRepository(
 
     fun getChatPartners(): Flow<List<User>> {
         val userId = _currentUser.value?.id ?: ""
-        kotlinx.coroutines.GlobalScope.launch {
+        repositoryScope.launch {
             refreshConversations()
         }
         return userDao.getChatPartners(userId)
@@ -828,7 +864,7 @@ class IddetRepository(
 
     fun getMessagesWith(otherUserId: String): Flow<List<Message>> {
         val myId = _currentUser.value?.id ?: ""
-        kotlinx.coroutines.GlobalScope.launch {
+        repositoryScope.launch {
             refreshMessagesWith(otherUserId)
         }
         return messageDao.getMessagesBetween(myId, otherUserId)
@@ -872,6 +908,21 @@ class IddetRepository(
             val header = currentToken?.let { "Bearer $it" }
             if (header != null) {
                 RetrofitClient.apiService.deleteMessage(header, id)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun deleteConversation(otherUserId: String) {
+        val myId = _currentUser.value?.id
+        if (myId != null) {
+            messageDao.deleteConversation(myId, otherUserId)
+        }
+        try {
+            val header = currentToken?.let { "Bearer $it" }
+            if (header != null) {
+                RetrofitClient.apiService.deleteConversation(header, otherUserId)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -999,7 +1050,7 @@ class IddetRepository(
 
     fun getNotifications(): Flow<List<Notification>> {
         val userId = _currentUser.value?.id ?: ""
-        kotlinx.coroutines.GlobalScope.launch {
+        repositoryScope.launch {
             refreshNotifications()
         }
         return notificationDao.getNotificationsForUser(userId)
@@ -1499,77 +1550,23 @@ class IddetRepository(
         val authHeader = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
         return try {
             val responses = RetrofitClient.apiService.getStories(authHeader)
-            if (responses.isNotEmpty()) {
-                responses.map { res ->
-                    val seed = Math.abs(res.id.hashCode())
-                    val generatedViews = 15 + (seed % 150)
-                    val generatedReactions = if (seed % 2 == 0) mapOf("❤️" to (seed % 10) + 1, "🔥" to (seed % 5) + 1) else emptyMap()
-                    Story(
-                        id = res.id,
-                        mediaUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(res.media_url) ?: res.media_url,
-                        mediaType = res.media_type,
-                        effect = res.effect,
-                        createdAt = res.created_at,
-                        user = StoryUser(
-                            id = res.user.id,
-                            username = res.user.username,
-                            avatarUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(res.user.avatar_url),
-                            isVerified = res.user.is_verified ?: false
-                        ),
-                        views = generatedViews,
-                        reactions = generatedReactions
-                    )
-                }
-            } else {
-                listOf(
-                    Story(
-                        id = "mock_story_1",
-                        mediaUrl = "https://images.unsplash.com/photo-1542204165-65bf26472b9b?auto=format&fit=crop&q=80&w=400&h=600",
-                        mediaType = "image",
-                        effect = null,
-                        createdAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()),
-                        user = StoryUser(
-                            id = "mock_u_1",
-                            username = "photographer",
-                            avatarUrl = "https://i.pravatar.cc/150?img=11",
-                            isVerified = true,
-                            profession = "Photographe Indépendant"
-                        ),
-                        views = 142,
-                        reactions = mapOf("❤️" to 12, "🔥" to 5)
+            responses.map { res ->
+                val realViews = res.views ?: res.view_count ?: 0
+                val realReactions = res.reactions ?: emptyMap()
+                Story(
+                    id = res.id,
+                    mediaUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(res.media_url) ?: res.media_url,
+                    mediaType = res.media_type,
+                    effect = res.effect,
+                    createdAt = res.created_at,
+                    user = StoryUser(
+                        id = res.user.id,
+                        username = res.user.username,
+                        avatarUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(res.user.avatar_url),
+                        isVerified = res.user.is_verified ?: false
                     ),
-                    Story(
-                        id = "mock_story_1_b",
-                        mediaUrl = "https://images.unsplash.com/photo-1447069387366-2a656606f52b?auto=format&fit=crop&q=80&w=400&h=600",
-                        mediaType = "image",
-                        effect = null,
-                        createdAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()),
-                        user = StoryUser(
-                            id = "mock_u_1",
-                            username = "photographer",
-                            avatarUrl = "https://i.pravatar.cc/150?img=11",
-                            isVerified = true,
-                            profession = "Photographe Indépendant"
-                        ),
-                        views = 89,
-                        reactions = mapOf("😍" to 8)
-                    ),
-                    Story(
-                        id = "mock_story_2",
-                        mediaUrl = "https://www.w3schools.com/html/mov_bbb.mp4",
-                        mediaType = "video",
-                        effect = null,
-                        createdAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).format(java.util.Date()),
-                        user = StoryUser(
-                            id = "mock_u_2",
-                            username = "nature_lover",
-                            avatarUrl = "https://i.pravatar.cc/150?img=12",
-                            isVerified = false,
-                            profession = "Guide Nature"
-                        ),
-                        views = 405,
-                        reactions = mapOf("🔥" to 42, "💯" to 19)
-                    )
+                    views = realViews,
+                    reactions = realReactions
                 )
             }
         } catch (e: Exception) {

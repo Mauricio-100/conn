@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -333,8 +334,19 @@ fun StoryViewerDialog(
 
     var isPaused by remember { mutableStateOf(false) }
     var replyText by remember { mutableStateOf("") }
+    var selectedAttachmentUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploadingAttachment by remember { mutableStateOf(false) }
     var showReplyInput by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            selectedAttachmentUri = uri
+            isPaused = true
+        }
+    }
 
     val isMyStory = currentUser?.id == currentStory.user.id || currentUser?.username == currentStory.user.username
 
@@ -574,7 +586,9 @@ fun StoryViewerDialog(
             }
 
             val realtimeViews by viewModel.realtimeStoryViews.collectAsState()
+            val realtimeReactions by viewModel.realtimeStoryReactions.collectAsState()
             val currentViews = realtimeViews[currentStory.id] ?: currentStory.views
+            val currentReactions = realtimeReactions[currentStory.id] ?: currentStory.reactions
 
             LaunchedEffect(currentStory.id) {
                 viewModel.trackStoryView(currentStory.id, currentStory.views)
@@ -595,22 +609,30 @@ fun StoryViewerDialog(
                     .padding(bottom = 60.dp, start = 16.dp, end = 16.dp, top = 16.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Views and Reactions Stats
-                    if (currentViews > 0 || currentStory.reactions.isNotEmpty()) {
+                    // Views and Reactions Stats (Non-simulated, real metrics)
+                    if (currentViews > 0 || currentReactions.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Visibility, contentDescription = null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("$currentViews", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
+                            if (currentViews > 0) {
+                                Icon(Icons.Default.Visibility, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    if (currentViews == 1) "1 vue" else "$currentViews vues",
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
                             
-                            if (currentStory.reactions.isNotEmpty()) {
-                                Spacer(modifier = Modifier.width(12.dp))
-                                val topReactions = currentStory.reactions.entries.sortedByDescending { it.value }.take(3)
+                            if (currentReactions.isNotEmpty()) {
+                                if (currentViews > 0) {
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                }
+                                val topReactions = currentReactions.entries.sortedByDescending { it.value }.take(3)
                                 topReactions.forEach { (emoji, count) ->
-                                    Text("$emoji $count", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
+                                    Text("$emoji $count", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelMedium)
                                     Spacer(modifier = Modifier.width(6.dp))
                                 }
                             }
@@ -629,8 +651,15 @@ fun StoryViewerDialog(
                                 modifier = Modifier
                                     .size(38.dp)
                                     .clickable {
-                                        viewModel.sendStoryReaction(currentStory.user.id, emoji) {
-                                            Toast.makeText(context, "Réaction $emoji envoyée !", Toast.LENGTH_SHORT).show()
+                                        val storyUrl = UrlHelper.fixCloudinaryUrl(currentStory.mediaUrl) ?: currentStory.mediaUrl
+                                        viewModel.recordStoryReaction(currentStory.id, emoji, currentStory.reactions)
+                                        viewModel.sendStoryReaction(
+                                            receiverId = currentStory.user.id,
+                                            storyMediaUrl = storyUrl,
+                                            storyAuthorUsername = currentStory.user.username,
+                                            reaction = emoji
+                                        ) {
+                                            Toast.makeText(context, "Réaction $emoji envoyée à la story !", Toast.LENGTH_SHORT).show()
                                         }
                                     },
                                 contentColor = Color.White
@@ -642,15 +671,83 @@ fun StoryViewerDialog(
                         }
                     }
 
-                    // Reply Text Field
+                    // Attachment Preview (if selected)
+                    if (selectedAttachmentUri != null) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.Black.copy(alpha = 0.75f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = selectedAttachmentUri,
+                                    contentDescription = "Aperçu de la pièce jointe",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Photo jointe au message",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = {
+                                        selectedAttachmentUri = null
+                                        if (replyText.isBlank()) isPaused = false
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Supprimer la pièce jointe",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Reply Text Field with Attachment button & Send
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        IconButton(
+                            onClick = {
+                                isPaused = true
+                                galleryLauncher.launch("image/*")
+                            },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.2f))
+                                .testTag("story_attach_media_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AddPhotoAlternate,
+                                contentDescription = "Joindre une photo",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
                         OutlinedTextField(
                             value = replyText,
-                            onValueChange = { replyText = it },
+                            onValueChange = { 
+                                replyText = it
+                                if (it.isNotEmpty()) {
+                                    isPaused = true
+                                }
+                            },
                             placeholder = {
                                 Text(
                                     "Répondre à ${currentStory.user.username}...",
@@ -660,6 +757,11 @@ fun StoryViewerDialog(
                             },
                             modifier = Modifier
                                 .weight(1f)
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        isPaused = true
+                                    }
+                                }
                                 .testTag("story_reply_input"),
                             shape = RoundedCornerShape(24.dp),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -673,29 +775,67 @@ fun StoryViewerDialog(
                             singleLine = true
                         )
 
-                        if (replyText.isNotBlank()) {
+                        if (replyText.isNotBlank() || selectedAttachmentUri != null) {
                             IconButton(
                                 onClick = {
-                                    val textToSend = replyText
+                                    val textToSend = replyText.trim()
+                                    val uriToSend = selectedAttachmentUri
                                     replyText = ""
-                                    viewModel.sendStoryReply(
-                                        currentStory.user.id,
-                                        textToSend,
-                                        UrlHelper.fixCloudinaryUrl(currentStory.mediaUrl) ?: currentStory.mediaUrl
-                                    ) {
-                                        Toast.makeText(context, "Message envoyé !", Toast.LENGTH_SHORT).show()
+                                    selectedAttachmentUri = null
+                                    val storyUrl = UrlHelper.fixCloudinaryUrl(currentStory.mediaUrl) ?: currentStory.mediaUrl
+                                    
+                                    if (uriToSend != null) {
+                                        isUploadingAttachment = true
+                                        val storyCaption = if (textToSend.isNotBlank()) {
+                                            "[Story:$storyUrl|${currentStory.user.username}] $textToSend"
+                                        } else {
+                                            "[Story:$storyUrl|${currentStory.user.username}] 📸 Photo jointe"
+                                        }
+                                        viewModel.sendImageMessage(
+                                            receiverId = currentStory.user.id,
+                                            context = context,
+                                            imageUri = uriToSend,
+                                            caption = storyCaption
+                                        ) { success ->
+                                            isUploadingAttachment = false
+                                            isPaused = false
+                                            Toast.makeText(
+                                                context,
+                                                if (success) "Photo envoyée en message direct !" else "Échec de l'envoi",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    } else {
+                                        viewModel.sendStoryReply(
+                                            receiverId = currentStory.user.id,
+                                            replyText = textToSend,
+                                            storyMediaUrl = storyUrl,
+                                            storyAuthorUsername = currentStory.user.username
+                                        ) {
+                                            isPaused = false
+                                            Toast.makeText(context, "Réponse envoyée !", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 },
+                                enabled = !isUploadingAttachment,
                                 modifier = Modifier
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.primary)
                                     .testTag("send_story_reply_btn")
                             ) {
-                                Icon(
-                                    Icons.Default.Send,
-                                    contentDescription = "Envoyer",
-                                    tint = MaterialTheme.colorScheme.onPrimary
-                                )
+                                if (isUploadingAttachment) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.Send,
+                                        contentDescription = "Envoyer",
+                                        tint = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
                             }
                         }
                     }

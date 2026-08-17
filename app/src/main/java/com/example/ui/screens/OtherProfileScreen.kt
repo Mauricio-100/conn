@@ -63,6 +63,11 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
     var showFullScreenAvatar by remember { mutableStateOf(false) }
     var waveSentRecently by remember { mutableStateOf(false) }
 
+    LaunchedEffect(userId) {
+        viewModel.refreshUserProfile(userId)
+        viewModel.refreshActfiles()
+    }
+
     if (user == null) {
         Box(
             modifier = Modifier.fillMaxSize(),

@@ -602,8 +602,8 @@ fun ActfileComposerScreen(
                         if (isPreviewMode) {
                             Column(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
                             ) {
                                 if (contentValue.text.isBlank()) {
                                     Box(
@@ -629,7 +629,19 @@ fun ActfileComposerScreen(
                                         }
                                     }
                                 } else {
-                                    MarkdownActfile(content = contentValue.text)
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                        )
+                                    ) {
+                                        Box(modifier = Modifier.padding(14.dp)) {
+                                            MarkdownActfile(content = contentValue.text)
+                                        }
+                                    }
                                 }
                             }
                         } else {

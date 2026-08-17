@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
@@ -39,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -46,6 +48,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.data.Message
 import com.example.ui.IddetViewModel
+import com.example.utils.UrlHelper
 import com.example.ui.components.VerificationBadge
 import com.example.ui.components.MarkdownActfile
 import com.example.ui.components.VoiceMessagePlayer
@@ -456,13 +459,99 @@ fun MessageBubbleItem(
                             }
                         }
                     } else {
-                        MarkdownActfile(
-                            content = message.content,
-                            isMine = isMine,
-                            compactOpenGraph = true,
-                            onLinkClick = onLinkClick,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
+                        val storyRegex = remember { Regex("""^\[Story:(.*?)\|(.*?)\]\s*([\s\S]*)""") }
+                        val storyMatch = if (message.content.startsWith("[Story:")) storyRegex.find(message.content) else null
+
+                        if (storyMatch != null) {
+                            val storyMediaUrl = storyMatch.groupValues[1]
+                            val storyAuthor = storyMatch.groupValues[2]
+                            val replyBody = storyMatch.groupValues[3].trim()
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                // 1. Main reply content (Message / Sticker / Emoji Reaction) shown first
+                                if (replyBody.isNotBlank()) {
+                                    val isSingleEmoji = replyBody.length <= 4 && replyBody.any { Character.isSurrogate(it) || Character.getType(it) == Character.OTHER_SYMBOL.toInt() }
+                                    if (isSingleEmoji) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                            contentAlignment = if (isMine) Alignment.CenterEnd else Alignment.CenterStart
+                                        ) {
+                                            Text(text = replyBody, fontSize = 32.sp)
+                                        }
+                                    } else {
+                                        MarkdownActfile(
+                                            content = replyBody,
+                                            isMine = isMine,
+                                            compactOpenGraph = true,
+                                            onLinkClick = onLinkClick,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+
+                                // 2. Story Miniature Thumbnail shown underneath the sticker/message
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isMine) Color.White.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(1.dp, if (isMine) Color.White.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 4.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (storyMediaUrl.isNotBlank()) {
+                                            AsyncImage(
+                                                model = UrlHelper.fixCloudinaryUrl(storyMediaUrl) ?: storyMediaUrl,
+                                                contentDescription = "Story miniature",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(46.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.Default.FlashOn,
+                                                    contentDescription = null,
+                                                    tint = if (isMine) Color.White else MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Text(
+                                                    text = "Story de $storyAuthor",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isMine) Color.White else MaterialTheme.colorScheme.primary,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Text(
+                                                text = if (message.type == "story_reaction") "Réaction envoyée" else "Réponse à la story",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontSize = 11.sp,
+                                                color = if (isMine) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            MarkdownActfile(
+                                content = message.content,
+                                isMine = isMine,
+                                compactOpenGraph = true,
+                                onLinkClick = onLinkClick,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
                     }
 
                     // Bubble footer containing Time + Status icon
