@@ -53,6 +53,9 @@ import java.util.Locale
 fun MessagesScreen(viewModel: IddetViewModel, navController: NavController) {
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val stories by viewModel.stories.collectAsStateWithLifecycle()
+    val groupedAndSortedStories = remember(stories) {
+        stories.groupBy { it.user.id }.values.flatten()
+    }
 
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
@@ -209,10 +212,10 @@ fun MessagesScreen(viewModel: IddetViewModel, navController: NavController) {
             item {
                 StoriesBar(
                     viewModel = viewModel,
-                    stories = stories,
+                    stories = groupedAndSortedStories,
                     onStoryClick = { clickedStory ->
-                        val index = stories.indexOfFirst { it.id == clickedStory.id }.coerceAtLeast(0)
-                        selectedStoryForViewer = Pair(stories, index)
+                        val index = groupedAndSortedStories.indexOfFirst { it.id == clickedStory.id }.coerceAtLeast(0)
+                        selectedStoryForViewer = Pair(groupedAndSortedStories, index)
                     },
                     onCreateClick = {
                         showStoryCreatorSheet = true

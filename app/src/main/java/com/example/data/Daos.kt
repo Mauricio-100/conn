@@ -21,6 +21,16 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE isGiant = 1 AND id != :currentUserId")
     fun getGiants(currentUserId: String): Flow<List<User>>
 
+    @Query("""
+        SELECT u.* FROM users u
+        WHERE u.id != :currentUserId 
+        AND u.id NOT IN (SELECT followingId FROM follows WHERE followerId = :currentUserId)
+        ORDER BY 
+            (u.followersCount * 5 + u.level) DESC
+        LIMIT 10
+    """)
+    fun getSuggestedUsers(currentUserId: String): Flow<List<User>>
+
     @Query("SELECT * FROM users WHERE (username LIKE '%' || :query || '%' OR id LIKE '%' || :query || '%') AND id != :currentUserId")
     fun searchUsers(query: String, currentUserId: String): Flow<List<User>>
 
@@ -209,5 +219,21 @@ interface NotificationDao {
     @Query("UPDATE notifications SET isRead = 1 WHERE userId = :userId")
     suspend fun markAllAsRead(userId: String)
 }
+
+@Dao
+interface SavedAccountDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSavedAccount(account: SavedAccount)
+
+    @Query("SELECT * FROM saved_accounts ORDER BY savedAt DESC")
+    fun getAllSavedAccounts(): Flow<List<SavedAccount>>
+
+    @Query("DELETE FROM saved_accounts WHERE username = :username")
+    suspend fun deleteSavedAccount(username: String)
+
+    @Query("DELETE FROM saved_accounts")
+    suspend fun clearSavedAccounts()
+}
+
 
 

@@ -71,6 +71,10 @@ fun StoriesBar(
 ) {
     val currentUser by viewModel.currentUser.collectAsState()
 
+    val distinctUserStories = remember(stories) {
+        stories.groupBy { it.user.id }.map { it.value.first() }
+    }
+
     LazyRow(
         modifier = modifier
             .fillMaxWidth()
@@ -89,7 +93,7 @@ fun StoriesBar(
         }
 
         // Active Stories grouped by User
-        items(stories, key = { it.id }) { story ->
+        items(distinctUserStories, key = { it.user.id }) { story ->
             StoryCardItem(
                 story = story,
                 onClick = { onStoryClick(story) }
@@ -254,28 +258,43 @@ fun StoryCardItem(
             Box(
                 modifier = Modifier
                     .padding(8.dp)
-                    .size(34.dp)
                     .align(Alignment.TopStart)
-                    .clip(CircleShape)
-                    .background(storyBorderGradient)
-                    .padding(2.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface),
-                contentAlignment = Alignment.Center
             ) {
-                if (!story.user.avatarUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = UrlHelper.fixCloudinaryUrl(story.user.avatarUrl),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Text(
-                        text = story.user.username.take(1).uppercase(),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.primary
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(storyBorderGradient)
+                        .padding(2.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!story.user.avatarUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = UrlHelper.fixCloudinaryUrl(story.user.avatarUrl),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text = story.user.username.take(1).uppercase(),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                if (story.user.isVerified) {
+                    Icon(
+                        Icons.Default.Verified,
+                        contentDescription = "Verified",
+                        tint = Color(0xFF1DA1F2),
+                        modifier = Modifier
+                            .size(14.dp)
+                            .align(Alignment.BottomStart)
+                            .background(Color.White, CircleShape)
                     )
                 }
             }
@@ -301,9 +320,8 @@ fun StoryCardItem(
             // User username at bottom
             Text(
                 text = story.user.username,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
                 color = Color.White,
+                fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
@@ -518,21 +536,10 @@ fun StoryViewerDialog(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = currentStory.user.username,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                com.example.ui.components.VerificationBadge(
+                                    userName = currentStory.user.username,
+                                    isVerified = currentStory.user.isVerified
                                 )
-                                if (currentStory.user.isVerified) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        Icons.Default.CheckCircle,
-                                        contentDescription = "Vérifié",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
                             }
                             if (!currentStory.user.profession.isNullOrBlank()) {
                                 Text(

@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,8 +73,8 @@ fun MarkdownRenderer(
     }
 
     val primaryColor = MaterialTheme.colorScheme.primary
-    val textColor = if (isMine) Color.White else MaterialTheme.colorScheme.onSurface
-    val secondaryTextColor = if (isMine) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
+    val textColor = androidx.compose.material3.LocalContentColor.current
+    val secondaryTextColor = textColor.copy(alpha = 0.7f)
 
     Column(
         modifier = modifier.testTag("markdown_renderer_container"),
@@ -131,6 +133,10 @@ fun MarkdownRenderer(
                 )
 
                 is MarkdownNode.ImageNode -> MarkdownImageNode(
+                    node = node
+                )
+
+                is MarkdownNode.CarouselNode -> MarkdownCarouselNode(
                     node = node
                 )
 
@@ -739,6 +745,94 @@ fun rememberRichMarkdownStyles(
 
                 append(text[i].toString())
                 i++
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun MarkdownCarouselNode(
+    node: MarkdownNode.CarouselNode
+) {
+    if (node.images.isEmpty()) return
+
+    if (node.images.size == 1) {
+        MarkdownImageNode(node = node.images.first())
+        return
+    }
+
+    val pagerState = rememberPagerState(
+        pageCount = { node.images.size }
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            .testTag("markdown_carousel_node")
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxWidth()
+        ) { page ->
+            val imageNode = node.images[page]
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = com.example.utils.UrlHelper.fixCloudinaryUrl(imageNode.url),
+                    contentDescription = imageNode.altText ?: "Carousel Image ${page + 1}",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("markdown_carousel_image_$page"),
+                    contentScale = ContentScale.FillWidth
+                )
+            }
+        }
+
+        // Image counter badge e.g. "1/3"
+        Surface(
+            color = Color.Black.copy(alpha = 0.65f),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+        ) {
+            Text(
+                text = "${pagerState.currentPage + 1}/${node.images.size}",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                ),
+                color = Color.White,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+
+        // Bottom Page Indicator Dots
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            repeat(node.images.size) { index ->
+                val isSelected = pagerState.currentPage == index
+                Box(
+                    modifier = Modifier
+                        .size(if (isSelected) 8.dp else 6.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                        )
+                )
             }
         }
     }

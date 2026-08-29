@@ -49,17 +49,19 @@ fun CommunitiesScreen(
     // Refresh trigger state
     var refreshTrigger by remember { mutableStateOf(0) }
     
-    val myCommunities by produceState<List<Community>>(initialValue = emptyList(), refreshTrigger) {
-        viewModel.getMyCommunitiesFlow().collect { value = it }
+    val myCommunitiesFlow = remember(refreshTrigger) {
+        viewModel.getMyCommunitiesFlow()
     }
+    val myCommunities by myCommunitiesFlow.collectAsState(initial = emptyList())
     
-    val communities by produceState<List<Community>>(initialValue = emptyList(), searchQuery, selectedCategory, selectedSort, refreshTrigger) {
+    val communitiesFlow = remember(searchQuery, selectedCategory, selectedSort, refreshTrigger) {
         viewModel.searchCommunitiesFlow(
             query = searchQuery.ifBlank { null },
             category = selectedCategory,
             sort = selectedSort
-        ).collect { value = it }
+        )
     }
+    val communities by communitiesFlow.collectAsState(initial = emptyList())
     
     val categories = listOf("Fun", "Amour", "Motivation", "Tech", "Sport", "Musique", "Actu", "Business", "Spiritualité", "Autres")
     
@@ -173,12 +175,21 @@ fun CommunitiesScreen(
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("popular" to "Populaires", "newest" to "Récentes").forEach { (sortKey, sortLabel) ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(top = 2.dp)
+                        ) {
+                            listOf("popular" to "🔥 Populaires", "recent" to "⚡ Récentes", "alpha" to "🔤 A - Z").forEach { (sortKey, sortLabel) ->
                                 val isSelected = selectedSort == sortKey
                                 SuggestionChip(
                                     onClick = { selectedSort = sortKey },
-                                    label = { Text(sortLabel) },
+                                    label = { 
+                                        Text(
+                                            sortLabel,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                        ) 
+                                    },
                                     colors = SuggestionChipDefaults.suggestionChipColors(
                                         containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                                         labelColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant

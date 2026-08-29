@@ -141,6 +141,50 @@ fun AuthScreen(viewModel: IddetViewModel) {
                 ) {
                     Text("Log In")
                 }
+
+                val savedAccounts by viewModel.savedAccounts.collectAsState()
+                if (savedAccounts.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(32.dp))
+                    Text(
+                        text = "Saved Accounts",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.height(240.dp)
+                    ) {
+                        items(savedAccounts) { acc ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { viewModel.loginWithSavedAccount(acc.token) }
+                                    .padding(8.dp)
+                            ) {
+                                AsyncImage(
+                                    model = acc.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) } ?: "https://images.unsplash.com/photo-1511367461989-f85a21fda167?w=400&q=80",
+                                    contentDescription = "Avatar",
+                                    modifier = Modifier
+                                        .size(60.dp)
+                                        .clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = acc.username,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
             } else {
                 Spacer(modifier = Modifier.height(16.dp))
                 

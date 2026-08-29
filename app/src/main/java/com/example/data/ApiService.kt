@@ -10,6 +10,8 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
+import retrofit2.http.GET
+import retrofit2.http.DELETE
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.Field
 import retrofit2.http.Multipart
@@ -447,7 +449,8 @@ interface ApiService {
     
     @retrofit2.http.GET("/api/users/me/communities")
     suspend fun getMyCommunities(
-        @retrofit2.http.Header("Authorization") token: String
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Query("role") role: String? = null
     ): List<Community>
 
     @retrofit2.http.PUT("/api/communities/{slug}")
@@ -456,6 +459,27 @@ interface ApiService {
         @retrofit2.http.Path("slug") slug: String,
         @Body body: Map<String, @JvmSuppressWildcards Any>
     ): Community
+
+    @DELETE("/api/communities/{slug}")
+    suspend fun deleteCommunity(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @PUT("/api/communities/{slug}/members/{user_id}/role")
+    suspend fun updateMemberRole(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @retrofit2.http.Path("user_id") userId: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any>
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @POST("/api/communities/{slug}/ban")
+    suspend fun banCommunityMember(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any>
+    ): Map<String, @JvmSuppressWildcards Any>
 
     @Multipart
     @retrofit2.http.PUT("/api/communities/{slug}/icon")

@@ -69,6 +69,7 @@ class StarburstBadgeShape(
 enum class VerificationState {
     OFFICIAL, // Admin / Founder / Official (Badge Vert à épines avec coche blanche)
     VERIFIED, // Regular Verified User (Badge Bleu à épines avec coche blanche)
+    IDDET, // Iddet Official Account (Badge Jaune à épines avec coche blanche)
     NONE
 }
 
@@ -81,6 +82,7 @@ private val FOUNDER_USERNAMES = listOf("C.M.O", "Doffranel", "doffranel", "Crisl
 fun getVerificationState(userName: String?, isVerified: Boolean): VerificationState {
     val name = userName ?: ""
     return when {
+        com.example.data.IddetAccountManager.isOfficialIddetAccount(name) -> VerificationState.IDDET
         FOUNDER_USERNAMES.any { it.equals(name, ignoreCase = true) } -> VerificationState.OFFICIAL
         isVerified -> VerificationState.VERIFIED
         else -> VerificationState.NONE
@@ -105,9 +107,11 @@ fun VerificationBadge(
     // Badge Colors:
     // Official/Admin: Green (0xFF16A34A) with white checkmark and spikes
     // Verified: Blue (0xFF1DA1F2) with white checkmark and spikes
+    // Iddet: Yellow (0xFFEAB308) with white checkmark and spikes
     val badgeColor = when (resolvedState) {
         VerificationState.OFFICIAL -> Color(0xFF16A34A) // Green for Admin/Founder/Official
         VerificationState.VERIFIED -> Color(0xFF1DA1F2) // Blue for Default Verified
+        VerificationState.IDDET -> Color(0xFFEAB308) // Yellow for Iddet
         VerificationState.NONE -> Color.Transparent
     }
 
@@ -151,7 +155,11 @@ fun VerificationBottomSheet(
 ) {
     if (verificationState == VerificationState.NONE) return
 
-    val badgeColor = if (verificationState == VerificationState.OFFICIAL) Color(0xFF16A34A) else Color(0xFF1DA1F2)
+    val badgeColor = when (verificationState) {
+        VerificationState.OFFICIAL -> Color(0xFF16A34A)
+        VerificationState.IDDET -> Color(0xFFEAB308)
+        else -> Color(0xFF1DA1F2)
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -189,7 +197,11 @@ fun VerificationBottomSheet(
 
             // Title
             Text(
-                text = if (verificationState == VerificationState.OFFICIAL) "Compte Officiel / Admin ($userName)" else "Compte Vérifié",
+                text = when (verificationState) {
+                    VerificationState.OFFICIAL -> "Compte Officiel / Admin ($userName)"
+                    VerificationState.IDDET -> "Compte Officiel Iddet"
+                    else -> "Compte Vérifié"
+                },
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -200,10 +212,10 @@ fun VerificationBottomSheet(
 
             // Body Description text
             Text(
-                text = if (verificationState == VerificationState.OFFICIAL) {
-                    "Ce badge vert à épines avec coche blanche distingue les administrateurs, fondateurs et membres officiels de la plateforme."
-                } else {
-                    "Ce badge bleu à épines avec coche blanche atteste de l'authenticité de ce profil vérifié."
+                text = when (verificationState) {
+                    VerificationState.OFFICIAL -> "Ce badge vert à épines avec coche blanche distingue les administrateurs, fondateurs et membres officiels de la plateforme."
+                    VerificationState.IDDET -> "Ce badge jaune à épines identifie le compte officiel du réseau Iddet."
+                    else -> "Ce badge bleu à épines avec coche blanche atteste de l'authenticité de ce profil vérifié."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,

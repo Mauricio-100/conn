@@ -54,7 +54,9 @@ data class Message(
     val type: String = "text",
     val isRead: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    val reaction: String? = null
+    val reaction: String? = null,
+    val replyToId: String? = null,
+    val replyToContent: String? = null
 )
 
 @Entity(tableName = "follows")
@@ -113,6 +115,15 @@ data class Notification(
 
 
 
+
+@Entity(tableName = "saved_accounts")
+data class SavedAccount(
+    @PrimaryKey val username: String,
+    val avatarUrl: String?,
+    val token: String,
+    val isVerified: Boolean = false,
+    val savedAt: Long = System.currentTimeMillis()
+)
 
 data class Community(
     val id: String = "",

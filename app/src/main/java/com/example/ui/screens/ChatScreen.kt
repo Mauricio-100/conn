@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.FlashOn
@@ -71,6 +73,7 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
     val isOnline = partnerConversation?.is_online ?: false
 
     val messages by viewModel.getMessagesWith(userId).collectAsStateWithLifecycle(initialValue = emptyList())
+    var replyingToMessage by remember { mutableStateOf<Message?>(null) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -180,11 +183,19 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
         bottomBar = {
             MessageInputField(
                 onSendMessage = { text ->
-                    viewModel.sendMessage(userId, text)
+                    val finalContent = if (replyingToMessage != null) {
+                        val snippet = if (com.example.utils.AudioMessageHelper.isAudioContent(replyingToMessage!!.content, replyingToMessage!!.type)) "🎤 Message vocal" else replyingToMessage!!.content.take(50).replace("\n", " ")
+                        "[ReplyTo:${replyingToMessage!!.id}|$snippet]\n$text"
+                    } else text
+                    viewModel.sendMessage(userId, finalContent)
+                    replyingToMessage = null
                 },
                 onSendVoiceFile = { file ->
                     viewModel.sendVoiceMessage(userId, file)
-                }
+                    replyingToMessage = null
+                },
+                replyingToMessage = replyingToMessage,
+                onCancelReply = { replyingToMessage = null }
             )
         }
     ) { padding ->
@@ -211,6 +222,7 @@ fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavCont
                 onDeleteMessage = { msgId ->
                     viewModel.deleteMessage(msgId)
                 },
+                onReplyMessage = { msg -> replyingToMessage = msg },
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -267,6 +279,7 @@ fun ScrollableConversationView(
     onLinkClick: (String) -> Unit,
     onReact: (String, String?) -> Unit,
     onDeleteMessage: (String) -> Unit,
+    onReplyMessage: (Message) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isLight = MaterialTheme.colorScheme.background.red > 0.5f
@@ -345,7 +358,8 @@ fun ScrollableConversationView(
                     isMine = isMine,
                     onLinkClick = onLinkClick,
                     onReact = { emoji -> onReact(msg.id, emoji) },
-                    onDelete = { onDeleteMessage(msg.id) }
+                    onDelete = { onDeleteMessage(msg.id) },
+                    onReply = { onReplyMessage(msg) }
                 )
             }
         }
@@ -362,7 +376,8 @@ fun MessageBubbleItem(
     isMine: Boolean,
     onLinkClick: (String) -> Unit,
     onReact: (String?) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onReply: () -> Unit
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -383,28 +398,37 @@ fun MessageBubbleItem(
             horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
         ) {
             Surface(
-                color = if (isMine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                color = if (isMine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                contentColor = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                 shape = RoundedCornerShape(
-                    topStart = 16.dp,
-                    topEnd = 16.dp,
-                    bottomStart = if (isMine) 16.dp else 2.dp,
-                    bottomEnd = if (isMine) 2.dp else 16.dp
+                    topStart = 20.dp,
+                    topEnd = 20.dp,
+                    bottomStart = if (isMine) 20.dp else 4.dp,
+                    bottomEnd = if (isMine) 4.dp else 20.dp
                 ),
-                shadowElevation = 1.dp,
+                shadowElevation = 0.dp,
                 modifier = Modifier
-                    .widthIn(max = 290.dp)
+                    .widthIn(max = 300.dp)
                     .clip(
                         RoundedCornerShape(
-                            topStart = 16.dp,
-                            topEnd = 16.dp,
-                            bottomStart = if (isMine) 16.dp else 2.dp,
-                            bottomEnd = if (isMine) 2.dp else 16.dp
+                            topStart = 20.dp,
+                            topEnd = 20.dp,
+                            bottomStart = if (isMine) 20.dp else 4.dp,
+                            bottomEnd = if (isMine) 4.dp else 20.dp
                         )
                     )
                     .combinedClickable(
                         onClick = {
-                            // Single tap opens quick reaction options if not audio
-                            showActionDialog = true
+                            if (message.type != "audio" && message.type != "story_reaction") {
+                                showActionDialog = true
+                            }
+                        },
+                        onDoubleClick = {
+                            if (message.reaction == "❤️") {
+                                onReact(null)
+                            } else {
+                                onReact("❤️")
+                            }
                         },
                         onLongClick = {
                             showActionDialog = true
@@ -418,25 +442,25 @@ fun MessageBubbleItem(
                             when (message.type) {
                                 "audio_sending" -> {
                                     Row(
-                                        modifier = Modifier.padding(8.dp),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
+                                            modifier = Modifier.size(14.dp),
                                             strokeWidth = 2.dp,
-                                            color = if (isMine) Color.White else MaterialTheme.colorScheme.primary
+                                            color = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = "Envoi du message vocal...",
+                                            text = "Envoi...",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = if (isMine) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                         )
                                     }
                                 }
                                 "audio_error" -> {
                                     Row(
-                                        modifier = Modifier.padding(8.dp),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
@@ -445,9 +469,9 @@ fun MessageBubbleItem(
                                             tint = MaterialTheme.colorScheme.error,
                                             modifier = Modifier.size(16.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "Échec de l'envoi",
+                                            text = "L'envoi a échoué",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.error
                                         )
@@ -461,6 +485,9 @@ fun MessageBubbleItem(
                     } else {
                         val storyRegex = remember { Regex("""^\[Story:(.*?)\|(.*?)\]\s*([\s\S]*)""") }
                         val storyMatch = if (message.content.startsWith("[Story:")) storyRegex.find(message.content) else null
+                        
+                        val replyToRegex = remember { Regex("""^\[ReplyTo:(.*?)\|(.*?)\]\s*([\s\S]*)""") }
+                        val replyToMatch = if (message.content.startsWith("[ReplyTo:")) replyToRegex.find(message.content) else null
 
                         if (storyMatch != null) {
                             val storyMediaUrl = storyMatch.groupValues[1]
@@ -494,8 +521,7 @@ fun MessageBubbleItem(
                                 // 2. Story Miniature Thumbnail shown underneath the sticker/message
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = if (isMine) Color.White.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
-                                    border = BorderStroke(1.dp, if (isMine) Color.White.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                    color = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.08f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 4.dp)
@@ -520,7 +546,7 @@ fun MessageBubbleItem(
                                                 Icon(
                                                     Icons.Default.FlashOn,
                                                     contentDescription = null,
-                                                    tint = if (isMine) Color.White else MaterialTheme.colorScheme.primary,
+                                                    tint = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                                     modifier = Modifier.size(13.dp)
                                                 )
                                                 Spacer(modifier = Modifier.width(2.dp))
@@ -528,7 +554,7 @@ fun MessageBubbleItem(
                                                     text = "Story de $storyAuthor",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = if (isMine) Color.White else MaterialTheme.colorScheme.primary,
+                                                    color = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
@@ -537,10 +563,62 @@ fun MessageBubbleItem(
                                                 text = if (message.type == "story_reaction") "Réaction envoyée" else "Réponse à la story",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 fontSize = 11.sp,
-                                                color = if (isMine) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                                                color = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
                                             )
                                         }
                                     }
+                                }
+                            }
+                        } else if (replyToMatch != null) {
+                            val replyToSnippet = replyToMatch.groupValues[2]
+                            val actualMessage = replyToMatch.groupValues[3].trim()
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.08f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(3.dp)
+                                                .height(28.dp)
+                                                .background(if (isMine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(1.5.dp))
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "En réponse à", 
+                                                style = MaterialTheme.typography.labelSmall, 
+                                                color = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                fontSize = 11.sp
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = replyToSnippet,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (actualMessage.isNotBlank()) {
+                                    MarkdownActfile(
+                                        content = actualMessage,
+                                        isMine = isMine,
+                                        compactOpenGraph = true,
+                                        onLinkClick = onLinkClick,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
                                 }
                             }
                         } else {
@@ -564,14 +642,14 @@ fun MessageBubbleItem(
                         Text(
                             text = formatMessageTime(message.createdAt),
                             fontSize = 9.sp,
-                            color = if (isMine) Color.White.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            color = if (isMine) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                         if (isMine) {
                             Spacer(modifier = Modifier.width(3.dp))
                             Icon(
                                 imageVector = if (message.isRead) Icons.Default.DoneAll else Icons.Default.Done,
                                 contentDescription = if (message.isRead) "Lu" else "Envoyé",
-                                tint = if (message.isRead) Color(0xFF818CF8) else Color.White.copy(alpha = 0.6f),
+                                tint = if (message.isRead) Color(0xFF818CF8) else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
                                 modifier = Modifier.size(11.dp)
                             )
                         }
@@ -644,6 +722,15 @@ fun MessageBubbleItem(
                     HorizontalDivider()
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    ListItem(
+                        headlineContent = { Text("Répondre") },
+                        leadingContent = { Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null) },
+                        modifier = Modifier.clickable {
+                            showActionDialog = false
+                            onReply()
+                        }
+                    )
+
                     if (!isAudio) {
                         ListItem(
                             headlineContent = { Text("Copier le texte") },
@@ -708,6 +795,8 @@ fun MessageBubbleItem(
 fun MessageInputField(
     onSendMessage: (String) -> Unit,
     onSendVoiceFile: (java.io.File) -> Unit,
+    replyingToMessage: Message? = null,
+    onCancelReply: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var messageText by remember { mutableStateOf("") }
@@ -728,6 +817,40 @@ fun MessageInputField(
             .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
+        if (replyingToMessage != null) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp, start = 4.dp, end = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(28.dp)
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("En réponse à", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = if (com.example.utils.AudioMessageHelper.isAudioContent(replyingToMessage.content, replyingToMessage.type)) "🎤 Message vocal" else replyingToMessage.content,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onCancelReply, modifier = Modifier.size(24.dp)) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Close, contentDescription = "Annuler", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
         // Quick Replies Row (only shown when not recording)
         if (!isRecordingMode) {
             LazyRow(

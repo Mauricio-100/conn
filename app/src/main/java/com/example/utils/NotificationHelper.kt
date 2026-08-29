@@ -38,7 +38,7 @@ object NotificationHelper {
             } else if (!savedUriString.isNullOrEmpty()) {
                 android.net.Uri.parse(savedUriString)
             } else {
-                android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                android.net.Uri.parse("android.resource://${context.packageName}/${R.raw.cat_law}")
             }
 
             val audioAttributes = android.media.AudioAttributes.Builder()
@@ -145,7 +145,7 @@ object NotificationHelper {
             } else if (!savedUriString.isNullOrEmpty()) {
                 android.net.Uri.parse(savedUriString)
             } else {
-                android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                android.net.Uri.parse("android.resource://${context.packageName}/${R.raw.cat_law}")
             }
 
             // Build beautiful custom notification
@@ -208,7 +208,11 @@ object NotificationHelper {
             val input: InputStream = connection.inputStream
             val original = BitmapFactory.decodeStream(input)
             if (original != null) {
-                getCircularBitmap(original)
+                val circular = getCircularBitmap(original)
+                if (circular != original) {
+                    original.recycle()
+                }
+                circular
             } else {
                 generatePlaceholderAvatar(senderName)
             }

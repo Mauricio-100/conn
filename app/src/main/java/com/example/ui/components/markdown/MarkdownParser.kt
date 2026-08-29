@@ -155,7 +155,37 @@ object MarkdownParser {
             i++
         }
 
-        return blocks
+        return postProcessCarousels(blocks)
+    }
+
+    private fun postProcessCarousels(nodes: List<MarkdownNode>): List<MarkdownNode> {
+        val result = mutableListOf<MarkdownNode>()
+        val pendingImages = mutableListOf<MarkdownNode.ImageNode>()
+
+        fun flushImages() {
+            if (pendingImages.size >= 2) {
+                result.add(MarkdownNode.CarouselNode(pendingImages.toList()))
+            } else if (pendingImages.size == 1) {
+                result.add(pendingImages.first())
+            }
+            pendingImages.clear()
+        }
+
+        for (node in nodes) {
+            if (node is MarkdownNode.ImageNode) {
+                if (com.example.ui.components.VideoUrlHelper.isVideoUrl(node.url)) {
+                    flushImages()
+                    result.add(MarkdownNode.VideoNode(node.url, node.altText))
+                } else {
+                    pendingImages.add(node)
+                }
+            } else {
+                flushImages()
+                result.add(node)
+            }
+        }
+        flushImages()
+        return result
     }
 
     private fun isHorizontalRule(line: String): Boolean {

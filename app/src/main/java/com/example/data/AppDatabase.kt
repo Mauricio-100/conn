@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [User::class, Actfile::class, Message::class, Follow::class, ActfileComment::class, Notification::class], version = 10, exportSchema = false)
+@Database(entities = [User::class, Actfile::class, Message::class, Follow::class, ActfileComment::class, Notification::class, SavedAccount::class], version = 12, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun actfileDao(): ActfileDao
@@ -13,6 +13,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun followDao(): FollowDao
     abstract fun commentDao(): CommentDao
     abstract fun notificationDao(): NotificationDao
+    abstract fun savedAccountDao(): SavedAccountDao
 
     companion object {
         @Volatile

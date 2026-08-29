@@ -90,8 +90,10 @@ object WebSocketManager {
                     sendPong()
                 }
                 "new_message" -> {
+                    val rawId = json.optString("message_id")
+                    val finalId = if (rawId.isNullOrBlank()) json.optString("id") else rawId
                     val event = WebSocketEvent.NewMessage(
-                        messageId = json.optString("message_id"),
+                        messageId = finalId,
                         senderId = json.optString("sender_id"),
                         content = json.optString("content"),
                         msgType = json.optString("msg_type"),
@@ -101,8 +103,10 @@ object WebSocketManager {
                     coroutineScope.launch { _events.emit(event) }
                 }
                 "message_sent" -> {
+                    val rawId = json.optString("message_id")
+                    val finalId = if (rawId.isNullOrBlank()) json.optString("id") else rawId
                     val event = WebSocketEvent.MessageSent(
-                        messageId = json.optString("message_id"),
+                        messageId = finalId,
                         content = json.optString("content"),
                         msgType = json.optString("msg_type")
                     )

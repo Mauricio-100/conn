@@ -24,6 +24,7 @@ class IddetRepository(
     private val followDao: FollowDao,
     private val commentDao: CommentDao,
     private val notificationDao: NotificationDao,
+    private val savedAccountDao: SavedAccountDao,
     private val prefs: android.content.SharedPreferences
 ) {
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -56,6 +57,9 @@ class IddetRepository(
     private val viewedActfiles = mutableSetOf<String>()
 
     init {
+        repositoryScope.launch {
+            IddetAccountManager.ensureIddetAccountExists(userDao, actfileDao)
+        }
         val savedUserId = prefs.getString("user_id", null)
         if (savedUserId != null) {
             repositoryScope.launch {
@@ -275,6 +279,16 @@ class IddetRepository(
             userDao.insertUser(user)
             _currentUser.value = user
             prefs.edit().putString("user_id", user.id).apply()
+            
+            // Immediately store or update the account in saved accounts
+            savedAccountDao.insertSavedAccount(
+                SavedAccount(
+                    username = user.username,
+                    avatarUrl = user.avatarUrl,
+                    token = currentToken ?: "",
+                    isVerified = user.isVerified
+                )
+            )
         } catch (e: Exception) {
             e.printStackTrace()
             throw Exception("Failed to login: ${e.message}")
@@ -384,33 +398,87 @@ class IddetRepository(
         return profile
     }
 
+    fun getSavedAccounts(): Flow<List<SavedAccount>> {
+        return savedAccountDao.getAllSavedAccounts()
+    }
+
+    fun removeSavedAccount(username: String) {
+        repositoryScope.launch {
+            savedAccountDao.deleteSavedAccount(username)
+        }
+    }
+
+    suspend fun loginWithToken(token: String) {
+        currentToken = token
+        prefs.edit().putString("auth_token", token).apply()
+        
+        try {
+            val profile = RetrofitClient.apiService.getMyProfile("Bearer $token")
+            val existing = userDao.getUserById(profile.id ?: "")
+            val user = if (existing != null) {
+                existing.copy(
+                    username = profile.username,
+                    avatarUrl = profile.avatar_url,
+                    bio = profile.bio ?: existing.bio,
+                    isVerified = profile.is_verified,
+                    followingCount = profile.following_count,
+                    followersCount = profile.followers_count
+                )
+            } else {
+                User(
+                    id = profile.id ?: "",
+                    username = profile.username,
+                    passwordHash = "mocked",
+                    avatarUrl = profile.avatar_url,
+                    bio = profile.bio ?: "Welcome to my profile!",
+                    isVerified = profile.is_verified,
+                    followingCount = profile.following_count,
+                    followersCount = profile.followers_count,
+                    isGiant = (profile.username.length > 5)
+                )
+            }
+            userDao.insertUser(user)
+            _currentUser.value = user
+            prefs.edit().putString("user_id", user.id).apply()
+
+            // Immediately store or update the account in saved accounts
+            savedAccountDao.insertSavedAccount(
+                SavedAccount(
+                    username = user.username,
+                    avatarUrl = user.avatarUrl,
+                    token = token,
+                    isVerified = user.isVerified
+                )
+            )
+        } catch (e: Exception) {
+            currentToken = null
+            prefs.edit().remove("auth_token").apply()
+            throw e
+        }
+    }
+
     fun logout() {
+        val u = _currentUser.value
+        val token = currentToken
+        if (u != null && token != null) {
+            repositoryScope.launch {
+                savedAccountDao.insertSavedAccount(
+                    SavedAccount(
+                        username = u.username,
+                        avatarUrl = u.avatarUrl,
+                        token = token,
+                        isVerified = u.isVerified
+                    )
+                )
+            }
+        }
         _currentUser.value = null
         currentToken = null
         prefs.edit().clear().apply()
     }
 
     fun normalizeCategory(raw: String?): String {
-        if (raw.isNullOrBlank()) return "Autres"
-        val validCategories = listOf("Fun", "Amour", "Motivation", "Tech", "Sport", "Musique", "Actu", "Business", "Spiritualité", "Autres")
-        if (validCategories.contains(raw)) return raw
-
-        val cleaned = raw.replace("@(", "").replace(")", "").trim()
-        val exactMatch = validCategories.firstOrNull { it.equals(cleaned, ignoreCase = true) }
-        if (exactMatch != null) return exactMatch
-
-        return when {
-            cleaned.contains("fun", ignoreCase = true) || cleaned.contains("humour", ignoreCase = true) -> "Fun"
-            cleaned.contains("amour", ignoreCase = true) || cleaned.contains("love", ignoreCase = true) -> "Amour"
-            cleaned.contains("moti", ignoreCase = true) -> "Motivation"
-            cleaned.contains("tech", ignoreCase = true) || cleaned.contains("cod", ignoreCase = true) || cleaned.contains("dev", ignoreCase = true) -> "Tech"
-            cleaned.contains("sport", ignoreCase = true) -> "Sport"
-            cleaned.contains("musi", ignoreCase = true) || cleaned.contains("sound", ignoreCase = true) || cleaned.contains("song", ignoreCase = true) -> "Musique"
-            cleaned.contains("actu", ignoreCase = true) || cleaned.contains("news", ignoreCase = true) -> "Actu"
-            cleaned.contains("biz", ignoreCase = true) || cleaned.contains("busines", ignoreCase = true) -> "Business"
-            cleaned.contains("spirit", ignoreCase = true) || cleaned.contains("philo", ignoreCase = true) -> "Spiritualité"
-            else -> "Autres"
-        }
+        return com.example.ui.components.normalizeToActfileCategory(raw)
     }
 
     suspend fun publishActfile(
@@ -418,14 +486,20 @@ class IddetRepository(
         tags: String = "",
         category: String? = null,
         communityId: String? = null,
-        channelId: String? = null
+        channelId: String? = null,
+        postAsIddet: Boolean = false
     ) {
         val user = _currentUser.value ?: return
         val validCategory = normalizeCategory(category)
+        val targetUserId = if (postAsIddet && IddetAccountManager.canPostAsIddet(user)) {
+            IddetAccountManager.IDDET_USER_ID
+        } else {
+            user.id
+        }
         
         try {
             val header = currentToken?.let { "Bearer $it" }
-            if (header != null) {
+            if (header != null && !postAsIddet) {
                 val netActfile = RetrofitClient.apiService.publishActfile(
                     token = header,
                     request = PublishActfileRequest(
@@ -438,7 +512,7 @@ class IddetRepository(
                 actfileDao.insertActfile(
                     Actfile(
                         id = netActfile.id,
-                        userId = if (netActfile.user_id.isNotBlank()) netActfile.user_id else user.id,
+                        userId = if (netActfile.user_id.isNotBlank()) netActfile.user_id else targetUserId,
                         content = if (netActfile.content.isNotBlank()) netActfile.content else content,
                         tags = tags,
                         likesCount = netActfile.likes_count,
@@ -454,7 +528,7 @@ class IddetRepository(
             } else {
                 actfileDao.insertActfile(
                     Actfile(
-                        userId = user.id,
+                        userId = targetUserId,
                         content = content,
                         tags = tags,
                         category = validCategory,
@@ -468,7 +542,7 @@ class IddetRepository(
             // fallback
             actfileDao.insertActfile(
                 Actfile(
-                    userId = user.id,
+                    userId = targetUserId,
                     content = content,
                     tags = tags,
                     category = validCategory,
@@ -680,7 +754,7 @@ class IddetRepository(
     
     fun getGiants(): Flow<List<User>> {
         val userId = _currentUser.value?.id ?: ""
-        return userDao.getGiants(userId)
+        return userDao.getSuggestedUsers(userId)
     }
     
     fun getUserFlow(userId: String): Flow<User?> {
@@ -906,17 +980,19 @@ class IddetRepository(
                     reaction = res.reaction
                 ))
             } else {
-                val myId = _currentUser.value?.id ?: return
-                messageDao.insertMessage(Message(senderId = myId, receiverId = receiverId, content = content, type = type))
+                android.util.Log.e("IddetRepository", "Cannot send message: No token")
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            val myId = _currentUser.value?.id ?: return
-            messageDao.insertMessage(Message(senderId = myId, receiverId = receiverId, content = content, type = type))
+            android.util.Log.e("IddetRepository", "Error sending message: ${e.message}")
         }
     }
 
     // Removed sendAudioMessageMultipart
+
+    suspend fun getMessageById(id: String): Message? {
+        return messageDao.getMessageById(id)
+    }
 
     suspend fun insertMessageLocal(message: Message) {
         messageDao.insertMessage(message)
@@ -1176,12 +1252,24 @@ class IddetRepository(
             e.printStackTrace()
             emptyList()
         }
-        val combined = (localCommunities + netList).distinctBy { it.slug }
-        return if (category != null && category != "Tous") {
-            combined.filter { it.category.equals(category, ignoreCase = true) }
-        } else {
-            combined
+        var combined = (netList + localCommunities).distinctBy { it.slug }
+        if (!query.isNullOrBlank()) {
+            val q = query.trim().lowercase()
+            combined = combined.filter { 
+                it.name.lowercase().contains(q) || 
+                it.slug.lowercase().contains(q) || 
+                (it.description?.lowercase()?.contains(q) == true) 
+            }
         }
+        if (category != null && category != "Tous" && category != "Toutes") {
+            combined = combined.filter { it.category.equals(category, ignoreCase = true) }
+        }
+        combined = when (sort) {
+            "recent" -> combined.sortedByDescending { it.createdAt }
+            "alpha" -> combined.sortedBy { it.name.lowercase() }
+            else -> combined.sortedWith(compareByDescending<Community> { it.membersCount }.thenByDescending { it.postsCount })
+        }
+        return combined
     }
 
     suspend fun getCommunity(slug: String): Community? {
@@ -1330,19 +1418,58 @@ class IddetRepository(
         }
     }
 
-    suspend fun getMyCommunities(): List<Community> {
+    suspend fun getMyCommunities(role: String? = null): List<Community> {
         val token = currentToken ?: prefs.getString("auth_token", null)
         val netList = if (token != null) {
             try {
                 val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
-                RetrofitClient.apiService.getMyCommunities(authHeader)
+                RetrofitClient.apiService.getMyCommunities(authHeader, role)
             } catch (e: Exception) {
                 e.printStackTrace()
                 emptyList()
             }
         } else emptyList()
         val combined = (localCommunities.filter { it.isMember } + netList).distinctBy { it.slug }
-        return combined
+        return if (role != null) combined.filter { it.myRole == role } else combined
+    }
+
+    suspend fun deleteCommunity(slug: String): Boolean {
+        val token = currentToken ?: prefs.getString("auth_token", null)
+        localCommunities.removeAll { it.slug == slug }
+        if (token != null) {
+            try {
+                val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+                RetrofitClient.apiService.deleteCommunity(authHeader, slug)
+                return true
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        return true
+    }
+
+    suspend fun updateMemberRole(slug: String, userId: String, role: String): Boolean {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: return false
+        return try {
+            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            RetrofitClient.apiService.updateMemberRole(authHeader, slug, userId, mapOf("role" to role))
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun banCommunityMember(slug: String, userId: String, reason: String? = null): Boolean {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: return false
+        return try {
+            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            RetrofitClient.apiService.banCommunityMember(authHeader, slug, mapOf("user_id" to userId, "reason" to (reason ?: "")))
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
     }
 
     private fun parseCommunityJson(

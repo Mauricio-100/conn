@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.Canvas
@@ -15,10 +20,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,22 +35,30 @@ fun CustomBrowserScreen(
     url: String,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     var webView: WebView? by remember { mutableStateOf(null) }
     var currentUrl by remember { mutableStateOf(url) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
     var isLoading by remember { mutableStateOf(true) }
+    var hasRenderCrashed by remember { mutableStateOf(false) }
+    var reloadKey by remember { mutableIntStateOf(0) }
 
     DisposableEffect(Unit) {
         onDispose {
-            webView?.destroy()
+            try {
+                webView?.stopLoading()
+                webView?.destroy()
+            } catch (e: Exception) {
+                // Ignore cleanup error
+            }
             webView = null
         }
     }
 
     val terminalBg = Color(0xFF0D0D0D)
-    val terminalAccent = Color(0xFF00E5FF) // Glowing blue from robot eyes
+    val terminalAccent = Color(0xFF00E5FF)
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -77,7 +88,26 @@ fun CustomBrowserScreen(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = "[ CLOSE_SESSION ]",
+                    text = "[ OUVRIR DANS LE NAVIGATEUR ]",
+                    color = terminalAccent.copy(alpha = 0.8f),
+                    modifier = Modifier
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(currentUrl.ifBlank { url }))
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                // fallback
+                            }
+                        }
+                        .padding(end = 8.dp),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
+                    )
+                )
+                Text(
+                    text = "[ FERMER ]",
                     color = Color.Red.copy(alpha = 0.8f),
                     modifier = Modifier.clickable { onBack() },
                     style = MaterialTheme.typography.labelSmall.copy(
@@ -88,7 +118,7 @@ fun CustomBrowserScreen(
                 )
             }
 
-            // Browser Controls (MEOW Theme)
+            // Browser Controls
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -96,9 +126,13 @@ fun CustomBrowserScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                MeowControlBtn(label = "[<] MEOW", enabled = canGoBack) { webView?.goBack() }
-                MeowControlBtn(label = "MEOW [>]", enabled = canGoForward) { webView?.goForward() }
-                MeowControlBtn(label = "[↺] MEOW", enabled = true) { webView?.reload() }
+                MeowControlBtn(label = "[<] RETOUR", enabled = canGoBack) { webView?.goBack() }
+                MeowControlBtn(label = "AVANT [>]", enabled = canGoForward) { webView?.goForward() }
+                MeowControlBtn(label = "[↺] RECHARGER", enabled = true) {
+                    hasRenderCrashed = false
+                    reloadKey++
+                    webView?.reload()
+                }
                 
                 Box(
                     modifier = Modifier
@@ -150,46 +184,100 @@ fun CustomBrowserScreen(
                     .background(Color.White)
                     .border(1.dp, terminalAccent.copy(alpha = 0.3f), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
             ) {
-                AndroidView(
-                    factory = { context ->
-                        WebView(context).apply {
-                            setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
-                            webViewClient = object : WebViewClient() {
-                                override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                                    super.onPageStarted(view, url, favicon)
-                                    isLoading = true
-                                }
-
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    super.onPageFinished(view, url)
-                                    isLoading = false
-                                    currentUrl = url ?: ""
-                                    canGoBack = view?.canGoBack() ?: false
-                                    canGoForward = view?.canGoForward() ?: false
-                                }
-
-                                override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
-                                    return true
-                                }
+                if (hasRenderCrashed) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF1E1E1E))
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "⚡ Rendu Web Interrompu",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Le moteur WebView a été libéré par le système.",
+                            color = Color.LightGray,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(
+                                onClick = {
+                                    hasRenderCrashed = false
+                                    reloadKey++
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = terminalAccent)
+                            ) {
+                                Text("Recharger", color = Color.Black, fontWeight = FontWeight.Bold)
                             }
-                            webChromeClient = object : android.webkit.WebChromeClient() {
-                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                    progress = newProgress / 100f
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(currentUrl.ifBlank { url }))
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        // ignore
+                                    }
                                 }
+                            ) {
+                                Text("Ouvrir dans le navigateur", color = Color.White)
                             }
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.databaseEnabled = true
-                            settings.useWideViewPort = true
-                            settings.loadWithOverviewMode = true
-                            settings.mediaPlaybackRequiresUserGesture = false
-                            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                            loadUrl(url)
-                            webView = this
                         }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                    }
+                } else {
+                    key(reloadKey) {
+                        AndroidView(
+                            factory = { ctx ->
+                                WebView(ctx).apply {
+                                    webViewClient = object : WebViewClient() {
+                                        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                            super.onPageStarted(view, url, favicon)
+                                            isLoading = true
+                                        }
+
+                                        override fun onPageFinished(view: WebView?, url: String?) {
+                                            super.onPageFinished(view, url)
+                                            isLoading = false
+                                            currentUrl = url ?: ""
+                                            canGoBack = view?.canGoBack() ?: false
+                                            canGoForward = view?.canGoForward() ?: false
+                                        }
+
+                                        override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                                            try {
+                                                view?.destroy()
+                                            } catch (e: Exception) {
+                                                // ignore
+                                            }
+                                            webView = null
+                                            hasRenderCrashed = true
+                                            return true
+                                        }
+                                    }
+                                    webChromeClient = object : WebChromeClient() {
+                                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                            progress = newProgress / 100f
+                                        }
+                                    }
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.useWideViewPort = true
+                                    settings.loadWithOverviewMode = true
+                                    settings.cacheMode = WebSettings.LOAD_DEFAULT
+                                    loadUrl(url)
+                                    webView = this
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
             }
         }
 

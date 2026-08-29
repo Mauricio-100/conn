@@ -23,6 +23,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.tween
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
@@ -550,6 +557,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                         Triple("Rechercher", "search", Icons.Outlined.Search),
                         Triple("Discussions", "messages", Icons.Outlined.Message),
                         Triple("Communautés", "communities", Icons.Outlined.Group),
+                        Triple("Centre d'Aide AI", "helper", Icons.Outlined.HelpOutline),
                         Triple("Mon Profil", "profile", Icons.Outlined.Person),
                         Triple("Historique Actf", "history", Icons.Outlined.History),
                         Triple("Paramètres", "settings", Icons.Outlined.Settings)
@@ -679,7 +687,11 @@ fun MainScreen(viewModel: IddetViewModel) {
                 NavHost(
                     navController = navController,
                     startDestination = "home",
-                    modifier = Modifier.padding(innerPadding)
+                    modifier = Modifier.padding(innerPadding),
+                    enterTransition = { fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    exitTransition = { fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    popEnterTransition = { fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    popExitTransition = { fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)) }
                 ) {
                 composable("home") { 
                     HomeScreen(
@@ -691,24 +703,37 @@ fun MainScreen(viewModel: IddetViewModel) {
                 composable("friends_map") { FriendsMapScreen(viewModel, navController) }
                 composable("search") { SearchScreen(viewModel, navController) }
                 composable("messages") { MessagesScreen(viewModel, navController) }
+                composable("helper") { com.example.ui.screens.HelperScreen(navController) }
                 composable("profile") { ProfileScreen(viewModel, navController) }
                 composable(
                     "profile/{userId}",
-                    arguments = listOf(navArgument("userId") { type = NavType.StringType })
+                    arguments = listOf(navArgument("userId") { type = NavType.StringType }),
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)) }
                 ) { backStackEntry ->
                     val userId = backStackEntry.arguments?.getString("userId") ?: return@composable
                     OtherProfileScreen(viewModel, navController, userId)
                 }
                 composable(
                     "chat/{userId}",
-                    arguments = listOf(navArgument("userId") { type = NavType.StringType })
+                    arguments = listOf(navArgument("userId") { type = NavType.StringType }),
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)) }
                 ) { backStackEntry ->
                     val userId = backStackEntry.arguments?.getString("userId") ?: return@composable
                     ChatScreen(userId, viewModel, navController)
                 }
                 composable(
                     "discussion/{actfileId}",
-                    arguments = listOf(navArgument("actfileId") { type = NavType.StringType })
+                    arguments = listOf(navArgument("actfileId") { type = NavType.StringType }),
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)) }
                 ) { backStackEntry ->
                     val actfileId = backStackEntry.arguments?.getString("actfileId") ?: return@composable
                     DiscussionScreen(viewModel, navController, actfileId)
@@ -716,7 +741,11 @@ fun MainScreen(viewModel: IddetViewModel) {
                 composable("communities") { CommunitiesScreen(viewModel, navController) }
                 composable(
                     "community/{slug}",
-                    arguments = listOf(navArgument("slug") { type = NavType.StringType })
+                    arguments = listOf(navArgument("slug") { type = NavType.StringType }),
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) }
                 ) { backStackEntry ->
                     val slug = backStackEntry.arguments?.getString("slug") ?: return@composable
                     CommunityDetailScreen(slug, viewModel, navController)
@@ -726,7 +755,11 @@ fun MainScreen(viewModel: IddetViewModel) {
                 composable("settings") { SettingsScreen(viewModel, navController) }
                 composable(
                     "browser/{url}",
-                    arguments = listOf(navArgument("url") { type = NavType.StringType })
+                    arguments = listOf(navArgument("url") { type = NavType.StringType }),
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) }
                 ) { backStackEntry ->
                     val url = backStackEntry.arguments?.getString("url") ?: ""
                     val decodedUrl = java.net.URLDecoder.decode(url, "UTF-8")

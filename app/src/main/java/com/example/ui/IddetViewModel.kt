@@ -311,22 +311,28 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
                             e.printStackTrace()
                         }
                         
-                        val confirmedMsg = Message(
-                            id = event.messageId,
-                            senderId = myId,
-                            receiverId = targetReceiverId,
-                            content = event.content,
-                            type = event.msgType,
-                            isRead = false,
-                            createdAt = System.currentTimeMillis()
-                        )
-                        repository.insertMessageLocal(confirmedMsg)
-                        repository.updateConversationLastMessage(
-                            otherUserId = targetReceiverId,
-                            content = event.content,
-                            type = event.msgType,
-                            isIncoming = false
-                        )
+                        val msgId = event.messageId
+                        if (msgId.isNotBlank()) {
+                            val existing = repository.getMessageById(msgId)
+                            if (existing == null) {
+                                val confirmedMsg = Message(
+                                    id = msgId,
+                                    senderId = myId,
+                                    receiverId = targetReceiverId,
+                                    content = event.content,
+                                    type = event.msgType,
+                                    isRead = false,
+                                    createdAt = System.currentTimeMillis()
+                                )
+                                repository.insertMessageLocal(confirmedMsg)
+                            }
+                            repository.updateConversationLastMessage(
+                                otherUserId = targetReceiverId,
+                                content = event.content,
+                                type = event.msgType,
+                                isIncoming = false
+                            )
+                        }
                     }
                     is com.example.utils.WebSocketEvent.Error -> {
                         val targetReceiverId = lastSendingReceiverId ?: ""
@@ -543,6 +549,27 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         }
     }
 
+    val savedAccounts: StateFlow<List<com.example.data.SavedAccount>> = repository.getSavedAccounts().stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        emptyList()
+    )
+
+    fun removeSavedAccount(username: String) {
+        repository.removeSavedAccount(username)
+    }
+
+    fun loginWithSavedAccount(token: String) {
+        viewModelScope.launch {
+            try {
+                _authError.value = null
+                repository.loginWithToken(token)
+            } catch (e: Exception) {
+                _authError.value = e.message ?: "Failed to login with saved account"
+            }
+        }
+    }
+
     suspend fun getUserByUsername(username: String): User? {
         return repository.getUserByUsername(username)
     }
@@ -556,10 +583,11 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
         tags: String = "",
         category: String? = null,
         communityId: String? = null,
-        channelId: String? = null
+        channelId: String? = null,
+        postAsIddet: Boolean = false
     ) {
         viewModelScope.launch {
-            repository.publishActfile(content, tags, category, communityId, channelId)
+            repository.publishActfile(content, tags, category, communityId, channelId, postAsIddet)
             repository.refreshActfiles()
         }
     }
@@ -781,6 +809,27 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     ) {
         viewModelScope.launch {
             val success = repository.updateCommunityIcon(slug, iconFile)
+            onResult(success)
+        }
+    }
+
+    fun deleteCommunity(slug: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.deleteCommunity(slug)
+            onResult(success)
+        }
+    }
+
+    fun updateMemberRole(slug: String, userId: String, role: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.updateMemberRole(slug, userId, role)
+            onResult(success)
+        }
+    }
+
+    fun banCommunityMember(slug: String, userId: String, reason: String? = null, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = repository.banCommunityMember(slug, userId, reason)
             onResult(success)
         }
     }

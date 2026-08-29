@@ -132,7 +132,23 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
         val filteredFollowed = followedActfiles
         
         val baseList = when (feedTab) {
-            0 -> filteredActfiles // Chronologique (nouveautés et publications récentes en premier)
+            0 -> {
+                val followedIds = filteredFollowed.map { it.userId }.toSet()
+                val prefCat = preferredCategory.split(",").map { it.trim().lowercase() }
+                filteredActfiles.sortedByDescending { actfile ->
+                    var score = (actfile.likesCount * 3 + actfile.commentsCount * 5 + actfile.viewsCount).toDouble()
+                    if (actfile.userId in followedIds) {
+                        score += 10000.0 // Huge boost for followed users
+                    }
+                    val catInfo = com.example.ui.components.getCategoryById(actfile.category)
+                    val catName = catInfo?.name?.lowercase() ?: actfile.category?.lowercase() ?: ""
+                    if (catName in prefCat) {
+                        score *= 1.5 // 50% boost for preferred category
+                    }
+                    val rnd = java.util.Random(discoverySeed.toLong() + actfile.id.hashCode()).nextDouble()
+                    score * (0.5 + rnd) // Random discovery factor
+                }
+            } // Personnalisé (Pour Toi)
             1 -> filteredFollowed // Abonnements
             2 -> filteredActfiles.sortedByDescending { it.likesCount + it.commentsCount * 2 + it.viewsCount } // Populaires
             3 -> filteredActfiles.shuffled(java.util.Random(discoverySeed.toLong())) // Découverte
@@ -227,7 +243,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                         FilterChip(
                             selected = feedTab == 0,
                             onClick = { viewModel.setFeedTab(0) },
-                            label = { Text("✨ Récents", fontSize = 13.sp, fontWeight = if (feedTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                            label = { Text("✨ Pour Toi", fontSize = 13.sp, fontWeight = if (feedTab == 0) FontWeight.Bold else FontWeight.Normal) }
                         )
                     }
                     item {
@@ -376,11 +392,10 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = user.username,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1
+                                    com.example.ui.components.VerificationBadge(
+                                        userName = user.username,
+                                        isVerified = user.isVerified,
+                                        modifier = Modifier.size(14.dp)
                                     )
                                 }
                             }
@@ -482,8 +497,8 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
             ActfileComposerScreen(
                 viewModel = viewModel,
                 onDismiss = { viewModel.setShowComposer(false) },
-                onPublish = { content, tags, category ->
-                    viewModel.publishActfile(content, tags, category)
+                onPublish = { content, tags, category, postAsIddet ->
+                    viewModel.publishActfile(content, tags, category, postAsIddet = postAsIddet)
                     viewModel.setShowComposer(false)
                 }
             )

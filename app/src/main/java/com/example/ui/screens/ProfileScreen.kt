@@ -115,12 +115,35 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
 
     fun compressAndResizeImage(context: android.content.Context, uri: Uri): File? {
         return try {
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-            inputStream.close()
-            if (bitmap == null) return null
-            
             val maxDimension = 800
+            
+            // 1. Measure dimensions without full decode to avoid memory pressure
+            val boundsOptions = android.graphics.BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                android.graphics.BitmapFactory.decodeStream(stream, null, boundsOptions)
+            }
+            
+            val originalWidth = boundsOptions.outWidth
+            val originalHeight = boundsOptions.outHeight
+            if (originalWidth <= 0 || originalHeight <= 0) return null
+
+            // Calculate optimal inSampleSize
+            var inSampleSize = 1
+            while (originalWidth / (inSampleSize * 2) >= maxDimension || originalHeight / (inSampleSize * 2) >= maxDimension) {
+                inSampleSize *= 2
+            }
+
+            // 2. Decode downsampled bitmap
+            val decodeOptions = android.graphics.BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+                inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+            }
+            val bitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
+                android.graphics.BitmapFactory.decodeStream(stream, null, decodeOptions)
+            } ?: return null
+
             val width = bitmap.width
             val height = bitmap.height
             val (newWidth, newHeight) = if (width > height) {
@@ -138,14 +161,22 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                     Pair(width, height)
                 }
             }
-            
-            val scaledBitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+
+            val scaledBitmap = if (newWidth != width || newHeight != height) {
+                android.graphics.Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true).also {
+                    if (it != bitmap) bitmap.recycle()
+                }
+            } else {
+                bitmap
+            }
+
             val cacheDir = context.cacheDir
             val file = File(cacheDir, "compressed_avatar_${System.currentTimeMillis()}.jpg")
-            val outStream = java.io.FileOutputStream(file)
-            scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, outStream)
-            outStream.flush()
-            outStream.close()
+            java.io.FileOutputStream(file).use { outStream ->
+                scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, outStream)
+                outStream.flush()
+            }
+            scaledBitmap.recycle()
             file
         } catch (e: Exception) {
             e.printStackTrace()

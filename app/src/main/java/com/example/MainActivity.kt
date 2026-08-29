@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         val imageLoader = ImageLoader.Builder(applicationContext)
+            .crossfade(true)
+            .respectCacheHeaders(false)
             .components {
                 if (Build.VERSION.SDK_INT >= 28) {
                     add(ImageDecoderDecoder.Factory())
@@ -114,10 +116,21 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) {
                 android.util.Log.e("MainActivity", "Failed to schedule NotificationWorker", e)
             }
+            
+            try {
+                val serviceIntent = android.content.Intent(this, com.example.worker.MessageSyncService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
+                } else {
+                    startService(serviceIntent)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Failed to start MessageSyncService", e)
+            }
 
             val db = AppDatabase.getDatabase(this)
             val prefs = getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-            val repository = IddetRepository(db.userDao(), db.actfileDao(), db.messageDao(), db.followDao(), db.commentDao(), db.notificationDao(), prefs)
+            val repository = IddetRepository(db.userDao(), db.actfileDao(), db.messageDao(), db.followDao(), db.commentDao(), db.notificationDao(), db.savedAccountDao(), prefs)
             
             val factory = object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -163,6 +176,15 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        try {
+            Coil.imageLoader(this).memoryCache?.trimMemory(level)
+        } catch (e: Exception) {
+            // Ignore cache trim errors gracefully
         }
     }
 }

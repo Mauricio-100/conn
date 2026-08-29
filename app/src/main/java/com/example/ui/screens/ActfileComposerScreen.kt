@@ -169,7 +169,7 @@ val POPULAR_TAGS_SUGGESTIONS = listOf(
 fun ActfileComposerScreen(
     viewModel: IddetViewModel,
     onDismiss: () -> Unit,
-    onPublish: (String, String, String?) -> Unit,
+    onPublish: (String, String, String?, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -179,6 +179,8 @@ fun ActfileComposerScreen(
     var contentValue by remember(initialTextFromVm) { 
         mutableStateOf(TextFieldValue(initialTextFromVm ?: "")) 
     }
+    var postAsIddet by remember { mutableStateOf(false) }
+    val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     var tags by remember { mutableStateOf("") }
 
     LaunchedEffect(initialTextFromVm) {
@@ -387,7 +389,7 @@ fun ActfileComposerScreen(
                                             val finalContent = if (selectedCommunity != null) {
                                                 "$textContent\n\n@c/${selectedCommunity!!.slug}"
                                             } else textContent
-                                            onPublish(finalContent, tags, selectedCategory)
+                                            onPublish(finalContent, tags, selectedCategory, postAsIddet)
                                         } else {
                                             safetyError = "⚠️ Ce contenu enfreint les règles de la communauté Iddet."
                                         }
@@ -704,6 +706,23 @@ fun ActfileComposerScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 2.dp)
                     ) {
+                        if (com.example.data.IddetAccountManager.canPostAsIddet(currentUser)) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Publier en tant que IDDET",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Switch(checked = postAsIddet, onCheckedChange = { postAsIddet = it })
+                            }
+                        }
                         OutlinedTextField(
                             value = tags,
                             onValueChange = { tags = it },
