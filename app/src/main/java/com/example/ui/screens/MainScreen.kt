@@ -753,6 +753,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                 composable("notifications") { NotificationsScreen(viewModel, navController) }
                 composable("history") { HistoryScreen(viewModel, navController) }
                 composable("settings") { SettingsScreen(viewModel, navController) }
+                composable("marketplace") { MarketplaceScreen(navController) }
                 composable(
                     "browser/{url}",
                     arguments = listOf(navArgument("url") { type = NavType.StringType }),
