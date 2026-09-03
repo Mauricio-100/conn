@@ -3,13 +3,30 @@ package com.example.utils
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.*
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-object WebSocketManager {
+enum class SocketConnectionState {
+    CONNECTED,
+    CONNECTING,
+    DISCONNECTED
+}
+
+interface ChatSocketClient {
+    val connectionState: StateFlow<SocketConnectionState>
+    val events: SharedFlow<WebSocketEvent>
+    fun connect(userId: String)
+    fun disconnect()
+    fun sendVoiceMessage(receiverId: String, audioB64: String, senderUsername: String): Boolean
+}
+
+object WebSocketManager : ChatSocketClient {
     private const val TAG = "WebSocketManager"
     private val client = OkHttpClient.Builder()
         .pingInterval(0, TimeUnit.SECONDS) // Handle manually
@@ -19,7 +36,10 @@ object WebSocketManager {
 
     private var webSocket: WebSocket? = null
     private val _events = MutableSharedFlow<WebSocketEvent>(extraBufferCapacity = 100)
-    val events: SharedFlow<WebSocketEvent> = _events.asSharedFlow()
+    override val events: SharedFlow<WebSocketEvent> = _events.asSharedFlow()
+
+    private val _connectionState = MutableStateFlow(SocketConnectionState.DISCONNECTED)
+    override val connectionState: StateFlow<SocketConnectionState> = _connectionState.asStateFlow()
 
     private var currentUserId: String? = null
     private var isClosedManually = false
@@ -28,7 +48,7 @@ object WebSocketManager {
     private val maxReconnectDelayMs = 30000L
     private val coroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    fun connect(userId: String) {
+    override fun connect(userId: String) {
         if (currentUserId == userId && webSocket != null) {
             Log.d(TAG, "Already connected/connecting for user: $userId")
             return
@@ -39,6 +59,7 @@ object WebSocketManager {
         currentUserId = userId
         isClosedManually = false
         reconnectDelayMs = 1000L
+        _connectionState.value = SocketConnectionState.CONNECTING
 
         val url = "wss://hoosthubs-g.onrender.com/ws/$userId"
         val request = Request.Builder().url(url).build()
@@ -48,6 +69,7 @@ object WebSocketManager {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WebSocket Opened successfully")
                 reconnectDelayMs = 1000L
+                _connectionState.value = SocketConnectionState.CONNECTED
                 coroutineScope.launch {
                     _events.emit(WebSocketEvent.Connected)
                 }
@@ -64,6 +86,7 @@ object WebSocketManager {
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WebSocket Closed: code=$code, reason=$reason")
+                _connectionState.value = SocketConnectionState.DISCONNECTED
                 coroutineScope.launch {
                     _events.emit(WebSocketEvent.Disconnected)
                 }
@@ -72,6 +95,7 @@ object WebSocketManager {
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WebSocket Failure", t)
+                _connectionState.value = SocketConnectionState.DISCONNECTED
                 coroutineScope.launch {
                     _events.emit(WebSocketEvent.Disconnected)
                 }
@@ -112,6 +136,14 @@ object WebSocketManager {
                     )
                     coroutineScope.launch { _events.emit(event) }
                 }
+                "message_deleted" -> {
+                    val rawId = json.optString("message_id")
+                    val finalId = if (rawId.isNullOrBlank()) json.optString("id") else rawId
+                    if (finalId.isNotBlank()) {
+                        val event = WebSocketEvent.MessageDeleted(finalId)
+                        coroutineScope.launch { _events.emit(event) }
+                    }
+                }
                 "error" -> {
                     val msg = json.optString("message", "Erreur serveur")
                     coroutineScope.launch { _events.emit(WebSocketEvent.Error(msg)) }
@@ -134,7 +166,7 @@ object WebSocketManager {
         }
     }
 
-    fun sendVoiceMessage(receiverId: String, audioB64: String, senderUsername: String): Boolean {
+    override fun sendVoiceMessage(receiverId: String, audioB64: String, senderUsername: String): Boolean {
         val socket = webSocket
         if (socket == null) {
             Log.e(TAG, "Cannot send message, WebSocket is not connected")
@@ -161,6 +193,7 @@ object WebSocketManager {
         if (isClosedManually || currentUserId == null) return
 
         reconnectJob?.cancel()
+        _connectionState.value = SocketConnectionState.CONNECTING
         reconnectJob = coroutineScope.launch {
             Log.d(TAG, "Waiting $reconnectDelayMs ms before reconnecting...")
             delay(reconnectDelayMs)
@@ -169,7 +202,7 @@ object WebSocketManager {
         }
     }
 
-    fun disconnect() {
+    override fun disconnect() {
         isClosedManually = true
         reconnectJob?.cancel()
         reconnectJob = null
@@ -180,6 +213,7 @@ object WebSocketManager {
         }
         webSocket = null
         currentUserId = null
+        _connectionState.value = SocketConnectionState.DISCONNECTED
     }
 }
 
@@ -198,6 +232,9 @@ sealed class WebSocketEvent {
         val messageId: String,
         val content: String,
         val msgType: String
+    ) : WebSocketEvent()
+    data class MessageDeleted(
+        val messageId: String
     ) : WebSocketEvent()
     data class Error(val message: String) : WebSocketEvent()
 }

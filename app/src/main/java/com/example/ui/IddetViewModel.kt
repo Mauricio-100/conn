@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.data.*
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.ActfileWithUser
@@ -15,7 +17,72 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
+class IddetViewModel(val repository: IddetRepository) : ViewModel() {
+
+    private val _myIddetPlusStatus = MutableStateFlow<IddetPlusStatusResponse?>(null)
+    val myIddetPlusStatus: StateFlow<IddetPlusStatusResponse?> = _myIddetPlusStatus
+
+    private val _myCard = MutableStateFlow<UserCardResponse?>(null)
+    val myCard: StateFlow<UserCardResponse?> = _myCard
+
+    private val _myCredits = MutableStateFlow<CreditsResponse?>(null)
+    val myCredits: StateFlow<CreditsResponse?> = _myCredits
+
+    private val _communityBots = MutableStateFlow<List<CommunityBot>>(emptyList())
+    val communityBots: StateFlow<List<CommunityBot>> = _communityBots.asStateFlow()
+
+    private val _communityModActions = MutableStateFlow<List<CommunityModAction>>(emptyList())
+    val communityModActions: StateFlow<List<CommunityModAction>> = _communityModActions.asStateFlow()
+
+    private val _isBotsLoading = MutableStateFlow(false)
+    val isBotsLoading: StateFlow<Boolean> = _isBotsLoading.asStateFlow()
+
+    private val _isModActionsLoading = MutableStateFlow(false)
+    val isModActionsLoading: StateFlow<Boolean> = _isModActionsLoading.asStateFlow()
+
+    fun loadIddetPlusData() {
+        viewModelScope.launch {
+            try {
+                _myIddetPlusStatus.value = repository.getMyIddetPlusStatus()
+                _myCard.value = repository.getMyCard()
+                _myCredits.value = repository.getMyCredits()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    suspend fun getUserCard(userId: String): UserCardResponse? {
+        return try {
+            repository.getUserCard(userId)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun updateCardStyle(style: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val res = repository.updateCardStyle(style)
+                // update local state
+                _myCard.value = _myCard.value?.copy(card_style = res.card_style)
+                onSuccess()
+            } catch (e: Exception) {
+                onError(e.message ?: "Erreur de mise à jour du style")
+            }
+        }
+    }
+
+    fun createCheckoutSession(onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val res = repository.createIddetPlusCheckout()
+                onSuccess(res.checkout_url)
+            } catch (e: Exception) {
+                onError(e.message ?: "Erreur de création du checkout")
+            }
+        }
+    }
 
     val currentUser: StateFlow<User?> = repository.currentUser
     
@@ -830,7 +897,129 @@ class IddetViewModel(private val repository: IddetRepository) : ViewModel() {
     fun banCommunityMember(slug: String, userId: String, reason: String? = null, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val success = repository.banCommunityMember(slug, userId, reason)
+            if (success) {
+                loadCommunityModActions(slug)
+            }
             onResult(success)
+        }
+    }
+
+    fun loadCommunityBots(slug: String) {
+        viewModelScope.launch {
+            _isBotsLoading.value = true
+            try {
+                val bots = repository.getCommunityBots(slug)
+                _communityBots.value = bots
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isBotsLoading.value = false
+            }
+        }
+    }
+
+    fun createCommunityBot(
+        slug: String,
+        name: String,
+        bannedWords: List<String>,
+        autoBanThreshold: Int,
+        welcomeMessage: String?,
+        onSuccess: (CommunityBot) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val bot = repository.createCommunityBot(slug, name, bannedWords, autoBanThreshold, welcomeMessage)
+            if (bot != null) {
+                _communityBots.value = _communityBots.value + bot
+                onSuccess(bot)
+            } else {
+                onError("Échec de la création du bot")
+            }
+        }
+    }
+
+    fun updateCommunityBot(
+        slug: String,
+        botId: String,
+        name: String? = null,
+        bannedWords: List<String>? = null,
+        autoBanThreshold: Int? = null,
+        welcomeMessage: String? = null,
+        isActive: Boolean? = null,
+        onSuccess: (CommunityBot) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val updated = repository.updateCommunityBot(slug, botId, name, bannedWords, autoBanThreshold, welcomeMessage, isActive)
+            if (updated != null) {
+                _communityBots.value = _communityBots.value.map { if (it.id == botId) updated else it }
+                onSuccess(updated)
+            } else {
+                if (isActive != null) {
+                    _communityBots.value = _communityBots.value.map {
+                        if (it.id == botId) it.copy(isActive = isActive) else it
+                    }
+                    val found = _communityBots.value.find { it.id == botId }
+                    if (found != null) {
+                        onSuccess(found)
+                        return@launch
+                    }
+                }
+                onError("Échec de la mise à jour du bot")
+            }
+        }
+    }
+
+    fun deleteCommunityBot(
+        slug: String,
+        botId: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val success = repository.deleteCommunityBot(slug, botId)
+            if (success) {
+                _communityBots.value = _communityBots.value.filter { it.id != botId }
+                onSuccess()
+            } else {
+                onError("Échec de la suppression du bot")
+            }
+        }
+    }
+
+    fun performBotModAction(
+        slug: String,
+        botId: String,
+        botToken: String?,
+        actionType: String,
+        targetUserId: String?,
+        targetActfileId: String?,
+        reason: String?,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val success = repository.performBotModAction(slug, botId, botToken, actionType, targetUserId, targetActfileId, reason)
+            if (success) {
+                loadCommunityModActions(slug)
+                onSuccess()
+            } else {
+                onError("Échec de l'action de modération du bot")
+            }
+        }
+    }
+
+    fun loadCommunityModActions(slug: String) {
+        viewModelScope.launch {
+            _isModActionsLoading.value = true
+            try {
+                val actions = repository.getCommunityModActions(slug)
+                _communityModActions.value = actions
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isModActionsLoading.value = false
+            }
         }
     }
 

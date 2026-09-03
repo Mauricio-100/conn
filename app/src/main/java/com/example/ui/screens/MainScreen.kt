@@ -702,7 +702,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                 }
                 composable("friends_map") { FriendsMapScreen(viewModel, navController) }
                 composable("search") { SearchScreen(viewModel, navController) }
-                composable("messages") { MessagesScreen(viewModel, navController) }
+                composable("messages") { ConversationsListScreen(viewModel, navController) }
                 composable("helper") { com.example.ui.screens.HelperScreen(navController) }
                 composable("profile") { ProfileScreen(viewModel, navController) }
                 composable(
@@ -725,7 +725,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                     popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessLow)) + fadeOut(animationSpec = spring(stiffness = Spring.StiffnessLow)) }
                 ) { backStackEntry ->
                     val userId = backStackEntry.arguments?.getString("userId") ?: return@composable
-                    ChatScreen(userId, viewModel, navController)
+                    ChatThreadScreen(userId, viewModel, navController)
                 }
                 composable(
                     "discussion/{actfileId}",
@@ -754,6 +754,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                 composable("history") { HistoryScreen(viewModel, navController) }
                 composable("settings") { SettingsScreen(viewModel, navController) }
                 composable("marketplace") { MarketplaceScreen(navController) }
+                composable("iddet_plus") { IddetPlusScreen(viewModel, navController) }
                 composable(
                     "browser/{url}",
                     arguments = listOf(navArgument("url") { type = NavType.StringType }),

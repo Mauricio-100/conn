@@ -63,6 +63,12 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(userId: String, viewModel: IddetViewModel, navController: NavController) {
+    ChatThreadScreen(userId = userId, iddetViewModel = viewModel, navController = navController)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LegacyChatScreen(userId: String, viewModel: IddetViewModel, navController: NavController) {
     val myUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val partnerConversation = conversations.find { it.user_id == userId }

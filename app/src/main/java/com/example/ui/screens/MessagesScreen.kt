@@ -51,6 +51,12 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessagesScreen(viewModel: IddetViewModel, navController: NavController) {
+    ConversationsListScreen(viewModel, navController)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LegacyMessagesScreen(viewModel: IddetViewModel, navController: NavController) {
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val stories by viewModel.stories.collectAsStateWithLifecycle()
     val groupedAndSortedStories = remember(stories) {

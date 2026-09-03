@@ -22,6 +22,74 @@ import okhttp3.RequestBody
 
 data class RegisterRequest(val username: String, val password: String? = null)
 data class UserResponse(val id: String?, val username: String, val email: String?, val avatar_url: String?, val created_at: String?)
+data class IddetPlusStatusResponse(
+    val is_iddet_plus: Boolean,
+    val expires_at: String?,
+    val credits: Int,
+    val card_style: String,
+    val monthly_price_usd: Double,
+    val monthly_credits: Int,
+    val history: List<IddetPlusHistoryItem>
+)
+
+data class IddetPlusHistoryItem(
+    val status: String,
+    val started_at: String?,
+    val expires_at: String?,
+    val price_amount: Double?,
+    val price_currency: String?,
+    val payment_ref: String?
+)
+
+data class UserCardResponse(
+    val user_id: String,
+    val username: String,
+    val avatar_url: String?,
+    val bio: String?,
+    val is_verified: Boolean,
+    val card_style: String,
+    val is_iddet_plus: Boolean,
+    val credits: Int? = null,
+    val level: LevelInfo
+)
+
+data class LevelsTableResponse(val levels: List<LevelInfo>)
+data class LevelInfo(
+    val score: Int,
+    val level_index: Int,
+    val level_name: String,
+    val next_level_name: String?,
+    val next_level_score: Int?,
+    val points_to_next: Int,
+    val progress: Double,
+    val is_max_level: Boolean
+)
+
+
+
+data class CardStyleUpdateRequest(val style: String)
+data class CardStyleUpdateResponse(val card_style: String)
+
+data class CreditsResponse(
+    val credits: Int,
+    val transactions: List<CreditTransaction>
+)
+
+data class CreditTransaction(
+    val amount: Int,
+    val reason: String,
+    val reference: String?,
+    val balance_after: Int,
+    val created_at: String
+)
+
+data class IddetPlusCheckoutRequest(val currency: String = "USD")
+data class IddetPlusCheckoutResponse(
+    val reference: String,
+    val checkout_url: String,
+    val amount: Double,
+    val currency: String
+)
 data class TokenResponse(val access_token: String, val token_type: String)
 
 data class CategoriesResponse(val categories: List<String>)
@@ -69,7 +137,9 @@ data class UserProfileNetwork(
     val phone_number: String? = null,
     val zodiac_sign: String? = null,
     val created_at: String? = null,
-    val last_seen: String? = null
+    val last_seen: String? = null,
+    val is_iddet_plus: Boolean = false,
+    val card_style: String? = null
 )
 
 data class SearchResult(
@@ -84,6 +154,13 @@ data class SearchResultItem(
     val is_verified: Boolean?
 )
 
+data class MessageReactionGroup(
+    val emoji: String,
+    val count: Int = 1,
+    val users: List<String> = emptyList(),
+    @Json(name = "has_reacted") val has_reacted: Boolean = false
+)
+
 data class ConversationNetwork(
     val id: String,
     val user_id: String,
@@ -93,7 +170,9 @@ data class ConversationNetwork(
     val last_message_time: String?,
     val unread_count: Int? = 0,
     val is_online: Boolean,
-    val is_verified: Boolean = false
+    val is_verified: Boolean = false,
+    @Json(name = "is_iddet_plus") val is_iddet_plus: Boolean = false,
+    @Json(name = "card_style") val card_style: String? = null
 )
 
 data class MessageNetwork(
@@ -106,7 +185,8 @@ data class MessageNetwork(
     val created_at: String,
     val sender_username: String? = null,
     val sender_avatar: String? = null,
-    val reaction: String? = null
+    val reaction: String? = null,
+    val reactions: List<MessageReactionGroup>? = null
 )
 
 data class SendMessageRequest(
@@ -186,14 +266,7 @@ data class UserLevelResponse(
     val is_max_level: Boolean = false
 )
 
-data class LevelInfo(
-    val name: String,
-    val min_score: Int
-)
 
-data class LevelsTableResponse(
-    val levels: List<LevelInfo>
-)
 
 data class StoryResponse(
     val id: String,
@@ -223,6 +296,39 @@ data class CreateStoryResponse(
 )
 
 interface ApiService {
+
+    @retrofit2.http.GET("/api/users/me/iddet-plus")
+    suspend fun getMyIddetPlusStatus(
+        @retrofit2.http.Header("Authorization") token: String
+    ): IddetPlusStatusResponse
+
+    @retrofit2.http.GET("/api/users/me/card")
+    suspend fun getMyCard(
+        @retrofit2.http.Header("Authorization") token: String
+    ): UserCardResponse
+
+    @retrofit2.http.GET("/api/users/{user_id}/card")
+    suspend fun getUserCard(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("user_id") userId: String
+    ): UserCardResponse
+
+    @retrofit2.http.PUT("/api/users/me/card/style")
+    suspend fun updateCardStyle(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Body request: CardStyleUpdateRequest
+    ): CardStyleUpdateResponse
+
+    @retrofit2.http.GET("/api/credits/me")
+    suspend fun getMyCredits(
+        @retrofit2.http.Header("Authorization") token: String
+    ): CreditsResponse
+
+    @retrofit2.http.POST("/api/iddet-plus/checkout")
+    suspend fun createIddetPlusCheckout(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Body request: IddetPlusCheckoutRequest = IddetPlusCheckoutRequest()
+    ): IddetPlusCheckoutResponse
     @POST("/api/users/profile")
     suspend fun updateProfile(
         @retrofit2.http.Header("Authorization") token: String,
@@ -348,6 +454,12 @@ interface ApiService {
         @Body request: SendMessageRequest
     ): MessageNetwork
 
+    @POST("/api/messages/read/{userId}")
+    suspend fun markMessagesRead(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("userId") userId: String
+    ): Map<String, Any>
+
     @retrofit2.http.DELETE("/api/messages/{id}")
     suspend fun deleteMessage(
         @retrofit2.http.Header("Authorization") token: String?,
@@ -366,6 +478,12 @@ interface ApiService {
         @retrofit2.http.Path("id") id: String,
         @Body body: MessageReactionRequest
     ): Map<String, Any>
+
+    @retrofit2.http.GET("/api/messages/{id}/reactions")
+    suspend fun getMessageReactions(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String
+    ): List<MessageReactionGroup>
 
     @retrofit2.http.DELETE("/api/messages/{id}/react")
     suspend fun removeMessageReaction(
@@ -488,6 +606,49 @@ interface ApiService {
         @retrofit2.http.Path("slug") slug: String,
         @retrofit2.http.Part icon: okhttp3.MultipartBody.Part
     ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.GET("/api/communities/{slug}/bots")
+    suspend fun getCommunityBots(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String
+    ): Response<ResponseBody>
+
+    @retrofit2.http.POST("/api/communities/{slug}/bots")
+    suspend fun createCommunityBot(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any>
+    ): Response<ResponseBody>
+
+    @retrofit2.http.PUT("/api/communities/{slug}/bots/{bot_id}")
+    suspend fun updateCommunityBot(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @retrofit2.http.Path("bot_id") botId: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any>
+    ): Response<ResponseBody>
+
+    @DELETE("/api/communities/{slug}/bots/{bot_id}")
+    suspend fun deleteCommunityBot(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @retrofit2.http.Path("bot_id") botId: String
+    ): Response<ResponseBody>
+
+    @retrofit2.http.POST("/api/communities/{slug}/bots/{bot_id}/actions")
+    suspend fun performBotModAction(
+        @retrofit2.http.Header("X-Bot-Token") botToken: String?,
+        @retrofit2.http.Path("slug") slug: String,
+        @retrofit2.http.Path("bot_id") botId: String,
+        @Body body: Map<String, @JvmSuppressWildcards Any>
+    ): Response<ResponseBody>
+
+    @retrofit2.http.GET("/api/communities/{slug}/mod-actions")
+    suspend fun getCommunityModActions(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @retrofit2.http.Query("limit") limit: Int = 50
+    ): Response<ResponseBody>
 
     @retrofit2.http.GET("/api/stories")
     suspend fun getStories(

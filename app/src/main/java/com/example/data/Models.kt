@@ -152,6 +152,30 @@ data class Channel(
     @Json(name = "created_at") val createdAt: String = ""
 )
 
+data class CommunityBot(
+    val id: String = "",
+    @Json(name = "community_id") val communityId: String? = null,
+    val name: String = "",
+    @Json(name = "banned_words") val bannedWords: List<String> = emptyList(),
+    @Json(name = "auto_ban_threshold") val autoBanThreshold: Int = 0,
+    @Json(name = "welcome_message") val welcomeMessage: String? = null,
+    @Json(name = "is_active") val isActive: Boolean = true,
+    @Json(name = "created_at") val createdAt: String? = null,
+    val token: String? = null
+)
+
+data class CommunityModAction(
+    val id: String = "",
+    @Json(name = "community_id") val communityId: String? = null,
+    @Json(name = "action_type") val actionType: String = "", // delete_post, ban, mute, warn
+    @Json(name = "actor_type") val actorType: String? = null, // bot, moderator, admin
+    @Json(name = "actor_id") val actorId: String? = null,
+    @Json(name = "target_user_id") val targetUserId: String? = null,
+    @Json(name = "target_actfile_id") val targetActfileId: String? = null,
+    val reason: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null
+)
+
 data class Story(
     val id: String,
     @Json(name = "media_url") val mediaUrl: String,

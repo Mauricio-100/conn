@@ -1553,13 +1553,13 @@ fun LevelsLadderDialog(
     onDismiss: () -> Unit
 ) {
     val displayTable = if (table.isNotEmpty()) table else listOf(
-        com.example.data.LevelInfo("Débutant", 0),
-        com.example.data.LevelInfo("Bronze", 100),
-        com.example.data.LevelInfo("Argent", 500),
-        com.example.data.LevelInfo("Or", 2000),
-        com.example.data.LevelInfo("Platine", 10000),
-        com.example.data.LevelInfo("Diamant", 50000),
-        com.example.data.LevelInfo("Légende", 200000)
+        com.example.data.LevelInfo(0, 0, "Débutant", null, null, 0, 0.0, false),
+        com.example.data.LevelInfo(0, 0, "Bronze", null, null, 100, 0.0, false),
+        com.example.data.LevelInfo(0, 0, "Argent", null, null, 500, 0.0, false),
+        com.example.data.LevelInfo(0, 0, "Or", null, null, 2000, 0.0, false),
+        com.example.data.LevelInfo(0, 0, "Platine", null, null, 10000, 0.0, false),
+        com.example.data.LevelInfo(0, 0, "Diamant", null, null, 50000, 0.0, false),
+        com.example.data.LevelInfo(0, 0, "Légende", null, null, 200000, 0.0, false)
     )
 
     AlertDialog(
@@ -1642,7 +1642,7 @@ fun LevelsLadderDialog(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            "Niv. $tierLevel - ${tier.name}",
+                                            "Niv. $tierLevel - ${tier.level_name}",
                                             fontWeight = FontWeight.Bold,
                                             style = MaterialTheme.typography.titleSmall,
                                             color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -1659,7 +1659,7 @@ fun LevelsLadderDialog(
                                         }
                                     }
                                     Text(
-                                        "${tier.min_score} pts requis",
+                                        "${tier.points_to_next} pts requis",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

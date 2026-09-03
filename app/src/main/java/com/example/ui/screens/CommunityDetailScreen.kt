@@ -42,6 +42,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import com.example.ui.components.CommunityDashboardHeader
 import com.example.ui.components.ActfileCard
 import com.example.ui.components.VerificationBadge
+import com.example.ui.components.CommunityModerationTabContent
 import com.example.utils.FormatUtils
 import androidx.compose.foundation.lazy.itemsIndexed
 
@@ -104,6 +105,19 @@ fun CommunityDetailScreen(
                 },
                 actions = {
                     val isAdmin = community?.myRole == "admin" || community?.creatorId == currentUserState?.id
+                    val isModeratorOrAdmin = isAdmin || community?.myRole == "moderator"
+                    if (isModeratorOrAdmin) {
+                        IconButton(
+                            onClick = { selectedTab = 3 },
+                            modifier = Modifier.testTag("mod_hub_button")
+                        ) {
+                            Icon(
+                                Icons.Default.Shield,
+                                contentDescription = "Modération & Bots",
+                                tint = if (selectedTab == 3) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     if (isAdmin) {
                         IconButton(onClick = { showEditDialog = true }) {
                             Icon(Icons.Default.Settings, contentDescription = "Paramètres")
@@ -171,6 +185,7 @@ fun CommunityDetailScreen(
                 }
 
                 item {
+                    val isModeratorOrAdmin = com.myRole == "admin" || com.myRole == "moderator" || com.creatorId == currentUserState?.id
                     TabRow(
                         selectedTabIndex = selectedTab,
                         containerColor = MaterialTheme.colorScheme.background,
@@ -195,6 +210,14 @@ fun CommunityDetailScreen(
                             text = { Text("À propos", fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.Info, contentDescription = null) }
                         )
+                        if (isModeratorOrAdmin) {
+                            Tab(
+                                selected = selectedTab == 3,
+                                onClick = { selectedTab = 3 },
+                                text = { Text("Modération", fontWeight = FontWeight.Bold) },
+                                icon = { Icon(Icons.Default.Shield, contentDescription = null) }
+                            )
+                        }
                     }
                 }
 
@@ -431,7 +454,48 @@ fun CommunityDetailScreen(
                                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
                                 }
                             }
+
+                            val isModeratorOrAdmin = com.myRole == "admin" || com.myRole == "moderator" || com.creatorId == currentUserState?.id
+                            if (isModeratorOrAdmin) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectedTab = 3 },
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column {
+                                                Text("Espace Modération & Bots", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                                Text("Gérer les bots, les filtres et le journal d'audit", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                        }
+                                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
                         }
+                    }
+                }
+
+                if (selectedTab == 3) {
+                    item {
+                        CommunityModerationTabContent(
+                            community = com,
+                            viewModel = viewModel,
+                            onShowSnackbar = { msg: String ->
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(msg)
+                                }
+                            }
+                        )
                     }
                 }
             }

@@ -17,8 +17,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 
-class IddetRepository(
-    private val userDao: UserDao,
+class IddetRepository(    private val userDao: UserDao,
     private val actfileDao: ActfileDao,
     private val messageDao: MessageDao,
     private val followDao: FollowDao,
@@ -27,6 +26,39 @@ class IddetRepository(
     private val savedAccountDao: SavedAccountDao,
     private val prefs: android.content.SharedPreferences
 ) {
+
+
+    suspend fun getMyIddetPlusStatus(): IddetPlusStatusResponse {
+        val token = prefs.getString("token", null) ?: throw Exception("Not authenticated")
+        return RetrofitClient.apiService.getMyIddetPlusStatus("Bearer $token")
+    }
+
+    suspend fun getMyCard(): UserCardResponse {
+        val token = prefs.getString("token", null) ?: throw Exception("Not authenticated")
+        return RetrofitClient.apiService.getMyCard("Bearer $token")
+    }
+
+    suspend fun getUserCard(userId: String): UserCardResponse {
+        val token = prefs.getString("token", null)
+        val authHeader = token?.let { "Bearer $it" }
+        return RetrofitClient.apiService.getUserCard(authHeader, userId)
+    }
+
+    suspend fun updateCardStyle(style: String): CardStyleUpdateResponse {
+        val token = prefs.getString("token", null) ?: throw Exception("Not authenticated")
+        return RetrofitClient.apiService.updateCardStyle("Bearer $token", CardStyleUpdateRequest(style))
+    }
+
+    suspend fun getMyCredits(): CreditsResponse {
+        val token = prefs.getString("token", null) ?: throw Exception("Not authenticated")
+        return RetrofitClient.apiService.getMyCredits("Bearer $token")
+    }
+
+    suspend fun createIddetPlusCheckout(): IddetPlusCheckoutResponse {
+        val token = prefs.getString("token", null) ?: throw Exception("Not authenticated")
+        return RetrofitClient.apiService.createIddetPlusCheckout("Bearer $token", IddetPlusCheckoutRequest("USD"))
+    }
+
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
     // Current logged in user (in-memory mock)
@@ -922,6 +954,22 @@ class IddetRepository(
         }
     }
 
+    suspend fun getConversations(): List<ConversationNetwork> {
+        refreshConversations()
+        return _conversations.value
+    }
+
+    suspend fun markMessagesRead(userId: String) {
+        try {
+            val header = currentToken?.let { "Bearer $it" }
+            if (header != null) {
+                RetrofitClient.apiService.markMessagesRead(header, userId)
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+
     suspend fun refreshMessagesWith(otherUserId: String) {
         try {
             val header = currentToken?.let { "Bearer $it" }
@@ -1047,6 +1095,25 @@ class IddetRepository(
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    suspend fun getMessageReactions(messageId: String): List<MessageReactionGroup> {
+        return try {
+            val header = currentToken?.let { "Bearer $it" }
+            if (header != null) {
+                RetrofitClient.apiService.getMessageReactions(header, messageId)
+            } else {
+                val local = messageDao.getMessageById(messageId)
+                if (local?.reaction != null) {
+                    listOf(MessageReactionGroup(emoji = local.reaction, count = 1, has_reacted = true))
+                } else emptyList()
+            }
+        } catch (e: Exception) {
+            val local = messageDao.getMessageById(messageId)
+            if (local?.reaction != null) {
+                listOf(MessageReactionGroup(emoji = local.reaction, count = 1, has_reacted = true))
+            } else emptyList()
         }
     }
 
@@ -1472,6 +1539,235 @@ class IddetRepository(
         }
     }
 
+    suspend fun getCommunityBots(slug: String): List<CommunityBot> {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: return emptyList()
+        return try {
+            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            val response = RetrofitClient.apiService.getCommunityBots(authHeader, slug)
+            if (response.isSuccessful) {
+                val raw = response.body()?.string() ?: return emptyList()
+                parseCommunityBotsList(raw)
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun createCommunityBot(
+        slug: String,
+        name: String,
+        bannedWords: List<String>,
+        autoBanThreshold: Int,
+        welcomeMessage: String?
+    ): CommunityBot? {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: return null
+        return try {
+            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            val body = mutableMapOf<String, Any>(
+                "name" to name,
+                "banned_words" to bannedWords,
+                "auto_ban_threshold" to autoBanThreshold
+            )
+            if (!welcomeMessage.isNullOrBlank()) {
+                body["welcome_message"] = welcomeMessage
+            }
+            val response = RetrofitClient.apiService.createCommunityBot(authHeader, slug, body)
+            if (response.isSuccessful) {
+                val raw = response.body()?.string() ?: return null
+                parseSingleCommunityBot(raw)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun updateCommunityBot(
+        slug: String,
+        botId: String,
+        name: String?,
+        bannedWords: List<String>?,
+        autoBanThreshold: Int?,
+        welcomeMessage: String?,
+        isActive: Boolean?
+    ): CommunityBot? {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: return null
+        return try {
+            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            val body = mutableMapOf<String, Any>()
+            if (name != null) body["name"] = name
+            if (bannedWords != null) body["banned_words"] = bannedWords
+            if (autoBanThreshold != null) body["auto_ban_threshold"] = autoBanThreshold
+            if (welcomeMessage != null) body["welcome_message"] = welcomeMessage
+            if (isActive != null) body["is_active"] = isActive
+
+            val response = RetrofitClient.apiService.updateCommunityBot(authHeader, slug, botId, body)
+            if (response.isSuccessful) {
+                val raw = response.body()?.string() ?: return null
+                parseSingleCommunityBot(raw)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun deleteCommunityBot(slug: String, botId: String): Boolean {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: return false
+        return try {
+            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            val response = RetrofitClient.apiService.deleteCommunityBot(authHeader, slug, botId)
+            response.isSuccessful
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun performBotModAction(
+        slug: String,
+        botId: String,
+        botToken: String?,
+        actionType: String,
+        targetUserId: String?,
+        targetActfileId: String?,
+        reason: String?
+    ): Boolean {
+        return try {
+            val body = mutableMapOf<String, Any>("action_type" to actionType)
+            if (targetUserId != null) body["target_user_id"] = targetUserId
+            if (targetActfileId != null) body["target_actfile_id"] = targetActfileId
+            if (reason != null) body["reason"] = reason
+
+            val response = RetrofitClient.apiService.performBotModAction(botToken, slug, botId, body)
+            response.isSuccessful
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun getCommunityModActions(slug: String, limit: Int = 50): List<CommunityModAction> {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: return emptyList()
+        return try {
+            val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+            val response = RetrofitClient.apiService.getCommunityModActions(authHeader, slug, limit)
+            if (response.isSuccessful) {
+                val raw = response.body()?.string() ?: return emptyList()
+                parseCommunityModActionsList(raw)
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    private fun parseCommunityBotsList(raw: String): List<CommunityBot> {
+        val list = mutableListOf<CommunityBot>()
+        try {
+            val trimmed = raw.trim()
+            if (trimmed.startsWith("[")) {
+                val arr = org.json.JSONArray(trimmed)
+                for (i in 0 until arr.length()) {
+                    list.add(parseCommunityBotJsonObj(arr.getJSONObject(i)))
+                }
+            } else if (trimmed.startsWith("{")) {
+                val obj = org.json.JSONObject(trimmed)
+                val arr = obj.optJSONArray("bots") ?: obj.optJSONArray("items")
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        list.add(parseCommunityBotJsonObj(arr.getJSONObject(i)))
+                    }
+                } else if (obj.has("id")) {
+                    list.add(parseCommunityBotJsonObj(obj))
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return list
+    }
+
+    private fun parseSingleCommunityBot(raw: String): CommunityBot? {
+        return try {
+            val trimmed = raw.trim()
+            if (trimmed.startsWith("{")) {
+                parseCommunityBotJsonObj(org.json.JSONObject(trimmed))
+            } else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun parseCommunityBotJsonObj(obj: org.json.JSONObject): CommunityBot {
+        val words = mutableListOf<String>()
+        val bw = obj.optJSONArray("banned_words")
+        if (bw != null) {
+            for (i in 0 until bw.length()) {
+                words.add(bw.optString(i))
+            }
+        }
+        return CommunityBot(
+            id = obj.optString("id", ""),
+            communityId = if (obj.has("community_id")) obj.optString("community_id") else null,
+            name = obj.optString("name", "Bot"),
+            bannedWords = words,
+            autoBanThreshold = obj.optInt("auto_ban_threshold", 0),
+            welcomeMessage = if (obj.has("welcome_message") && !obj.isNull("welcome_message")) obj.optString("welcome_message") else null,
+            isActive = obj.optBoolean("is_active", true),
+            createdAt = if (obj.has("created_at")) obj.optString("created_at") else null,
+            token = if (obj.has("token") && !obj.isNull("token")) obj.optString("token") else null
+        )
+    }
+
+    private fun parseCommunityModActionsList(raw: String): List<CommunityModAction> {
+        val list = mutableListOf<CommunityModAction>()
+        try {
+            val trimmed = raw.trim()
+            if (trimmed.startsWith("[")) {
+                val arr = org.json.JSONArray(trimmed)
+                for (i in 0 until arr.length()) {
+                    list.add(parseCommunityModActionJsonObj(arr.getJSONObject(i)))
+                }
+            } else if (trimmed.startsWith("{")) {
+                val obj = org.json.JSONObject(trimmed)
+                val arr = obj.optJSONArray("actions") ?: obj.optJSONArray("items") ?: obj.optJSONArray("mod_actions")
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        list.add(parseCommunityModActionJsonObj(arr.getJSONObject(i)))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return list
+    }
+
+    private fun parseCommunityModActionJsonObj(obj: org.json.JSONObject): CommunityModAction {
+        return CommunityModAction(
+            id = obj.optString("id", ""),
+            communityId = if (obj.has("community_id")) obj.optString("community_id") else null,
+            actionType = obj.optString("action_type", ""),
+            actorType = if (obj.has("actor_type")) obj.optString("actor_type") else null,
+            actorId = if (obj.has("actor_id")) obj.optString("actor_id") else null,
+            targetUserId = if (obj.has("target_user_id") && !obj.isNull("target_user_id")) obj.optString("target_user_id") else null,
+            targetActfileId = if (obj.has("target_actfile_id") && !obj.isNull("target_actfile_id")) obj.optString("target_actfile_id") else null,
+            reason = if (obj.has("reason") && !obj.isNull("reason")) obj.optString("reason") else null,
+            createdAt = if (obj.has("created_at")) obj.optString("created_at") else null
+        )
+    }
+
     private fun parseCommunityJson(
         jsonStr: String,
         fallbackSlug: String,
@@ -1783,13 +2079,13 @@ class IddetRepository(
         } catch (e: Exception) {
             e.printStackTrace()
             listOf(
-                LevelInfo("Débutant", 0),
-                LevelInfo("Bronze", 100),
-                LevelInfo("Argent", 500),
-                LevelInfo("Or", 2000),
-                LevelInfo("Platine", 10000),
-                LevelInfo("Diamant", 50000),
-                LevelInfo("Légende", 200000)
+                LevelInfo(0, 0, "Débutant", null, null, 0, 0.0, false),
+                LevelInfo(0, 0, "Bronze", null, null, 100, 0.0, false),
+                LevelInfo(0, 0, "Argent", null, null, 500, 0.0, false),
+                LevelInfo(0, 0, "Or", null, null, 2000, 0.0, false),
+                LevelInfo(0, 0, "Platine", null, null, 10000, 0.0, false),
+                LevelInfo(0, 0, "Diamant", null, null, 50000, 0.0, false),
+                LevelInfo(0, 0, "Légende", null, null, 200000, 0.0, false)
             )
         }
     }
