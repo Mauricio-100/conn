@@ -59,11 +59,14 @@ fun MarkdownRenderer(
     onLinkClick: ((String) -> Unit)? = null,
     onReadMoreClick: (() -> Unit)? = null
 ) {
-    val displayContent = remember(content, truncateChars) {
-        if (truncateChars != null && content.length > truncateChars) {
-            content.take(truncateChars) + "..."
+    val hideOgPhoto = remember(content) { content.contains("<!--hide_og_photo-->") }
+    val cleanedContent = remember(content) { content.replace("<!--hide_og_photo-->", "").trim() }
+
+    val displayContent = remember(cleanedContent, truncateChars) {
+        if (truncateChars != null && cleanedContent.length > truncateChars) {
+            cleanedContent.take(truncateChars) + "..."
         } else {
-            content
+            cleanedContent
         }
     }
 
@@ -171,7 +174,7 @@ fun MarkdownRenderer(
         }
 
         // Extract URLs for OpenGraph cards
-        val urls = remember(content) { extractUrlsFromMarkdown(content) }
+        val urls = remember(displayContent) { extractUrlsFromMarkdown(displayContent) }
         val hasVideo = remember(urls) { urls.any { VideoUrlHelper.isVideoUrl(it) } }
         
         if (!hasVideo && urls.isNotEmpty()) {
@@ -180,6 +183,7 @@ fun MarkdownRenderer(
                 OpenGraphPreview(
                     url = url,
                     compact = compactOpenGraph,
+                    hideImage = hideOgPhoto,
                     onLinkClick = onLinkClick,
                     modifier = Modifier.padding(top = 4.dp)
                 )

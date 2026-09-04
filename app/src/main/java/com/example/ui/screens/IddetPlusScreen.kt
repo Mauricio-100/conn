@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.example.ui.IddetViewModel
+import com.android.billingclient.api.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,6 +38,56 @@ fun IddetPlusScreen(viewModel: IddetViewModel, navController: NavController) {
     val status by viewModel.myIddetPlusStatus.collectAsStateWithLifecycle()
     val myCard by viewModel.myCard.collectAsStateWithLifecycle()
     var isLoading by remember { mutableStateOf(false) }
+    var showPlayBillingSheet by remember { mutableStateOf(false) }
+    var isPurchasing by remember { mutableStateOf(false) }
+
+    var productDetails by remember { mutableStateOf<ProductDetails?>(null) }
+    
+    val billingClient = remember {
+        BillingClient.newBuilder(context)
+            .setListener { billingResult, purchases ->
+                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
+                    isPurchasing = false
+                    showPlayBillingSheet = false
+                    Toast.makeText(context, "Achat Google Play réussi ! Validation...", Toast.LENGTH_SHORT).show()
+                    viewModel.simulateGooglePlayPurchase { 
+                        // Once server validated (simulated) we grant access
+                    }
+                } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
+                    isPurchasing = false
+                } else {
+                    isPurchasing = false
+                }
+            }
+            .enablePendingPurchases()
+            .build()
+    }
+
+    LaunchedEffect(billingClient) {
+        billingClient.startConnection(object : BillingClientStateListener {
+            override fun onBillingSetupFinished(billingResult: BillingResult) {
+                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                    val queryProductDetailsParams = QueryProductDetailsParams.newBuilder()
+                        .setProductList(
+                            listOf(
+                                QueryProductDetailsParams.Product.newBuilder()
+                                    .setProductId("iddet_plus_monthly")
+                                    .setProductType(BillingClient.ProductType.SUBS)
+                                    .build()
+                            )
+                        )
+                        .build()
+
+                    billingClient.queryProductDetailsAsync(queryProductDetailsParams) { billingResult2, productDetailsList ->
+                        if (billingResult2.responseCode == BillingClient.BillingResponseCode.OK && productDetailsList.isNotEmpty()) {
+                            productDetails = productDetailsList[0]
+                        }
+                    }
+                }
+            }
+            override fun onBillingServiceDisconnected() {}
+        })
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadIddetPlusData()
@@ -127,25 +179,13 @@ fun IddetPlusScreen(viewModel: IddetViewModel, navController: NavController) {
             if (!isPremium) {
                 Button(
                     onClick = {
-                        isLoading = true
-                        viewModel.createCheckoutSession(
-                            onSuccess = { url ->
-                                isLoading = false
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                context.startActivity(intent)
-                            },
-                            onError = { err ->
-                                isLoading = false
-                                Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                            }
-                        )
+                        showPlayBillingSheet = true
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     shape = RoundedCornerShape(12.dp),
                     enabled = !isLoading
                 ) {
-                    if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-                    else Text("S'abonner maintenant", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("S'abonner maintenant", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             } else {
                 // Style Picker
@@ -175,6 +215,101 @@ fun IddetPlusScreen(viewModel: IddetViewModel, navController: NavController) {
                         }
                     }
                 }
+            }
+        }
+    }
+    
+    if (showPlayBillingSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { if (!isPurchasing) showPlayBillingSheet = false },
+            sheetState = sheetState
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ShoppingCart,
+                    contentDescription = "Google Play",
+                    tint = Color(0xFF00C853), // Google Play Green-ish
+                    modifier = Modifier.size(48.dp)
+                )
+                Text(
+                    text = "Google Play",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Article", fontWeight = FontWeight.Medium)
+                    Text("Iddet Plus (Mensuel)")
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Compte", fontWeight = FontWeight.Medium)
+                    Text("ceoseshell@gmail.com")
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Montant", fontWeight = FontWeight.Bold)
+                    Text("1.99 €", fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Button(
+                    onClick = {
+                        isPurchasing = true
+                        val activity = context as? android.app.Activity
+                        if (activity != null && productDetails != null) {
+                            val offerToken = productDetails?.subscriptionOfferDetails?.firstOrNull()?.offerToken
+                            if (offerToken != null) {
+                                val productDetailsParamsList = listOf(
+                                    BillingFlowParams.ProductDetailsParams.newBuilder()
+                                        .setProductDetails(productDetails!!)
+                                        .setOfferToken(offerToken)
+                                        .build()
+                                )
+                                val billingFlowParams = BillingFlowParams.newBuilder()
+                                    .setProductDetailsParamsList(productDetailsParamsList)
+                                    .build()
+                                
+                                val billingResult = billingClient.launchBillingFlow(activity, billingFlowParams)
+                                if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                                    isPurchasing = false
+                                    Toast.makeText(context, "Erreur lors du lancement de Google Play", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                isPurchasing = false
+                                Toast.makeText(context, "Aucune offre trouvée pour ce produit", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            // Fallback pour le dev: l'article n'existe pas encore dans la Play Console
+                            viewModel.simulateGooglePlayPurchase(
+                                onSuccess = {
+                                    isPurchasing = false
+                                    showPlayBillingSheet = false
+                                    Toast.makeText(context, "Achat Google Play simulé (Configuration Play Console manquante)", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    enabled = !isPurchasing
+                ) {
+                    if (isPurchasing) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                    } else {
+                        Text("Acheter avec Google Play", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }

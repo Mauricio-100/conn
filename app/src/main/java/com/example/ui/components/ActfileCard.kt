@@ -102,24 +102,17 @@ fun ActfileCard(
     val avatarSize = if (isDetailView) 52.dp else 42.dp
     val miniAvatarSize = 20.dp
 
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("actfile_card_${actfile.id}"),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = androidx.compose.foundation.BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp, pressedElevation = 3.dp)
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable { onView(actfile.id) }
+            .testTag("actfile_card_${actfile.id}")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             
             // Header Section
@@ -578,6 +571,9 @@ fun ActfileCard(
                     }
                 }
             }
+        }
+        if (!isDetailView) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
         }
     }
 }

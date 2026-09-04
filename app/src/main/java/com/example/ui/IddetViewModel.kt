@@ -12,6 +12,7 @@ import com.example.data.Message
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -81,6 +82,22 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
             } catch (e: Exception) {
                 onError(e.message ?: "Erreur de création du checkout")
             }
+        }
+    }
+
+    fun simulateGooglePlayPurchase(onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            delay(1500)
+            _myIddetPlusStatus.value = com.example.data.IddetPlusStatusResponse(
+                is_iddet_plus = true,
+                expires_at = "2027-09-03T00:00:00Z", // 1 year mock
+                credits = 500,
+                card_style = "classic",
+                monthly_price_usd = 1.99,
+                monthly_credits = 500,
+                history = emptyList()
+            )
+            onSuccess()
         }
     }
 

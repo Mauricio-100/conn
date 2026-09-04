@@ -44,6 +44,7 @@ googleid = "1.1.1"
 translator = "1.1.1"
 llamatik = "1.4.0"
 workRuntimeKtx = "2.10.0"
+billing = "7.1.1"
 
 
 [libraries]
@@ -105,6 +106,7 @@ googleid = { group = "com.google.android.libraries.identity.googleid", name = "g
 translator = { group = "com.github.therealbush", name = "translator", version.ref = "translator" }
 llamatik = { group = "com.llamatik", name = "library", version.ref = "llamatik" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntimeKtx" }
+billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 
 
 [plugins]

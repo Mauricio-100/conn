@@ -225,6 +225,7 @@ fun OpenGraphPreview(
     url: String,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    hideImage: Boolean = false,
     onLinkClick: ((String) -> Unit)? = null
 ) {
     val uriHandler = LocalUriHandler.current
@@ -265,23 +266,25 @@ fun OpenGraphPreview(
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left Image (Thumbnail) - If null/blank, use a cute cat image!
-                val thumbnailModel = if (!metadata.imageUrl.isNullOrBlank()) {
-                    metadata.imageUrl
-                } else {
-                    "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=100&q=80"
+                if (!hideImage) {
+                    // Left Image (Thumbnail) - If null/blank, use a cute cat image!
+                    val thumbnailModel = if (!metadata.imageUrl.isNullOrBlank()) {
+                        metadata.imageUrl
+                    } else {
+                        "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=100&q=80"
+                    }
+                    
+                    AsyncImage(
+                        model = thumbnailModel,
+                        contentDescription = "Miniature",
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surface),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
                 }
-                
-                AsyncImage(
-                    model = thumbnailModel,
-                    contentDescription = "Miniature",
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surface),
-                    contentScale = ContentScale.Crop
-                )
-                Spacer(modifier = Modifier.width(10.dp))
 
                 // Metadata Details
                 Column(modifier = Modifier.weight(1f)) {
@@ -342,37 +345,39 @@ fun OpenGraphPreview(
         } else {
             // Full Banner Style: beautiful design for feed/actfiles
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Top Header Image - If null/blank, use a cute cat image!
-                val bannerModel = if (!metadata.imageUrl.isNullOrBlank()) {
-                    metadata.imageUrl
-                } else {
-                    "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&q=80"
-                }
+                if (!hideImage) {
+                    // Top Header Image - If null/blank, use a cute cat image!
+                    val bannerModel = if (!metadata.imageUrl.isNullOrBlank()) {
+                        metadata.imageUrl
+                    } else {
+                        "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&q=80"
+                    }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp)
-                ) {
-                    AsyncImage(
-                        model = bannerModel,
-                        contentDescription = "Preview Image",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                    // Decorative overlay
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color.Black.copy(alpha = 0.4f)
+                            .fillMaxWidth()
+                            .height(160.dp)
+                    ) {
+                        AsyncImage(
+                            model = bannerModel,
+                            contentDescription = "Preview Image",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                        // Decorative overlay
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = 0.4f)
+                                        )
                                     )
                                 )
-                            )
-                    )
+                        )
+                    }
                 }
 
                 // Text details

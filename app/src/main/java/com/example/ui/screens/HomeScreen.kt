@@ -313,8 +313,8 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
                 // Section Stories (Statuts éphémères Markdown / Multimédia)
                 item(key = "stories_section_bar") {

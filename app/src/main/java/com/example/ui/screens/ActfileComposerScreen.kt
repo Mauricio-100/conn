@@ -2,6 +2,11 @@ package com.example.ui.screens
 
 import android.content.Context
 import androidx.compose.animation.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
+import android.net.Uri
+import com.example.ui.components.VideoUrlHelper
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -268,6 +273,32 @@ fun ActfileComposerScreen(
             text = newText,
             selection = TextRange(newCursor, newCursor)
         )
+    }
+
+    var isUploadingMedia by remember { mutableStateOf(false) }
+    
+    val mediaPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            isUploadingMedia = true
+            scope.launch {
+                try {
+                    val url = uri.toString()
+                    val isVideo = url.contains("video") || url.endsWith(".mp4")
+                    val snippet = if (isVideo) {
+                        "\n\n![]($url)\n\n"
+                    } else {
+                        "\n\n![]($url)\n\n"
+                    }
+                    insertSnippet(snippet)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    isUploadingMedia = false
+                }
+            }
+        }
     }
 
     // Auto-categorize heuristic and AI
@@ -846,9 +877,23 @@ fun ActfileComposerScreen(
                                 IconButton(onClick = { showInsertLinkDialog = true }, modifier = Modifier.size(36.dp)) {
                                     Icon(Icons.Default.Link, contentDescription = "Lien", modifier = Modifier.size(18.dp))
                                 }
-                                // Image
-                                IconButton(onClick = { showInsertImageDialog = true }, modifier = Modifier.size(36.dp)) {
-                                    Icon(Icons.Default.Image, contentDescription = "Image", modifier = Modifier.size(18.dp))
+                                // Hide Link Photo
+                                IconButton(onClick = { insertSnippet("\n<!--hide_og_photo-->\n") }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.LinkOff, contentDescription = "Cacher photo lien", modifier = Modifier.size(18.dp))
+                                }
+                                // Image / Video Upload
+                                IconButton(
+                                    onClick = {
+                                        mediaPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                                    },
+                                    modifier = Modifier.size(36.dp),
+                                    enabled = !isUploadingMedia
+                                ) {
+                                    if (isUploadingMedia) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Icon(Icons.Default.Image, contentDescription = "Image ou Vidéo", modifier = Modifier.size(18.dp))
+                                    }
                                 }
                                 // Divider
                                 IconButton(onClick = { insertSnippet("\n---\n") }, modifier = Modifier.size(36.dp)) {
