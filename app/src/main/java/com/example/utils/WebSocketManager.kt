@@ -24,6 +24,7 @@ interface ChatSocketClient {
     fun connect(userId: String)
     fun disconnect()
     fun sendVoiceMessage(receiverId: String, audioB64: String, senderUsername: String): Boolean
+    fun sendTypingStatus(receiverId: String, isTyping: Boolean): Boolean
 }
 
 object WebSocketManager : ChatSocketClient {
@@ -144,6 +145,13 @@ object WebSocketManager : ChatSocketClient {
                         coroutineScope.launch { _events.emit(event) }
                     }
                 }
+                "typing_status" -> {
+                    val senderId = json.optString("sender_id")
+                    val isTyping = json.optBoolean("is_typing", false)
+                    if (senderId.isNotBlank()) {
+                        coroutineScope.launch { _events.emit(WebSocketEvent.TypingStatus(senderId, isTyping)) }
+                    }
+                }
                 "error" -> {
                     val msg = json.optString("message", "Erreur serveur")
                     coroutineScope.launch { _events.emit(WebSocketEvent.Error(msg)) }
@@ -185,6 +193,21 @@ object WebSocketManager : ChatSocketClient {
             success
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send voice message", e)
+            false
+        }
+    }
+
+    override fun sendTypingStatus(receiverId: String, isTyping: Boolean): Boolean {
+        val socket = webSocket
+        if (socket == null) return false
+        return try {
+            val payload = JSONObject().apply {
+                put("type", "typing_status")
+                put("receiver_id", receiverId)
+                put("is_typing", isTyping)
+            }
+            socket.send(payload.toString())
+        } catch (e: Exception) {
             false
         }
     }
@@ -235,6 +258,10 @@ sealed class WebSocketEvent {
     ) : WebSocketEvent()
     data class MessageDeleted(
         val messageId: String
+    ) : WebSocketEvent()
+    data class TypingStatus(
+        val senderId: String,
+        val isTyping: Boolean
     ) : WebSocketEvent()
     data class Error(val message: String) : WebSocketEvent()
 }

@@ -917,37 +917,60 @@ class IddetRepository(    private val userDao: UserDao,
             val header = currentToken?.let { "Bearer $it" }
             if (header != null) {
                 val res = RetrofitClient.apiService.getConversations(header)
-                _conversations.value = res
-                res.forEach { conv ->
+                val enriched = res.map { conv ->
                     val existing = userDao.getUserById(conv.user_id)
+                    val effectiveAvatar = if (!conv.avatar_url.isNullOrBlank()) {
+                        conv.avatar_url
+                    } else {
+                        existing?.avatarUrl
+                    }
+                    val effectiveUsername = if (conv.username.isNotBlank()) conv.username else (existing?.username ?: "Utilisateur")
+                    val updatedConv = conv.copy(
+                        username = effectiveUsername,
+                        avatar_url = effectiveAvatar
+                    )
+
                     val partnerUser = if (existing != null) {
                         existing.copy(
-                            username = conv.username,
-                            avatarUrl = conv.avatar_url
+                            username = effectiveUsername,
+                            avatarUrl = effectiveAvatar ?: existing.avatarUrl
                         )
                     } else {
                         User(
                             id = conv.user_id,
-                            username = conv.username,
+                            username = effectiveUsername,
                             passwordHash = "mocked",
-                            avatarUrl = conv.avatar_url,
+                            avatarUrl = effectiveAvatar,
                             isVerified = conv.is_verified
                         )
                     }
                     userDao.insertUser(partnerUser)
-                    
-                    val lastMsgContent = conv.last_message ?: ""
-                    val lastMsgTime = parseIso(conv.last_message_time)
-                    messageDao.insertMessage(
-                        Message(
-                            id = "conv_${conv.id}",
-                            senderId = conv.user_id,
-                            receiverId = userId,
-                            content = lastMsgContent,
-                            createdAt = lastMsgTime
-                        )
-                    )
+                    updatedConv
                 }
+                _conversations.value = enriched
+
+                // Background fetch for any conversation still missing an avatar
+                enriched.filter { it.avatar_url.isNullOrBlank() }.forEach { conv ->
+                    repositoryScope.launch {
+                        try {
+                            val prof = RetrofitClient.apiService.getUserProfile(header, conv.user_id)
+                            if (!prof.avatar_url.isNullOrBlank()) {
+                                _conversations.value = _conversations.value.map { c ->
+                                    if (c.user_id == conv.user_id) c.copy(avatar_url = prof.avatar_url) else c
+                                }
+                                val u = userDao.getUserById(conv.user_id)
+                                if (u != null) {
+                                    userDao.insertUser(u.copy(avatarUrl = prof.avatar_url))
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // ignore background fetch failure
+                        }
+                    }
+                }
+
+                // Purge any legacy placeholder conversation messages
+                messageDao.deletePlaceholderConvMessages()
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -972,6 +995,7 @@ class IddetRepository(    private val userDao: UserDao,
 
     suspend fun refreshMessagesWith(otherUserId: String) {
         try {
+            messageDao.deletePlaceholderConvMessages()
             val header = currentToken?.let { "Bearer $it" }
             if (header != null) {
                 val res = RetrofitClient.apiService.getMessages(header, otherUserId)

@@ -197,19 +197,20 @@ fun DiscussionScreen(
                                             .background(MaterialTheme.colorScheme.secondaryContainer),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        if (!comment.avatarUrl.isNullOrBlank()) {
+                                        val initial = comment.username.firstOrNull()?.toString()?.uppercase() ?: "?"
+                                        Text(
+                                            text = initial,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        val commentAvatar = comment.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) } ?: comment.avatarUrl
+                                        if (!commentAvatar.isNullOrBlank()) {
                                             AsyncImage(
-                                                model = comment.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
+                                                model = commentAvatar,
                                                 contentDescription = "Avatar de ${comment.username}",
                                                 modifier = Modifier.fillMaxSize(),
                                                 contentScale = ContentScale.Crop
-                                            )
-                                        } else {
-                                            Text(
-                                                text = comment.username.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                fontWeight = FontWeight.Bold,
-                                                style = MaterialTheme.typography.bodySmall
                                             )
                                         }
                                     }

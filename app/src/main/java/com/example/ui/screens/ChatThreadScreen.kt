@@ -82,7 +82,11 @@ fun ChatThreadScreen(
 
     val uiState by viewModel.uiState.collectAsState()
     val partnerInfo by viewModel.partnerInfo.collectAsState()
+    val partnerAvatarUrl = remember(partnerInfo.avatarUrl) {
+        partnerInfo.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) } ?: partnerInfo.avatarUrl
+    }
     val inputText by viewModel.inputText.collectAsState()
+    val isPartnerTyping by viewModel.isPartnerTyping.collectAsState()
     val socketState by viewModel.socketConnectionState.collectAsState()
 
     val listState = rememberLazyListState()
@@ -138,28 +142,28 @@ fun ChatThreadScreen(
                             modifier = Modifier.size(42.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            if (!partnerInfo.avatarUrl.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = partnerInfo.avatarUrl,
-                                    contentDescription = "Avatar de ${partnerInfo.username}",
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(CircleShape),
-                                    contentScale = ContentScale.Crop
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val initial = partnerInfo.username.firstOrNull()?.uppercase() ?: "?"
+                                Text(
+                                    text = initial,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.secondaryContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = partnerInfo.username.firstOrNull()?.uppercase() ?: "?",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                if (!partnerAvatarUrl.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = partnerAvatarUrl,
+                                        contentDescription = "Avatar de ${partnerInfo.username}",
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(CircleShape),
+                                        contentScale = ContentScale.Crop
                                     )
                                 }
                             }
@@ -440,7 +444,7 @@ fun ChatThreadScreen(
                             ) { message ->
                                 MessageBubble(
                                     message = message,
-                                    partnerAvatar = partnerInfo.avatarUrl,
+                                    partnerAvatar = partnerAvatarUrl,
                                     partnerUsername = partnerInfo.username,
                                     onLongClick = {
                                         selectedMessageForMenu = message
@@ -456,6 +460,15 @@ fun ChatThreadScreen(
                                         fullScreenImageUrl = videoUrl
                                     }
                                 )
+                            }
+                            
+                            if (isPartnerTyping) {
+                                item(key = "typing_indicator") {
+                                    com.example.ui.components.TypingIndicatorBubble(
+                                        partnerAvatar = partnerAvatarUrl,
+                                        partnerUsername = partnerInfo.username
+                                    )
+                                }
                             }
                         }
                     }

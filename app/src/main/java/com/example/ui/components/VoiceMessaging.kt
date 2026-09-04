@@ -36,43 +36,37 @@ fun VoiceMessagePlayer(
     isMine: Boolean = false
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    
     val voiceData = remember(content) {
         if (isVoiceMessage(content)) {
             parseVoiceMessage(content) ?: VoiceMessageData(5, List(15) { 0.4f }, null)
         } else {
-            // Generate stable deterministic wave for real URLs / local paths
             val hash = content.hashCode()
             val random = java.util.Random(hash.toLong())
-            val duration = 8 + random.nextInt(12) // Default estimated duration 8-20s
-            val amplitudes = List(18) {
-                0.15f + 0.85f * random.nextFloat()
-            }
-            VoiceMessageData(duration, amplitudes, null)
+            val duration = 8 + random.nextInt(12)
+            VoiceMessageData(duration, emptyList(), null)
         }
     }
 
     var isPlaying by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
+    var currentDurationMs by remember { mutableStateOf(if (voiceData.durationSeconds > 0) voiceData.durationSeconds * 1000 else 0) }
 
-    // Clean up audio playback on composable disposal
     DisposableEffect(content) {
         onDispose {
-            com.example.utils.VoiceSynthPlayer.stop()
-            com.example.utils.RealAudioPlayer.stop()
+            if (isVoiceMessage(content)) {
+                com.example.utils.VoiceSynthPlayer.stop()
+            } else {
+                com.example.utils.RealAudioPlayer.stop()
+            }
         }
     }
 
     val playIcon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow
     val iconColor = if (isMine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-    val activeWaveColor = if (isMine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-    val inactiveWaveColor = if (isMine) {
-        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.4f)
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-    }
 
-    val displayTime = remember(progress) {
-        val totalSec = voiceData.durationSeconds
+    val displayTime = remember(progress, currentDurationMs) {
+        val totalSec = currentDurationMs / 1000
         val currentSec = (progress * totalSec).toInt()
         val remainingSec = (totalSec - currentSec).coerceAtLeast(0)
         val minutes = remainingSec / 60
@@ -86,7 +80,6 @@ fun VoiceMessagePlayer(
             .padding(vertical = 4.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Play / Pause Button
         IconButton(
             onClick = {
                 val isRealAudio = !isVoiceMessage(content)
@@ -105,6 +98,7 @@ fun VoiceMessagePlayer(
                             listener = object : com.example.utils.RealAudioPlayer.PlaybackListener {
                                 override fun onProgress(p: Float, currentMs: Int, durationMs: Int) {
                                     progress = p
+                                    currentDurationMs = durationMs
                                 }
                                 override fun onFinished() {
                                     isPlaying = false
@@ -146,46 +140,29 @@ fun VoiceMessagePlayer(
             )
         }
 
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
-        // Waveform Visualizer
-        Box(
+        // Progress Slider
+        Slider(
+            value = progress,
+            onValueChange = { newProgress ->
+                progress = newProgress
+                if (!isVoiceMessage(content)) {
+                    com.example.utils.RealAudioPlayer.seekTo(newProgress)
+                }
+            },
             modifier = Modifier
                 .weight(1f)
-                .pointerInput(voiceData.amplitudes) {
-                    detectTapGestures { offset ->
-                        val ratio = (offset.x / size.width).coerceIn(0f, 1f)
-                        progress = ratio
-                        if (!isVoiceMessage(content)) {
-                            com.example.utils.RealAudioPlayer.seekTo(ratio)
-                        }
-                    }
-                }
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(36.dp),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                voiceData.amplitudes.forEachIndexed { index, amp ->
-                    val isCompleted = (index.toFloat() / voiceData.amplitudes.size) <= progress
-                    val barHeight = 36.dp * amp.coerceIn(0.12f, 1.0f)
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(barHeight)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(if (isCompleted) activeWaveColor else inactiveWaveColor)
-                    )
-                }
-            }
-        }
+                .height(24.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = iconColor,
+                activeTrackColor = iconColor,
+                inactiveTrackColor = iconColor.copy(alpha = 0.3f)
+            )
+        )
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
-        // Duration / Countdown text
         Text(
             text = displayTime,
             style = MaterialTheme.typography.labelSmall,

@@ -3,6 +3,7 @@ package com.example.ui.components
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -14,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Error
@@ -34,6 +36,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -133,6 +136,9 @@ fun MessageBubble(
         // Partner Avatar (displayed only on receiver's side, on the last message of consecutive series)
         if (!isMine) {
             if (message.showAvatar) {
+                val fixedPartnerAvatar = remember(partnerAvatar) {
+                    partnerAvatar?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) } ?: partnerAvatar
+                }
                 Box(
                     modifier = Modifier
                         .size(32.dp)
@@ -140,19 +146,19 @@ fun MessageBubble(
                         .background(MaterialTheme.colorScheme.secondaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (!partnerAvatar.isNullOrBlank()) {
+                    val initial = partnerUsername.firstOrNull()?.uppercase() ?: "?"
+                    Text(
+                        text = initial,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    if (!fixedPartnerAvatar.isNullOrBlank()) {
                         AsyncImage(
-                            model = partnerAvatar,
+                            model = fixedPartnerAvatar,
                             contentDescription = "Avatar de $partnerUsername",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Text(
-                            text = partnerUsername.firstOrNull()?.uppercase() ?: "?",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }
@@ -265,6 +271,39 @@ fun MessageBubble(
                                     text = "Échec de l'envoi vocal",
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+
+                        // Story reply (WhatsApp-style compact quoted thumbnail + user's reply)
+                        isStoryReplyMessage(message.content, message.type) -> {
+                            val storyReply = remember(message.content) { parseStoryReply(message.content) }
+                            if (storyReply != null) {
+                                StoryReplyBubbleContent(
+                                    storyReply = storyReply,
+                                    partnerUsername = partnerUsername,
+                                    isMine = isMine,
+                                    contentColor = contentColor,
+                                    onImageClick = onImageClick,
+                                    onUrlClick = { url ->
+                                        try {
+                                            uriHandler.openUri(url)
+                                        } catch (e: Exception) {
+                                            // fallback
+                                        }
+                                    }
+                                )
+                            } else {
+                                ClickableUrlText(
+                                    text = message.content,
+                                    contentColor = contentColor,
+                                    onUrlClick = { url ->
+                                        try {
+                                            uriHandler.openUri(url)
+                                        } catch (e: Exception) {
+                                            // fallback
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -469,3 +508,329 @@ private fun isVideoUrl(content: String): Boolean {
                     lower.endsWith(".mov") || lower.endsWith(".mkv")
             )
 }
+
+data class ParsedStoryReply(
+    val storyMediaUrl: String,
+    val authorUsername: String?,
+    val replyText: String
+)
+
+private fun isStoryReplyMessage(content: String, type: String): Boolean {
+    val trimmed = content.trim()
+    return type == "story_reply" ||
+            type == "story_reaction" ||
+            trimmed.startsWith("[Story:") ||
+            trimmed.startsWith("📷 Réponse à votre story:") ||
+            (trimmed.startsWith("❤️") && trimmed.contains("Réaction à votre story"))
+}
+
+private fun parseStoryReply(content: String): ParsedStoryReply? {
+    val trimmed = content.trim()
+    if (trimmed.startsWith("[Story:")) {
+        // [Story:URL|Author] ReplyText OR [Story:URL] ReplyText
+        val completeRegex = Regex("""^\[Story:([^|\]]+)(?:\|([^\]]*))?\]\s*([\s\S]*)""")
+        val match = completeRegex.find(trimmed)
+        if (match != null) {
+            val url = match.groupValues[1].trim()
+            val author = match.groupValues.getOrNull(2)?.trim()?.ifBlank { null }
+            val reply = match.groupValues.getOrNull(3)?.trim() ?: ""
+            return ParsedStoryReply(url, author, reply)
+        }
+
+        // Partial or truncated URL without closing bracket (e.g. from older truncated data)
+        val partialRegex = Regex("""^\[Story:([^\s|\]]+)""")
+        val partialMatch = partialRegex.find(trimmed)
+        if (partialMatch != null) {
+            return ParsedStoryReply(partialMatch.groupValues[1].trim(), null, "")
+        }
+    } else if (trimmed.startsWith("📷 Réponse à votre story:")) {
+        val reply = trimmed.removePrefix("📷 Réponse à votre story:").trim()
+        return ParsedStoryReply("", null, reply)
+    } else if (trimmed.startsWith("❤️") && trimmed.contains("Réaction à votre story")) {
+        val parts = trimmed.split(" ")
+        val emoji = parts.getOrNull(1) ?: "❤️"
+        return ParsedStoryReply("", null, emoji)
+    }
+    return null
+}
+
+private fun isEmojiOnly(text: String): Boolean {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return false
+    val codePoints = trimmed.codePoints().toArray()
+    if (codePoints.size > 3) return false
+    return codePoints.all { cp ->
+        Character.getType(cp) == Character.SURROGATE.toInt() ||
+                Character.getType(cp) == Character.OTHER_SYMBOL.toInt() ||
+                (cp in 0x1F300..0x1FAFF) ||
+                (cp in 0x2600..0x27BF) ||
+                (cp in 0xFE00..0xFE0F)
+    }
+}
+
+@Composable
+private fun StoryReplyBubbleContent(
+    storyReply: ParsedStoryReply,
+    partnerUsername: String,
+    isMine: Boolean,
+    contentColor: Color,
+    onImageClick: (String) -> Unit,
+    onUrlClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val accentColor = if (isMine) Color.White.copy(alpha = 0.95f) else MaterialTheme.colorScheme.primary
+    val containerBg = if (isMine) Color.Black.copy(alpha = 0.20f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+    val mediaUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(storyReply.storyMediaUrl) ?: storyReply.storyMediaUrl
+
+    Column(
+        modifier = modifier.widthIn(min = 190.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // WhatsApp-style status preview card
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = containerBg,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(enabled = mediaUrl.isNotBlank()) {
+                    onImageClick(mediaUrl)
+                }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Accent stripe + author label + subtitle
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.5.dp)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(accentColor)
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        val authorLabel = if (isMine) {
+                            val author = storyReply.authorUsername?.ifBlank { null } ?: partnerUsername
+                            "Story de $author"
+                        } else {
+                            "Votre story"
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CameraAlt,
+                                contentDescription = null,
+                                tint = accentColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = authorLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = accentColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(2.dp))
+
+                        Text(
+                            text = "Statut • Photo",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = contentColor.copy(alpha = 0.75f),
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Small thumbnail on the right (classic WhatsApp status reply style)
+                if (mediaUrl.isNotBlank()) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(width = 44.dp, height = 52.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AsyncImage(
+                            model = mediaUrl,
+                            contentDescription = "Aperçu de la story",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+            }
+        }
+
+        // Reply text or reaction emoji underneath the preview card
+        val reply = storyReply.replyText
+        if (reply.isNotBlank()) {
+            if (isEmojiOnly(reply)) {
+                Box(
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = reply,
+                        fontSize = 32.sp
+                    )
+                }
+            } else {
+                ClickableUrlText(
+                    text = reply,
+                    contentColor = contentColor,
+                    onUrlClick = onUrlClick
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TypingIndicatorBubble(
+    partnerAvatar: String?,
+    partnerUsername: String
+) {
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "typing_dots")
+    
+    val dot1 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.keyframes {
+                durationMillis = 1400
+                0f at 0
+                1f at 300
+                0f at 600
+                0f at 1400
+            },
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        ),
+        label = "dot1"
+    )
+    
+    val dot2 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.keyframes {
+                durationMillis = 1400
+                0f at 200
+                1f at 500
+                0f at 800
+                0f at 1400
+            },
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        ),
+        label = "dot2"
+    )
+
+    val dot3 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.keyframes {
+                durationMillis = 1400
+                0f at 400
+                1f at 700
+                0f at 1000
+                0f at 1400
+            },
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        ),
+        label = "dot3"
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp, horizontal = 12.dp),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        val fixedPartnerAvatar = remember(partnerAvatar) {
+            partnerAvatar?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) } ?: partnerAvatar
+        }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.secondaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            val initial = partnerUsername.firstOrNull()?.uppercase() ?: "?"
+            Text(
+                text = initial,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            if (!fixedPartnerAvatar.isNullOrBlank()) {
+                coil.compose.AsyncImage(
+                    model = fixedPartnerAvatar,
+                    contentDescription = "Avatar de $partnerUsername",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        
+        Box(
+            modifier = Modifier
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 16.dp, bottomStart = 4.dp)
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.height(12.dp)
+            ) {
+                val dotColor = MaterialTheme.colorScheme.onSurfaceVariant
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(dotColor.copy(alpha = 0.3f + (0.7f * dot1)))
+                        .offset(y = (-4).dp * dot1)
+                )
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(dotColor.copy(alpha = 0.3f + (0.7f * dot2)))
+                        .offset(y = (-4).dp * dot2)
+                )
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(dotColor.copy(alpha = 0.3f + (0.7f * dot3)))
+                        .offset(y = (-4).dp * dot3)
+                )
+            }
+        }
+    }
+}
+

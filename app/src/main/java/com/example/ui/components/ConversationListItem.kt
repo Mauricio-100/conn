@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
@@ -82,35 +83,38 @@ fun ConversationListItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Avatar with Coil and Presence Dot
+            val avatarModel = remember(conversation.avatar_url) {
+                conversation.avatar_url?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) } ?: conversation.avatar_url
+            }
             Box(
                 modifier = Modifier
                     .size(54.dp)
                     .testTag("conversation_avatar_box_${conversation.user_id}"),
                 contentAlignment = Alignment.Center
             ) {
-                if (!conversation.avatar_url.isNullOrBlank()) {
-                    AsyncImage(
-                        model = conversation.avatar_url,
-                        contentDescription = "Avatar de ${conversation.username}",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val initial = conversation.username.firstOrNull()?.uppercase() ?: "?"
+                    Text(
+                        text = initial,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.secondaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val initial = conversation.username.firstOrNull()?.uppercase() ?: "?"
-                        Text(
-                            text = initial,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+
+                    if (!avatarModel.isNullOrBlank()) {
+                        AsyncImage(
+                            model = avatarModel,
+                            contentDescription = "Avatar de ${conversation.username}",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
                         )
                     }
                 }
@@ -248,6 +252,8 @@ private fun LastMessagePreview(
     }
 
     val trimmed = lastMessage.trim()
+    val isStory = trimmed.startsWith("[Story:") || trimmed.startsWith("📷 Réponse à votre story:") ||
+            (trimmed.startsWith("❤️") && trimmed.contains("Réaction à votre story"))
     val isVoice = trimmed.startsWith("[Voice Message]") || trimmed.contains("voice://") ||
             trimmed.contains(".mp3") || trimmed.contains(".m4a") || trimmed.contains(".aac") ||
             trimmed.startsWith("audio:")
@@ -256,11 +262,45 @@ private fun LastMessagePreview(
     val isVideo = trimmed.startsWith("[Vidéo]") || trimmed.startsWith("video:") ||
             (trimmed.startsWith("http") && (trimmed.endsWith(".mp4") || trimmed.endsWith(".webm") || trimmed.endsWith(".mov")))
 
+    val storyPreviewText = when {
+        trimmed.startsWith("[Story:") -> {
+            val afterBracket = trimmed.substringAfter("]", "").trim()
+            if (afterBracket.isNotBlank()) "Story • $afterBracket" else "Réponse à la story"
+        }
+        trimmed.startsWith("📷 Réponse à votre story:") -> {
+            val reply = trimmed.removePrefix("📷 Réponse à votre story:").trim()
+            if (reply.isNotBlank()) "Story • $reply" else "Réponse à votre story"
+        }
+        trimmed.startsWith("❤️") && trimmed.contains("Réaction à votre story") -> {
+            val emoji = trimmed.split(" ").getOrNull(1) ?: "❤️"
+            "Story • $emoji"
+        }
+        else -> "Story"
+    }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier.fillMaxWidth()
     ) {
         when {
+            isStory -> {
+                Icon(
+                    imageVector = Icons.Default.CameraAlt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = storyPreviewText,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = if (hasUnread) FontWeight.SemiBold else FontWeight.Normal
+                    ),
+                    color = textColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             isVoice -> {
                 Icon(
                     imageVector = Icons.Default.Mic,

@@ -15,7 +15,7 @@ import com.example.utils.WebSocketEvent
 import com.example.utils.WebSocketManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import java.util.UUID
 
 data class ChatPartnerUiModel(
@@ -60,6 +60,13 @@ class ChatThreadViewModel(
     private val _inputText = MutableStateFlow("")
     val inputText: StateFlow<String> = _inputText.asStateFlow()
 
+    private val _isPartnerTyping = MutableStateFlow(false)
+    val isPartnerTyping: StateFlow<Boolean> = _isPartnerTyping.asStateFlow()
+
+    private var partnerTypingTimeoutJob: Job? = null
+    private var myTypingTimeoutJob: Job? = null
+    private var lastTypingSentTime = 0L
+
     private val _isUploading = MutableStateFlow(false)
     val isUploading: StateFlow<Boolean> = _isUploading.asStateFlow()
 
@@ -79,7 +86,7 @@ class ChatThreadViewModel(
         // Merge room messages and pending/optimistic messages
         val combined = mutableListOf<ChatMessageUiModel>()
 
-        roomList.forEach { m ->
+        roomList.filterNot { it.id.startsWith("conv_") }.forEach { m ->
             val isMine = m.senderId == currentUserId
             val reactions = parseReactions(m.reaction)
             combined.add(
@@ -128,6 +135,15 @@ class ChatThreadViewModel(
     )
 
     init {
+        val cachedConv = repository.conversations.value.find { it.user_id == partnerUserId }
+        if (cachedConv != null) {
+            _partnerInfo.value = _partnerInfo.value.copy(
+                username = cachedConv.username,
+                avatarUrl = cachedConv.avatar_url,
+                isOnline = cachedConv.is_online,
+                isVerified = cachedConv.is_verified
+            )
+        }
         loadPartnerDetails()
         observeWebSocketEvents()
         connectSocketIfLoggedIn()
@@ -136,6 +152,21 @@ class ChatThreadViewModel(
 
     fun onInputTextChange(newText: String) {
         _inputText.value = newText
+        
+        // Only send typing indicator if connected and hasn't sent recently
+        if (socketConnectionState.value == SocketConnectionState.CONNECTED) {
+            val now = System.currentTimeMillis()
+            if (now - lastTypingSentTime > 2000) {
+                lastTypingSentTime = now
+                socketClient.sendTypingStatus(partnerUserId, true)
+            }
+            
+            myTypingTimeoutJob?.let { it.cancel() }
+            myTypingTimeoutJob = viewModelScope.launch {
+                delay(3000)
+                socketClient.sendTypingStatus(partnerUserId, false)
+            }
+        }
     }
 
     private fun loadPartnerDetails() {
@@ -146,9 +177,8 @@ class ChatThreadViewModel(
                     _partnerInfo.value = _partnerInfo.value.copy(
                         id = user.id,
                         username = user.username,
-                        avatarUrl = user.avatarUrl,
-                        isVerified = user.isVerified,
-                        isOnline = false
+                        avatarUrl = user.avatarUrl ?: _partnerInfo.value.avatarUrl,
+                        isVerified = user.isVerified
                     )
                 }
             }
@@ -159,10 +189,11 @@ class ChatThreadViewModel(
             try {
                 val header = repository.userToken?.let { "Bearer $it" }
                 val profile = RetrofitClient.apiService.getUserProfile(header, partnerUserId)
+                val newAvatar = profile.avatar_url?.ifBlank { null } ?: _partnerInfo.value.avatarUrl
                 _partnerInfo.value = ChatPartnerUiModel(
                     id = profile.id ?: partnerUserId,
                     username = profile.username,
-                    avatarUrl = profile.avatar_url,
+                    avatarUrl = newAvatar,
                     isOnline = profile.is_online,
                     isVerified = profile.is_verified,
                     isIddetPlus = profile.is_iddet_plus,
@@ -223,6 +254,19 @@ class ChatThreadViewModel(
                     is WebSocketEvent.MessageDeleted -> {
                         repository.deleteMessageLocal(event.messageId)
                         _optimisticMessages.value = _optimisticMessages.value.filter { it.id != event.messageId }
+                    }
+                    
+                    is WebSocketEvent.TypingStatus -> {
+                        if (event.senderId == partnerUserId) {
+                            _isPartnerTyping.value = event.isTyping
+                            partnerTypingTimeoutJob?.let { it.cancel() }
+                            if (event.isTyping) {
+                                partnerTypingTimeoutJob = viewModelScope.launch {
+                                    delay(5000)
+                                    _isPartnerTyping.value = false
+                                }
+                            }
+                        }
                     }
 
                     else -> {}
@@ -332,7 +376,12 @@ class ChatThreadViewModel(
     fun toggleReaction(messageId: String, emoji: String) {
         viewModelScope.launch {
             try {
-                repository.reactToMessage(messageId, emoji)
+                val currentMessage = repository.getMessagesWith(partnerUserId).first().find { it.id == messageId }
+                if (currentMessage?.reaction == emoji) {
+                    repository.removeMessageReaction(messageId)
+                } else {
+                    repository.reactToMessage(messageId, emoji)
+                }
             } catch (e: Exception) {
                 Log.e("ChatThreadVM", "Failed to react", e)
             }

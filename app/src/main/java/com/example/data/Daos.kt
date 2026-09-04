@@ -161,6 +161,9 @@ interface MessageDao {
 
     @Query("SELECT * FROM messages WHERE (senderId = :user1 AND receiverId = :user2) OR (senderId = :user2 AND receiverId = :user1) ORDER BY createdAt ASC")
     fun getMessagesBetween(user1: String, user2: String): Flow<List<Message>>
+
+    @Query("DELETE FROM messages WHERE id LIKE 'conv_%'")
+    suspend fun deletePlaceholderConvMessages()
 }
 
 @Dao
