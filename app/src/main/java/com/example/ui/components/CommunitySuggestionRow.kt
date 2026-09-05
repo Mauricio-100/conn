@@ -210,6 +210,14 @@ fun CommunitySuggestionCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        CopyableUserId(
+                            id = community.id,
+                            isBot = false,
+                            customLabel = "c_id: ${community.id.take(8)}",
+                            fontSize = 9.sp,
+                            iconSize = 10.dp
+                        )
                     }
                 }
 

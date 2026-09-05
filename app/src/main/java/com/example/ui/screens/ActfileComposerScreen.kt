@@ -678,32 +678,73 @@ fun ActfileComposerScreen(
                                 }
                             }
                         } else {
-                            OutlinedTextField(
-                                value = contentValue,
-                                onValueChange = {
-                                    if (it.text.length <= characterLimit + 50) {
-                                        contentValue = it
+                            val isDebateDraft = remember(contentValue.text) {
+                                contentValue.text.contains("[!DEBATE]", ignoreCase = true) ||
+                                (contentValue.text.contains("sujet à débattre", ignoreCase = true) && contentValue.text.contains("google search", ignoreCase = true))
+                            }
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                if (isDebateDraft) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            Color(0xFF4285F4).copy(alpha = 0.5f)
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Search,
+                                                contentDescription = null,
+                                                tint = Color(0xFF4285F4),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "⚡ sujet à débattre • source première google search",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
                                     }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 250.dp)
-                                    .testTag("composer_text_input"),
-                                placeholder = {
-                                    Text(
-                                        text = "Exprimez-vous ici... Utilisez le Markdown (# Titre, **gras**, `code`, > citation, [liens](url))\n\nCliquez sur les raccourcis de la barre d'outils ci-dessous pour formater rapidement !",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                }
+
+                                OutlinedTextField(
+                                    value = contentValue,
+                                    onValueChange = {
+                                        if (it.text.length <= characterLimit + 50) {
+                                            contentValue = it
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 250.dp)
+                                        .testTag("composer_text_input"),
+                                    placeholder = {
+                                        Text(
+                                            text = "Exprimez-vous ici... Utilisez le Markdown (# Titre, **gras**, `code`, > citation, [liens](url))\n\nCliquez sur les raccourcis de la barre d'outils ci-dessous pour formater rapidement !",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        )
+                                    },
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color.Transparent,
+                                        unfocusedBorderColor = Color.Transparent,
+                                        disabledBorderColor = Color.Transparent,
+                                        errorBorderColor = Color.Transparent
                                     )
-                                },
-                                textStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color.Transparent,
-                                    unfocusedBorderColor = Color.Transparent,
-                                    disabledBorderColor = Color.Transparent,
-                                    errorBorderColor = Color.Transparent
                                 )
-                            )
+                            }
                         }
                     }
 

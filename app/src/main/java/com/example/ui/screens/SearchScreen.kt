@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.compose.ui.layout.ContentScale
@@ -25,6 +26,7 @@ import com.example.data.User
 import com.example.ui.IddetViewModel
 import com.example.ui.components.ActfileCard
 import com.example.ui.components.VerificationBadge
+import com.example.ui.components.CopyableUserId
 import kotlinx.coroutines.launch
 
 import androidx.compose.material.icons.filled.Close
@@ -344,6 +346,14 @@ fun UserCard(user: User, isFollowing: Boolean, onFollowClick: () -> Unit, onClic
                 Spacer(modifier = Modifier.width(4.dp))
                 VerificationBadge(userName = user.username, isVerified = user.isVerified)
             }
+            Spacer(modifier = Modifier.height(2.dp))
+            CopyableUserId(
+                id = user.id,
+                isBot = user.username.contains("bot", ignoreCase = true),
+                fontSize = 10.sp,
+                iconSize = 10.dp
+            )
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = "${com.example.utils.FormatUtils.formatCount(user.followersCount)} followers",
                 style = MaterialTheme.typography.bodySmall,

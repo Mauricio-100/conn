@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
@@ -47,6 +48,7 @@ import com.example.data.ActfileWithUser
 import com.example.ui.IddetViewModel
 import com.example.ui.components.ActfileCard
 import com.example.ui.components.VerificationBadge
+import com.example.ui.components.CopyableUserId
 import com.example.ui.components.MarkdownEditor
 import com.example.ui.components.CommunitySuggestionRow
 import kotlinx.coroutines.delay
@@ -349,8 +351,20 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                                 navController.navigate("browser/$encodedUrl")
                             },
                             onDiscussInPost = { topic ->
-                                val discussionTemplate = "> 📰 **[${topic.title}](${topic.link})**\n> *Source: ${topic.source}*\n\nQue pensez-vous de cette actualité ?\n\n${topic.tags.joinToString(" ")}"
-                                viewModel.setComposerInitialContent(discussionTemplate)
+                                val snippetText = if (!topic.snippet.isNullOrBlank()) "> ${topic.snippet.replace("\n", " ").trim()}\n" else ""
+                                val tagsFormatted = topic.tags.joinToString(" ") { if (it.startsWith("#")) it else "#$it" }
+                                val debateDocument = """
+                                    |> [!DEBATE]
+                                    |> 🔍 **sujet à débattre** • source première google search
+                                    |> [${topic.title}](${topic.link})
+                                    |> *source : ${topic.source}*
+                                    $snippetText
+                                    
+                                    Donnez votre point de vue et lancez le débat ici...
+                                    
+                                    $tagsFormatted
+                                """.trimMargin().trim()
+                                viewModel.setComposerInitialContent(debateDocument)
                                 viewModel.setShowComposer(true)
                             }
                         )
@@ -359,44 +373,116 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
 
                 if (recommendedUsers.isNotEmpty() && (feedTab == 0 || activeActfiles.isEmpty())) {
                     item {
-                        Text(
-                            text = if (feedTab == 1) "Follow users to populate your feed!" else "Recommended for you",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = if (feedTab == 1) "Abonnez-vous pour enrichir votre fil !" else "Comptes suggérés à suivre",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Créateurs et personnalités actives sur Iddet",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(recommendedUsers, key = { it.id }) { user ->
+                                val isFollowingUser by viewModel.isFollowing(user.id).collectAsStateWithLifecycle(initialValue = false)
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier
-                                        .clickable { navController.navigate("profile/${user.id}") }
-                                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
+                                        .background(
+                                            MaterialTheme.colorScheme.surface,
+                                            RoundedCornerShape(16.dp)
+                                        )
+                                        .border(
+                                            width = 1.dp,
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
                                         .padding(12.dp)
-                                        .width(100.dp)
+                                        .width(118.dp)
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(48.dp)
+                                            .size(52.dp)
                                             .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary),
+                                            .clickable { navController.navigate("profile/${user.id}") }
+                                            .background(MaterialTheme.colorScheme.primaryContainer),
                                         contentAlignment = Alignment.Center
                                     ) {
+                                        if (!user.avatarUrl.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = com.example.utils.UrlHelper.fixCloudinaryUrl(user.avatarUrl),
+                                                contentDescription = user.username,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Text(
+                                                text = user.username.firstOrNull()?.toString()?.uppercase() ?: "?",
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 18.sp
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.clickable { navController.navigate("profile/${user.id}") }
+                                    ) {
                                         Text(
-                                            text = user.username.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                            color = Color.White,
+                                            text = user.username,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        com.example.ui.components.VerificationBadge(
+                                            userName = user.username,
+                                            isVerified = user.isVerified,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    CopyableUserId(
+                                        id = user.id,
+                                        isBot = user.username.contains("bot", ignoreCase = true),
+                                        fontSize = 9.sp,
+                                        iconSize = 9.dp
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(
+                                        onClick = {
+                                            if (isFollowingUser) viewModel.unfollowUser(user.id) else viewModel.followUser(user.id)
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isFollowingUser) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
+                                            contentColor = if (isFollowingUser) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.fillMaxWidth().height(30.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isFollowingUser) "Abonné" else "Suivre",
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    com.example.ui.components.VerificationBadge(
-                                        userName = user.username,
-                                        isVerified = user.isVerified,
-                                        modifier = Modifier.size(14.dp)
-                                    )
                                 }
                             }
                         }
@@ -479,13 +565,27 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 48.dp),
+                                .padding(vertical = 48.dp, horizontal = 24.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = if (feedTab == 1) "No posts in your following feed yet. Find friends to follow!" else "No posts available.",
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = if (feedTab == 1) "Aucune publication dans vos abonnements pour le moment." else "Aucune publication disponible.",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                Text(
+                                    text = if (feedTab == 1) "Découvrez des profils à suivre ci-dessus pour animer votre fil !" else "Tirez vers le bas pour actualiser ou créez votre premier Actfile.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
                         }
                     }
                 }

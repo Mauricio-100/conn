@@ -604,6 +604,13 @@ fun BotCardItem(
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        CopyableUserId(
+                            id = bot.id,
+                            isBot = true,
+                            fontSize = 10.sp,
+                            iconSize = 11.dp
+                        )
                         if (bot.autoBanThreshold > 0) {
                             Text(
                                 text = "Auto-ban après ${bot.autoBanThreshold} infractions",

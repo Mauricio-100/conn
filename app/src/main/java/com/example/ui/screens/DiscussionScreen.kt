@@ -29,6 +29,7 @@ import com.example.data.ActfileWithUser
 import com.example.ui.IddetViewModel
 import com.example.ui.components.MarkdownActfile
 import com.example.ui.components.VerificationBadge
+import com.example.ui.components.CopyableUserId
 import com.example.ui.components.VoiceRecorderUI
 import com.example.ui.components.ActfileCard
 import com.example.ui.components.getRelativeTimeString
@@ -236,6 +237,11 @@ fun DiscussionScreen(
                                             text = getRelativeTimeString(comment.createdAt),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        CopyableUserId(
+                                            id = comment.userId,
+                                            isBot = comment.username.contains("bot", ignoreCase = true)
                                         )
                                     }
                                 }

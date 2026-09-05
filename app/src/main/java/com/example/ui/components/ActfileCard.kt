@@ -36,6 +36,7 @@ import coil.compose.AsyncImage
 import com.example.data.ActfileWithUser
 import com.example.data.getCategoryDefaultIcon
 import com.example.ui.components.VerificationBadge
+import com.example.ui.components.CopyableUserId
 import com.example.ui.components.MarkdownContent
 import com.example.ui.components.TagChip
 import kotlinx.coroutines.launch
@@ -181,6 +182,11 @@ fun ActfileCard(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        CopyableUserId(
+                            id = actfile.userId,
+                            isBot = actfile.username.contains("bot", ignoreCase = true)
+                        )
                     }
 
                 } else {
@@ -302,6 +308,12 @@ fun ActfileCard(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                             )
                         }
+
+                        Spacer(modifier = Modifier.height(3.dp))
+                        CopyableUserId(
+                            id = actfile.userId,
+                            isBot = actfile.username.contains("bot", ignoreCase = true)
+                        )
                     }
                 }
 

@@ -43,6 +43,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.ui.IddetViewModel
 import com.example.ui.components.ActfileCard
+import com.example.ui.components.CopyableUserId
 import com.example.ui.components.MarkdownActfile
 import com.example.ui.components.VerificationBadge
 import kotlinx.coroutines.launch
@@ -317,6 +318,14 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                             text = "@${profileUser.username}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+                        CopyableUserId(
+                            id = profileUser.id,
+                            isBot = profileUser.username.contains("bot", ignoreCase = true),
+                            fontSize = 11.sp,
+                            iconSize = 12.dp
                         )
 
                         // Bio

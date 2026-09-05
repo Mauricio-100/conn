@@ -15,6 +15,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -230,6 +239,136 @@ private fun MarkdownBlockquoteNode(
     onMentionClick: ((String) -> Unit)?,
     onLinkClick: ((String) -> Unit)?
 ) {
+    val rawText = node.text
+    val isDebate = remember(rawText) {
+        rawText.contains("[!DEBATE]", ignoreCase = true) ||
+        (rawText.contains("sujet à débattre", ignoreCase = true) && rawText.contains("google search", ignoreCase = true))
+    }
+
+    if (isDebate) {
+        // Sparkling, high-end debate document card
+        val cleanText = remember(rawText) {
+            rawText.replace("[!DEBATE]", "").trim()
+        }
+
+        val infiniteTransition = rememberInfiniteTransition(label = "debate_shimmer")
+        val shimmerTranslate by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1000f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2800, easing = LinearEasing)
+            ),
+            label = "shimmer_pos"
+        )
+
+        val borderGradient = Brush.linearGradient(
+            colors = listOf(
+                Color(0xFF4285F4), // Google Blue
+                Color(0xFFEA4335), // Google Red
+                Color(0xFFFBBC05), // Google Yellow
+                Color(0xFF34A853), // Google Green
+                Color(0xFF9333EA)  // Premium Purple
+            ),
+            start = androidx.compose.ui.geometry.Offset(shimmerTranslate, 0f),
+            end = androidx.compose.ui.geometry.Offset(shimmerTranslate + 300f, 300f)
+        )
+
+        val debateCardBg = if (isMine) {
+            Color.White.copy(alpha = 0.15f)
+        } else {
+            MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp)
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(debateCardBg)
+                .border(
+                    width = 1.5.dp,
+                    brush = borderGradient,
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .padding(12.dp)
+        ) {
+            // Sparkling Top Header: Google Search First Source + Sujet à débattre
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF4285F4).copy(alpha = 0.15f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Recherche Google",
+                            tint = Color(0xFF4285F4),
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "source première google search",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF4285F4),
+                            letterSpacing = 0.3.sp
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFEA4335).copy(alpha = 0.12f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocalFireDepartment,
+                            contentDescription = "Débat",
+                            tint = Color(0xFFEA4335),
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "sujet à débattre",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFEA4335)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // The debate document text rendered with markdown styles
+            val formattedText = rememberRichMarkdownStyles(cleanText, primaryColor, isMine)
+            MarkdownRenderedText(
+                annotatedString = formattedText,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.5.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.Normal
+                ),
+                onMentionClick = onMentionClick,
+                onLinkClick = onLinkClick,
+                textColor = if (isMine) Color.White.copy(alpha = 0.95f) else MaterialTheme.colorScheme.onSurface
+            )
+        }
+        return
+    }
+
     val quoteBg = if (isMine) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
     val barColor = if (isMine) Color.White else primaryColor
 

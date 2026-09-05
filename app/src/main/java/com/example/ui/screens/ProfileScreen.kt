@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
 import coil.compose.AsyncImage
 import com.example.ui.components.VerificationBadge
+import com.example.ui.components.CopyableUserId
 import com.example.ui.components.ActfileCard
 import com.example.ui.components.MarkdownEditor
 import com.example.ui.components.OpenGraphPreview
@@ -462,6 +463,14 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                         Spacer(modifier = Modifier.width(8.dp))
                         VerificationBadge(modifier = Modifier.size(24.dp), userName = user.username, isVerified = user.isVerified)
                     }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    CopyableUserId(
+                        id = user.id,
+                        isBot = false,
+                        fontSize = 11.sp,
+                        iconSize = 12.dp
+                    )
                     
                     if (user.bio.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))

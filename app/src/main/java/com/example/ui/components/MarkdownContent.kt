@@ -14,13 +14,16 @@ fun MarkdownContent(
     onMentionClick: ((String) -> Unit)? = null,
     onLinkClick: ((String) -> Unit)? = null
 ) {
+    val isDebatePost = content.contains("[!DEBATE]") || content.contains("sujet à débattre", ignoreCase = true)
+    val truncation = if (isDetailView) null else if (isDebatePost) 350 else 150
+
     MarkdownRenderer(
         content = content,
         modifier = modifier.testTag("full_markdown_content"),
         onMentionClick = onMentionClick,
         onLinkClick = onLinkClick,
         onReadMoreClick = onReadMoreClick,
-        truncateChars = if (isDetailView) null else 150
+        truncateChars = truncation
     )
 }
 

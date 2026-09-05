@@ -28,34 +28,41 @@ class IddetRepository(    private val userDao: UserDao,
 ) {
 
 
+    private fun getValidToken(): String {
+        return prefs.getString("auth_token", null)
+            ?: prefs.getString("token", null)
+            ?: currentToken
+            ?: throw Exception("Veuillez vous connecter à votre compte pour continuer")
+    }
+
     suspend fun getMyIddetPlusStatus(): IddetPlusStatusResponse {
-        val token = prefs.getString("token", null) ?: throw Exception("Not authenticated")
+        val token = getValidToken()
         return RetrofitClient.apiService.getMyIddetPlusStatus("Bearer $token")
     }
 
     suspend fun getMyCard(): UserCardResponse {
-        val token = prefs.getString("token", null) ?: throw Exception("Not authenticated")
+        val token = getValidToken()
         return RetrofitClient.apiService.getMyCard("Bearer $token")
     }
 
     suspend fun getUserCard(userId: String): UserCardResponse {
-        val token = prefs.getString("token", null)
+        val token = prefs.getString("auth_token", null) ?: prefs.getString("token", null) ?: currentToken
         val authHeader = token?.let { "Bearer $it" }
         return RetrofitClient.apiService.getUserCard(authHeader, userId)
     }
 
     suspend fun updateCardStyle(style: String): CardStyleUpdateResponse {
-        val token = prefs.getString("token", null) ?: throw Exception("Not authenticated")
+        val token = getValidToken()
         return RetrofitClient.apiService.updateCardStyle("Bearer $token", CardStyleUpdateRequest(style))
     }
 
     suspend fun getMyCredits(): CreditsResponse {
-        val token = prefs.getString("token", null) ?: throw Exception("Not authenticated")
+        val token = getValidToken()
         return RetrofitClient.apiService.getMyCredits("Bearer $token")
     }
 
     suspend fun createIddetPlusCheckout(): IddetPlusCheckoutResponse {
-        val token = prefs.getString("token", null) ?: throw Exception("Not authenticated")
+        val token = getValidToken()
         return RetrofitClient.apiService.createIddetPlusCheckout("Bearer $token", IddetPlusCheckoutRequest("USD"))
     }
 
