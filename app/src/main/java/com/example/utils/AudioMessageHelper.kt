@@ -24,10 +24,10 @@ object AudioMessageHelper {
 
         val trimmed = content.trim()
 
-        // Synthetic voice markdown
-        if (trimmed.startsWith("[Voice Message](voice://")) return true
+        // Synthetic voice markdown or voice schema URI
+        if (trimmed.startsWith("[Voice Message]") || trimmed.startsWith("voice://") || trimmed.contains("voice://")) return true
 
-        // Base64 Data URI
+        // Base64 Data URI or raw base64 prefix
         if (trimmed.startsWith("data:audio") ||
             trimmed.startsWith("data:application/octet-stream") ||
             trimmed.startsWith("data:video/mp4") ||

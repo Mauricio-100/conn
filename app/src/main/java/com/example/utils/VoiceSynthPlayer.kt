@@ -3,6 +3,8 @@ package com.example.utils
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import kotlin.math.sin
 import kotlin.math.PI
@@ -10,6 +12,7 @@ import kotlin.math.PI
 object VoiceSynthPlayer {
     private const val TAG = "VoiceSynthPlayer"
     private var activeTrack: AudioTrack? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
     
     @Volatile
     private var isCurrentlyPlaying = false
@@ -101,13 +104,14 @@ object VoiceSynthPlayer {
                         if (!isCurrentlyPlaying) break
                         Thread.sleep(intervalMs)
                         val elapsedProgress = step.toFloat() / totalIntervals
-                        onProgress(elapsedProgress.coerceIn(0f, 1f))
+                        val p = elapsedProgress.coerceIn(0f, 1f)
+                        mainHandler.post { onProgress(p) }
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error playing voice synthesis", e)
             } finally {
-                onFinished()
+                mainHandler.post { onFinished() }
                 try {
                     track?.stop()
                     track?.release()

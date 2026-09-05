@@ -40,6 +40,7 @@ import com.example.ui.IddetViewModel
 import com.example.ui.screens.CustomBrowserScreen
 import com.example.ui.components.LocalCommunityClickHandler
 import com.example.ui.components.LocalChannelClickHandler
+import com.example.ui.components.VerificationBadge
 import androidx.compose.runtime.CompositionLocalProvider
 import kotlinx.coroutines.launch
 
@@ -177,12 +178,20 @@ fun MainScreen(viewModel: IddetViewModel) {
                             Spacer(modifier = Modifier.width(12.dp))
                             
                             Column {
-                                Text(
-                                    text = currentUser?.username ?: "Utilisateur",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = currentUser?.username ?: "Utilisateur",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    VerificationBadge(
+                                        userName = currentUser?.username,
+                                        isVerified = currentUser?.isVerified == true,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                                 Text(
                                     text = currentUser?.bio ?: "Welcome to my profile!",
                                     style = MaterialTheme.typography.bodySmall,

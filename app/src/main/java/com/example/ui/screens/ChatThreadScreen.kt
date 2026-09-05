@@ -198,14 +198,12 @@ fun ChatThreadScreen(
                                     IddetPlusBadge(size = 15.dp)
                                 }
 
-                                if (partnerInfo.isVerified) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    VerificationBadge(
-                                        isVerified = true,
-                                        userName = partnerInfo.username,
-                                        showExplainingOnClick = false
-                                    )
-                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                VerificationBadge(
+                                    isVerified = partnerInfo.isVerified,
+                                    userName = partnerInfo.username,
+                                    showExplainingOnClick = false
+                                )
                             }
 
                             // Live presence status text

@@ -177,6 +177,9 @@ interface FollowDao {
     @Query("SELECT EXISTS(SELECT 1 FROM follows WHERE followerId = :followerId AND followingId = :followingId)")
     fun isFollowingFlow(followerId: String, followingId: String): Flow<Boolean>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM follows WHERE followerId = :followerId AND followingId = :followingId)")
+    suspend fun isFollowing(followerId: String, followingId: String): Boolean
+
     @Query("SELECT followingId FROM follows WHERE followerId = :followerId")
     fun getFollowingIdsFlow(followerId: String): Flow<List<String>>
 

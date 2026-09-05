@@ -162,15 +162,13 @@ fun ConversationListItem(
                         IddetPlusBadge(size = 16.dp)
                     }
 
-                    // Verified Badge
-                    if (conversation.is_verified) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        VerificationBadge(
-                            isVerified = true,
-                            userName = conversation.username,
-                            showExplainingOnClick = false
-                        )
-                    }
+                    // Verified / Official Badge
+                    Spacer(modifier = Modifier.width(4.dp))
+                    VerificationBadge(
+                        isVerified = conversation.is_verified,
+                        userName = conversation.username,
+                        showExplainingOnClick = false
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))

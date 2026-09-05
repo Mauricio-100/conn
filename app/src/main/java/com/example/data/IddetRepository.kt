@@ -4,6 +4,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import com.example.ui.theme.AppTheme
 import kotlinx.coroutines.awaitAll
@@ -791,9 +796,12 @@ class IddetRepository(    private val userDao: UserDao,
         return actfileDao.searchActfiles(query)
     }
     
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getGiants(): Flow<List<User>> {
-        val userId = _currentUser.value?.id ?: ""
-        return userDao.getSuggestedUsers(userId)
+        return _currentUser.flatMapLatest { me ->
+            val userId = me?.id ?: ""
+            userDao.getSuggestedUsers(userId)
+        }
     }
     
     fun getUserFlow(userId: String): Flow<User?> {
@@ -1159,22 +1167,45 @@ class IddetRepository(    private val userDao: UserDao,
         _currentUser.value = updatedUser
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getFollowedActfiles(): Flow<List<ActfileWithUser>> {
-        val myId = _currentUser.value?.id ?: ""
-        return followDao.getFollowedActfiles(myId)
+        return _currentUser.flatMapLatest { me ->
+            val myId = me?.id ?: ""
+            if (myId.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                followDao.getFollowedActfiles(myId)
+            }
+        }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun isFollowing(otherUserId: String): Flow<Boolean> {
-        val myId = _currentUser.value?.id ?: ""
-        return followDao.isFollowingFlow(myId, otherUserId)
+        return _currentUser.flatMapLatest { me ->
+            val myId = me?.id ?: ""
+            if (myId.isEmpty() || otherUserId.isEmpty()) {
+                flowOf(false)
+            } else {
+                flow {
+                    val targetUser = userDao.getUserById(otherUserId) ?: userDao.getUserByUsername(otherUserId)
+                    val resolvedOtherId = targetUser?.id ?: otherUserId
+                    emitAll(followDao.isFollowingFlow(myId, resolvedOtherId))
+                }
+            }
+        }
     }
 
     suspend fun followUser(otherUserId: String) {
         val myId = _currentUser.value?.id ?: return
-        if (myId == otherUserId) return
+        val targetUser = userDao.getUserById(otherUserId) ?: userDao.getUserByUsername(otherUserId)
+        val resolvedOtherId = targetUser?.id ?: otherUserId
+        if (myId == resolvedOtherId || resolvedOtherId.isEmpty()) return
         
+        val isAlreadyFollowing = followDao.isFollowing(myId, resolvedOtherId)
+        if (isAlreadyFollowing) return
+
         // 1. Insert local follow record
-        followDao.insertFollow(Follow(followerId = myId, followingId = otherUserId))
+        followDao.insertFollow(Follow(followerId = myId, followingId = resolvedOtherId))
 
         // 2. Update follower/following counts locally for current user
         val me = userDao.getUserById(myId)
@@ -1185,9 +1216,8 @@ class IddetRepository(    private val userDao: UserDao,
         }
 
         // 3. Update follower/following counts locally for other user
-        val other = userDao.getUserById(otherUserId)
-        if (other != null) {
-            val updatedOther = other.copy(followersCount = other.followersCount + 1)
+        if (targetUser != null) {
+            val updatedOther = targetUser.copy(followersCount = targetUser.followersCount + 1)
             userDao.insertUser(updatedOther)
         }
 
@@ -1195,7 +1225,7 @@ class IddetRepository(    private val userDao: UserDao,
         try {
             val token = currentToken
             if (token != null) {
-                RetrofitClient.apiService.followUser("Bearer $token", otherUserId)
+                RetrofitClient.apiService.followUser("Bearer $token", resolvedOtherId)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1204,9 +1234,15 @@ class IddetRepository(    private val userDao: UserDao,
 
     suspend fun unfollowUser(otherUserId: String) {
         val myId = _currentUser.value?.id ?: return
+        val targetUser = userDao.getUserById(otherUserId) ?: userDao.getUserByUsername(otherUserId)
+        val resolvedOtherId = targetUser?.id ?: otherUserId
+        if (myId == resolvedOtherId || resolvedOtherId.isEmpty()) return
         
+        val isFollowing = followDao.isFollowing(myId, resolvedOtherId)
+        if (!isFollowing) return
+
         // 1. Delete local follow record
-        followDao.deleteFollow(myId, otherUserId)
+        followDao.deleteFollow(myId, resolvedOtherId)
 
         // 2. Update follower/following counts locally for current user
         val me = userDao.getUserById(myId)
@@ -1217,9 +1253,8 @@ class IddetRepository(    private val userDao: UserDao,
         }
 
         // 3. Update follower/following counts locally for other user
-        val other = userDao.getUserById(otherUserId)
-        if (other != null) {
-            val updatedOther = other.copy(followersCount = (other.followersCount - 1).coerceAtLeast(0))
+        if (targetUser != null) {
+            val updatedOther = targetUser.copy(followersCount = (targetUser.followersCount - 1).coerceAtLeast(0))
             userDao.insertUser(updatedOther)
         }
 
@@ -1227,7 +1262,7 @@ class IddetRepository(    private val userDao: UserDao,
         try {
             val token = currentToken
             if (token != null) {
-                RetrofitClient.apiService.unfollowUser("Bearer $token", otherUserId)
+                RetrofitClient.apiService.unfollowUser("Bearer $token", resolvedOtherId)
             }
         } catch (e: Exception) {
             e.printStackTrace()

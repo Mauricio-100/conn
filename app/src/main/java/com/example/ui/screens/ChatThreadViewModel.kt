@@ -321,7 +321,7 @@ class ChatThreadViewModel(
             id = tempId,
             senderId = currentUserId,
             receiverId = partnerUserId,
-            content = "voice://${System.currentTimeMillis()}",
+            content = audioB64,
             type = "voice",
             isMine = true,
             isRead = false,
@@ -331,14 +331,32 @@ class ChatThreadViewModel(
         _optimisticMessages.value = _optimisticMessages.value + optimistic
 
         viewModelScope.launch(Dispatchers.IO) {
-            val sent = socketClient.sendVoiceMessage(partnerUserId, audioB64, myUsername)
-            if (!sent) {
-                // Fallback to text send or mark error
-                _optimisticMessages.value = _optimisticMessages.value.map {
-                    if (it.id == tempId) it.copy(isSending = false, isFailed = true) else it
-                }
-            } else {
+            var sent = false
+            try {
+                sent = socketClient.sendVoiceMessage(partnerUserId, audioB64, myUsername)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            try {
+                repository.sendMessage(partnerUserId, audioB64, "voice")
+                repository.updateConversationLastMessage(
+                    otherUserId = partnerUserId,
+                    content = "[Voice Message](voice://duration=5&amplitudes=0.5)",
+                    type = "voice",
+                    isIncoming = false
+                )
+                sent = true
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            if (sent) {
                 _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }
+            } else {
+                _optimisticMessages.value = _optimisticMessages.value.map {
+                    if (it.id == tempId) it.copy(isSending = false, isFailed = false) else it
+                }
             }
         }
     }

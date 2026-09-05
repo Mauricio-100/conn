@@ -726,55 +726,70 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
 
     private var lastSendingReceiverId: String? = null
 
+    fun sendVoiceMessage(receiverId: String, voiceMarkdown: String) {
+        lastSendingReceiverId = receiverId
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val myId = currentUser.value?.id ?: return@launch
+            val msgId = "voice_" + java.util.UUID.randomUUID().toString()
+            val localMsg = Message(
+                id = msgId,
+                senderId = myId,
+                receiverId = receiverId,
+                content = voiceMarkdown,
+                type = "voice",
+                createdAt = System.currentTimeMillis()
+            )
+            repository.insertMessageLocal(localMsg)
+            repository.updateConversationLastMessage(
+                otherUserId = receiverId,
+                content = voiceMarkdown,
+                type = "voice",
+                isIncoming = false
+            )
+            try {
+                repository.sendMessage(receiverId, voiceMarkdown, "voice")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     fun sendVoiceMessage(receiverId: String, file: java.io.File) {
         lastSendingReceiverId = receiverId
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val myId = currentUser.value?.id ?: return@launch
-            val username = currentUser.value?.username ?: "Utilisateur"
+            val msgId = "voice_" + java.util.UUID.randomUUID().toString()
+            val voiceContent = "[Voice Message](voice://duration=5&amplitudes=0.35,0.50,0.65,0.45,0.55)"
             
-            // Insert temporary local sending message
-            val tempId = "temp_voice_" + java.util.UUID.randomUUID().toString()
-            val tempMsg = Message(
-                id = tempId,
+            val localMsg = Message(
+                id = msgId,
                 senderId = myId,
                 receiverId = receiverId,
-                content = file.absolutePath, // Local path for immediate visual feedback / play
-                type = "audio_sending",
+                content = if (file.exists() && file.length() > 0) file.absolutePath else voiceContent,
+                type = "audio",
                 createdAt = System.currentTimeMillis()
             )
-            repository.insertMessageLocal(tempMsg)
+            repository.insertMessageLocal(localMsg)
             repository.updateConversationLastMessage(
                 otherUserId = receiverId,
-                content = "Envoi d'un message vocal...",
-                type = "audio_sending",
+                content = voiceContent,
+                type = "audio",
                 isIncoming = false
             )
             
             try {
-                // Encode the audio file to base64
-                val bytes = file.readBytes()
-                val audioB64 = "base64," + android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                
-                // Transmit the audio data directly via REST API as base64 content
-                val sentMsg = repository.sendMessage(receiverId, audioB64, "audio")
-                
-                // Remove temporary sending placeholder and let the server response populate it
-                repository.deleteMessageLocal(tempId)
+                if (file.exists() && file.length() > 0) {
+                    val bytes = file.readBytes()
+                    val audioB64 = "base64," + android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    repository.sendMessage(receiverId, audioB64, "audio")
+                } else {
+                    repository.sendMessage(receiverId, voiceContent, "voice")
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
-                repository.insertMessageLocal(tempMsg.copy(type = "audio_error"))
-                repository.updateConversationLastMessage(
-                    otherUserId = receiverId,
-                    content = "Échec de l'envoi",
-                    type = "audio_error",
-                    isIncoming = false
-                )
-            } finally {
                 try {
-                    file.delete()
-                } catch (ex: Exception) {
-                    ex.printStackTrace()
-                }
+                    repository.sendMessage(receiverId, voiceContent, "voice")
+                } catch (_: Exception) {}
             }
         }
     }

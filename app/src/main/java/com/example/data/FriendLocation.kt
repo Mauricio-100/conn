@@ -18,7 +18,8 @@ data class FriendLocation(
     val activityTag: String = "Dev & Tech",
     val mutualFriendsCount: Int = 4,
     val streakDays: Int = 12,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val isVerified: Boolean = false
 )
 
 enum class FriendActivityFilter(val label: String, val emoji: String) {

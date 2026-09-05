@@ -196,6 +196,10 @@ private fun LegacyChatScreen(userId: String, viewModel: IddetViewModel, navContr
                     viewModel.sendMessage(userId, finalContent)
                     replyingToMessage = null
                 },
+                onSendVoice = { voiceString ->
+                    viewModel.sendVoiceMessage(userId, voiceString)
+                    replyingToMessage = null
+                },
                 onSendVoiceFile = { file ->
                     viewModel.sendVoiceMessage(userId, file)
                     replyingToMessage = null
@@ -801,6 +805,7 @@ fun MessageBubbleItem(
 fun MessageInputField(
     onSendMessage: (String) -> Unit,
     onSendVoiceFile: (java.io.File) -> Unit,
+    onSendVoice: ((String) -> Unit)? = null,
     replyingToMessage: Message? = null,
     onCancelReply: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -896,6 +901,10 @@ fun MessageInputField(
                 ) {
                     VoiceRecorderUI(
                         onCancel = { isRecordingMode = false },
+                        onSendVoice = { voiceString ->
+                            onSendVoice?.invoke(voiceString)
+                            isRecordingMode = false
+                        },
                         onSendVoiceFile = { file ->
                             onSendVoiceFile(file)
                             isRecordingMode = false

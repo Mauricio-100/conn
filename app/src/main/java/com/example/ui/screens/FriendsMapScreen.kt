@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import com.example.ui.components.VerificationBadge
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -988,6 +989,12 @@ fun SelectedFriendDetailCard(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Black,
                             color = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        VerificationBadge(
+                            userName = friend.username,
+                            isVerified = friend.isVerified,
+                            modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(friend.statusEmoji, fontSize = 16.sp)

@@ -536,9 +536,17 @@ fun StoryViewerDialog(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = currentStory.user.username,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
                                 com.example.ui.components.VerificationBadge(
                                     userName = currentStory.user.username,
-                                    isVerified = currentStory.user.isVerified
+                                    isVerified = currentStory.user.isVerified,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                             if (!currentStory.user.profession.isNullOrBlank()) {

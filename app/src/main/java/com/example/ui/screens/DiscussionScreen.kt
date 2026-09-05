@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -20,6 +21,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.compose.ui.layout.ContentScale
@@ -31,6 +34,9 @@ import com.example.ui.components.MarkdownActfile
 import com.example.ui.components.VerificationBadge
 import com.example.ui.components.CopyableUserId
 import com.example.ui.components.VoiceRecorderUI
+import com.example.ui.components.VoiceMessagePlayer
+import com.example.ui.components.isVoiceMessage
+import com.example.utils.AudioMessageHelper
 import com.example.ui.components.ActfileCard
 import com.example.ui.components.getRelativeTimeString
 import kotlinx.coroutines.launch
@@ -248,23 +254,65 @@ fun DiscussionScreen(
                                 
                                 Spacer(modifier = Modifier.height(10.dp))
                                 
-                                // Comment Body (Supporting Markdown & clickable elements)
+                                // Comment Body (Supporting dedicated Voice Message presentation and Markdown)
                                 val scope = rememberCoroutineScope()
-                                MarkdownActfile(
-                                    content = comment.content,
-                                    onMentionClick = { username ->
-                                        scope.launch {
-                                            val u = viewModel.getUserByUsername(username)
-                                            if (u != null) {
-                                                navController.navigate("profile/${u.id}")
+                                val isVoice = isVoiceMessage(comment.content) || AudioMessageHelper.isAudioContent(comment.content)
+                                val isMine = comment.userId == currentUser?.id
+
+                                if (isVoice) {
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = if (isMine) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isMine) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Mic,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "Réponse vocale",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
                                             }
+                                            VoiceMessagePlayer(
+                                                content = comment.content,
+                                                isMine = isMine
+                                            )
                                         }
-                                    },
-                                    onLinkClick = { url ->
-                                        val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
-                                        navController.navigate("browser/$encodedUrl")
                                     }
-                                )
+                                } else {
+                                    MarkdownActfile(
+                                        content = comment.content,
+                                        onMentionClick = { username ->
+                                            scope.launch {
+                                                val u = viewModel.getUserByUsername(username)
+                                                if (u != null) {
+                                                    navController.navigate("profile/${u.id}")
+                                                }
+                                            }
+                                        },
+                                        onLinkClick = { url ->
+                                            val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                            navController.navigate("browser/$encodedUrl")
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -277,7 +325,35 @@ fun DiscussionScreen(
                 tonalElevation = 6.dp,
                 shadowElevation = 6.dp
             ) {
+                val context = androidx.compose.ui.platform.LocalContext.current
                 var isRecordingMode by remember { mutableStateOf(false) }
+
+                val micPermissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestPermission()
+                ) { isGranted ->
+                    if (isGranted) {
+                        isRecordingMode = true
+                    } else {
+                        android.widget.Toast.makeText(
+                            context,
+                            "Autorisez le micro pour enregistrer un message vocal",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+
+                val onStartRecording = {
+                    val permission = android.Manifest.permission.RECORD_AUDIO
+                    val hasPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        permission
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (hasPerm) {
+                        isRecordingMode = true
+                    } else {
+                        micPermissionLauncher.launch(permission)
+                    }
+                }
 
                 Column(
                     modifier = Modifier
@@ -370,7 +446,7 @@ fun DiscussionScreen(
                             }
                         }
 
-                        // Compact input row (Reddit style)
+                        // Compact input row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -411,10 +487,10 @@ fun DiscussionScreen(
 
                             Spacer(modifier = Modifier.width(6.dp))
 
-                            // If text is blank: Voice recording icon button. Else: Send icon button!
+                            // Action buttons: Mic and Send
                             if (replyText.isBlank()) {
                                 IconButton(
-                                    onClick = { isRecordingMode = true },
+                                    onClick = { onStartRecording() },
                                     modifier = Modifier
                                         .size(36.dp)
                                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape)
@@ -426,6 +502,22 @@ fun DiscussionScreen(
                                     )
                                 }
                             } else {
+                                IconButton(
+                                    onClick = { onStartRecording() },
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Mic,
+                                        contentDescription = "Message vocal",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
                                 IconButton(
                                     onClick = {
                                         viewModel.commentActfile(actfileId, replyText)

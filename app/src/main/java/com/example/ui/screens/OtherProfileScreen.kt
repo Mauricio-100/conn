@@ -53,8 +53,9 @@ import kotlinx.coroutines.launch
 fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, userId: String) {
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val user by viewModel.getUserProfile(userId).collectAsStateWithLifecycle(initialValue = null)
-    val userActfiles by viewModel.getUserActfiles(userId).collectAsStateWithLifecycle(initialValue = emptyList())
-    val isFollowing by viewModel.isFollowing(userId).collectAsStateWithLifecycle(initialValue = false)
+    val effectiveUserId = user?.id ?: userId
+    val userActfiles by viewModel.getUserActfiles(effectiveUserId).collectAsStateWithLifecycle(initialValue = emptyList())
+    val isFollowing by viewModel.isFollowing(effectiveUserId).collectAsStateWithLifecycle(initialValue = false)
     val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
     val aiState by viewModel.aiState.collectAsStateWithLifecycle()
     val friendsLocations by viewModel.friendsLocations.collectAsStateWithLifecycle()
@@ -92,11 +93,19 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
             TopAppBar(
                 title = {
                     Column {
-                        Text(
-                            text = profileUser.username,
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = profileUser.username,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            VerificationBadge(
+                                userName = profileUser.username,
+                                isVerified = profileUser.isVerified,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                         Text(
                             text = "${userActfiles.size} publication${if (userActfiles.size > 1) "s" else ""}",
                             style = MaterialTheme.typography.labelSmall,
