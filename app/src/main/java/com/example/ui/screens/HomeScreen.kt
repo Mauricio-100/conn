@@ -86,6 +86,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
     val allCategories by viewModel.allCategories.collectAsStateWithLifecycle()
 
     val stories by viewModel.stories.collectAsStateWithLifecycle()
+    val iddetPlusStatus by viewModel.myIddetPlusStatus.collectAsStateWithLifecycle()
     val sortedStories = remember(stories) { stories.sortedBy { it.user.id } }
     val groupedStories = remember(sortedStories) {
         sortedStories.groupBy { it.user.id }.values.mapNotNull { it.firstOrNull() }
@@ -551,6 +552,16 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                                 onClick = { slug ->
                                     navController.navigate("community/$slug")
                                 }
+                            )
+                        }
+
+                        // Inject Iddet Plus VIP Promotional Banner in the feed after the 4th item
+                        if (index == 3) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            com.example.ui.components.IddetPlusPromoBanner(
+                                onClick = { navController.navigate("iddet_plus") },
+                                modifier = Modifier.padding(horizontal = 4.dp),
+                                isPremium = iddetPlusStatus?.is_iddet_plus == true
                             )
                         }
                     }

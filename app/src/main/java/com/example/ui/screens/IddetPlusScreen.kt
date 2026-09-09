@@ -3,7 +3,10 @@ package com.example.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -12,16 +15,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Diamond
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -48,15 +61,35 @@ fun IddetPlusScreen(viewModel: IddetViewModel, navController: NavController) {
     var selectedCurrency by remember { mutableStateOf("CDF") } // "CDF" ou "USD"
     var activeCheckoutResponse by remember { mutableStateOf<com.example.data.IddetPlusCheckoutResponse?>(null) }
     var showWidgetDialog by remember { mutableStateOf(false) }
+    var previewStyle by remember { mutableStateOf(myCard?.card_style ?: "gold") }
 
     LaunchedEffect(Unit) {
         viewModel.loadIddetPlusData()
     }
 
+    val isPremium = status?.is_iddet_plus == true
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Iddet Plus", fontWeight = FontWeight.Bold) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("IDDET", fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFFD700),
+                            contentColor = Color.Black
+                        ) {
+                            Text(
+                                "PLUS",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
@@ -92,7 +125,7 @@ fun IddetPlusScreen(viewModel: IddetViewModel, navController: NavController) {
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             // Suivi du paiement en cours (si une transaction Chariow a été initiée)
             if (pendingRef != null) {
@@ -196,110 +229,435 @@ fun IddetPlusScreen(viewModel: IddetViewModel, navController: NavController) {
                 }
             }
 
-            // Header / Status
-            val isPremium = status?.is_iddet_plus == true
-            
+            // LUXURY PROMOTIONAL HERO BANNER
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .shadow(elevation = 16.dp, shape = RoundedCornerShape(24.dp), spotColor = Color(0xFFFF9800))
+                    .clip(RoundedCornerShape(24.dp))
                     .background(
-                        if (isPremium) 
-                            Brush.linearGradient(listOf(Color(0xFFFFD700), Color(0xFFFFA500)))
-                        else 
-                            Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primaryContainer))
-                    )
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = if (isPremium) Color.White else MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = if (isPremium) "Abonnement Actif" else "Passez au niveau supérieur",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isPremium) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    if (isPremium) {
-                        Text(
-                            text = "Valable jusqu'au ${status?.expires_at?.take(10) ?: "renouvellement"}",
-                            color = Color.White.copy(alpha = 0.9f),
-                            fontSize = 14.sp
+                        Brush.linearGradient(
+                            colors = if (isPremium) listOf(
+                                Color(0xFF0F172A),
+                                Color(0xFF1E1B4B),
+                                Color(0xFF312E81)
+                            ) else listOf(
+                                Color(0xFF0A0A14),
+                                Color(0xFF1E112A),
+                                Color(0xFF2C103C)
+                            )
                         )
-                    } else {
-                        Text(
-                            text = "Seulement 2800 CDF (~$1.25)/mois pour des avantages exclusifs !",
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-
-            // Benefits
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    )
+                    .border(
+                        width = 1.5.dp,
+                        brush = Brush.linearGradient(
+                            listOf(Color(0xFFFFD700), Color(0xFFFF8008), Color(0xFFFFC837))
+                        ),
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                    .padding(22.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Avantages Iddet Plus", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    BenefitRow("Styles de carte de profil premium (Neon, Gold, Diamond, Obsidian)")
-                    BenefitRow("500 Crédits offerts chaque mois")
-                    BenefitRow("Badge exclusif vérifié sur votre profil")
-                    BenefitRow("Passerelle de paiement sécurisée Mobile Money & Cartes")
-                    BenefitRow("Soutien direct aux créateurs")
-                }
-            }
-
-            if (!isPremium) {
-                Button(
-                    onClick = {
-                        showCheckoutSheet = true
-                    },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    enabled = !isLoading
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("S'abonner maintenant (2800 CDF / mois)", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-            } else {
-                // Style Picker
-                Text("Personnaliser votre carte", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                val styles = listOf("classic", "gold", "diamond", "neon", "obsidian")
-                
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    styles.forEach { style ->
-                        val isSelected = myCard?.card_style == style
+                    // VIP Badge Header
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color(0xFFFFD700),
+                            contentColor = Color.Black
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isPremium) Icons.Default.Diamond else Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = if (isPremium) "MEMBRE VIP ACTIF" else "OFFRE DE LANCEMENT EXCLUSIVE",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = if (isPremium) "Bienvenue dans l'Élite IDDET" else "Sublimez Votre Profil avec Iddet Plus",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 28.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = if (isPremium)
+                            "Abonnement actif jusqu'au ${status?.expires_at?.take(10) ?: "prochain renouvellement"}"
+                        else
+                            "Rejoignez les créateurs d'impact. Des fonctionnalités exclusives, une vitesse d'audience décuplée et un statut remarquable.",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Price Tag in Hero
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = 0.08f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable {
-                                    viewModel.updateCardStyle(
-                                        style = style,
-                                        onSuccess = { Toast.makeText(context, "Style $style appliqué avec succès !", Toast.LENGTH_SHORT).show() },
-                                        onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() }
-                                    )
-                                }
-                                .padding(16.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(style.replaceFirstChar { it.uppercase() }, modifier = Modifier.weight(1f), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                            if (isSelected) Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.primary)
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "2 800 CDF",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 20.sp,
+                                        color = Color(0xFFFFD700)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "5 600 CDF",
+                                        fontSize = 13.sp,
+                                        color = Color.White.copy(alpha = 0.4f),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                                        )
+                                    )
+                                }
+                                Text(
+                                    text = "ou ~1.25 USD • Sans engagement",
+                                    fontSize = 11.sp,
+                                    color = Color.White.copy(alpha = 0.7f)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF10B981)
+                            ) {
+                                Text(
+                                    text = "-50%",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 12.sp,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (!isPremium) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { showCheckoutSheet = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFFFD700),
+                                contentColor = Color.Black
+                            )
+                        ) {
+                            Icon(Icons.Default.FlashOn, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Débloquer Iddet Plus Maintenant",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp
+                            )
                         }
                     }
                 }
             }
+
+            // LIVE CARD STYLE SHOWCASE & PREVIEW
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Aperçu des Styles de Profil", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = "EXCLUSIVITÉ",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Choisissez l'apparence de votre profil parmi des finitions luxueuses conçues pour captiver votre communauté.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // Interactive Preview Card Box
+                    val cardStyleGradient = when (previewStyle) {
+                        "gold" -> Brush.linearGradient(listOf(Color(0xFFB8860B), Color(0xFFFFD700), Color(0xFFFFF8DC)))
+                        "diamond" -> Brush.linearGradient(listOf(Color(0xFF00B4D8), Color(0xFF90E0EF), Color(0xFFCAF0F8)))
+                        "neon" -> Brush.linearGradient(listOf(Color(0xFFFF007F), Color(0xFF7928CA), Color(0xFF00DFD8)))
+                        "obsidian" -> Brush.linearGradient(listOf(Color(0xFF111827), Color(0xFF1F2937), Color(0xFF374151)))
+                        else -> Brush.linearGradient(listOf(Color(0xFF2563EB), Color(0xFF3B82F6), Color(0xFF60A5FA)))
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(cardStyleGradient)
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.25f))
+                                        .border(2.dp, Color.White, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = user?.username?.firstOrNull()?.toString()?.uppercase() ?: "I",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 22.sp,
+                                        color = Color.White
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "@${user?.username ?: "mon_profil"}",
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 16.sp,
+                                            color = Color.White
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.Verified,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "Style : ${previewStyle.replaceFirstChar { it.uppercase() }}",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.85f)
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.Black.copy(alpha = 0.3f)
+                            ) {
+                                Text(
+                                    text = "PRO+",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 11.sp,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Style Selector Chips
+                    val styles = listOf("gold", "diamond", "neon", "obsidian", "classic")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        styles.forEach { style ->
+                            val isSelected = previewStyle == style
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    previewStyle = style
+                                    if (isPremium) {
+                                        viewModel.updateCardStyle(
+                                            style = style,
+                                            onSuccess = { Toast.makeText(context, "Style $style appliqué !", Toast.LENGTH_SHORT).show() },
+                                            onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() }
+                                        )
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        style.replaceFirstChar { it.uppercase() },
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    if (isPremium) {
+                        Text(
+                            text = "💡 Touchez un style pour l'appliquer immédiatement à votre carte.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            // COMPARATIVE MATRIX (Gratuit vs Iddet Plus)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Comparatif des Fonctionnalités",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    FeatureComparisonRow(
+                        feature = "Styles de carte exclusifs (Gold, Neon...)",
+                        freeVal = "Standard",
+                        plusVal = "5 Thèmes VIP",
+                        isHighlight = true
+                    )
+                    FeatureComparisonRow(
+                        feature = "Crédits de création offerts",
+                        freeVal = "50 / mois",
+                        plusVal = "500 / mois",
+                        isHighlight = true
+                    )
+                    FeatureComparisonRow(
+                        feature = "Badge de vérification VIP",
+                        freeVal = "Non",
+                        plusVal = "Oui ⭐",
+                        isHighlight = true
+                    )
+                    FeatureComparisonRow(
+                        feature = "Passerelle locale Mobile Money",
+                        freeVal = "—",
+                        plusVal = "Inclus (CDF/USD)",
+                        isHighlight = false
+                    )
+                    FeatureComparisonRow(
+                        feature = "Support prioritaire 24/7",
+                        freeVal = "Standard",
+                        plusVal = "VIP Dédié",
+                        isHighlight = false
+                    )
+                }
+            }
+
+            // TRUST & SECURITY BADGES
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                TrustBadge(
+                    icon = Icons.Default.Security,
+                    title = "Paiement Sécurisé",
+                    subtitle = "Passerelle Chariow cryptée",
+                    modifier = Modifier.weight(1f)
+                )
+                TrustBadge(
+                    icon = Icons.Default.Payments,
+                    title = "Mobile Money",
+                    subtitle = "M-Pesa, Airtel, Orange",
+                    modifier = Modifier.weight(1f)
+                )
+                TrustBadge(
+                    icon = Icons.Default.SupportAgent,
+                    title = "Support Réactif",
+                    subtitle = "Assistance instantanée",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // MAIN CALL TO ACTION
+            if (!isPremium) {
+                Button(
+                    onClick = { showCheckoutSheet = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = Color(0xFFFF9800)),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFFD700),
+                        contentColor = Color.Black
+                    ),
+                    enabled = !isLoading
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "S'abonner à Iddet Plus (2800 CDF)",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
     
+    // CHECKOUT BOTTOM SHEET
     if (showCheckoutSheet) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
@@ -605,3 +963,83 @@ fun BenefitRow(text: String) {
         Text(text, fontSize = 14.sp)
     }
 }
+
+@Composable
+fun FeatureComparisonRow(
+    feature: String,
+    freeVal: String,
+    plusVal: String,
+    isHighlight: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = feature,
+            modifier = Modifier.weight(1.3f),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (isHighlight) FontWeight.SemiBold else FontWeight.Normal
+        )
+        Text(
+            text = freeVal,
+            modifier = Modifier.weight(0.8f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = plusVal,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = if (isHighlight) Color(0xFFFFB300) else MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.End
+        )
+    }
+}
+
+@Composable
+fun TrustBadge(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+            Text(
+                text = title,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = subtitle,
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                lineHeight = 12.sp
+            )
+        }
+    }
+}
+
+    

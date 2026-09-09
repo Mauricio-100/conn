@@ -75,6 +75,7 @@ fun MainScreen(viewModel: IddetViewModel) {
     val currentUser by viewModel.currentUser.collectAsState()
     val myLevel by viewModel.myLevel.collectAsState()
     val levelsTable by viewModel.levelsTable.collectAsState()
+    val iddetPlusStatus by viewModel.myIddetPlusStatus.collectAsState()
     var showLadderDialog by remember { mutableStateOf(false) }
     val currentFeedTab by viewModel.feedTab.collectAsState()
     val currentSelectedCategory by viewModel.selectedCategoryFilter.collectAsState()
@@ -220,6 +221,17 @@ fun MainScreen(viewModel: IddetViewModel) {
                             onOpenLadder = { showLadderDialog = true },
                             modifier = Modifier.fillMaxWidth(),
                             subtitle = "Score calculé sur likes & commentaires"
+                        )
+                        
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // IDDET PLUS PROMO BANNER IN DRAWER
+                        com.example.ui.components.IddetPlusPromoBanner(
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                navController.navigate("iddet_plus")
+                            },
+                            isPremium = iddetPlusStatus?.is_iddet_plus == true
                         )
                         
                         Spacer(modifier = Modifier.height(12.dp))
@@ -532,6 +544,7 @@ fun MainScreen(viewModel: IddetViewModel) {
 
                     // Drawer menu list
                     val drawerItems = listOf(
+                        Triple("Iddet Plus VIP ✨", "iddet_plus", Icons.Outlined.Star),
                         Triple("Radar des Potes 🗺️", "friends_map", Icons.Outlined.Place),
                         Triple("Rechercher", "search", Icons.Outlined.Search),
                         Triple("Discussions", "messages", Icons.Outlined.Message),

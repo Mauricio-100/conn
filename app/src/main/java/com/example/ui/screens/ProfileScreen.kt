@@ -93,12 +93,14 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     val currentUserVibe by viewModel.currentUserVibe.collectAsStateWithLifecycle()
     val myLevel by viewModel.myLevel.collectAsStateWithLifecycle()
     val levelsTable by viewModel.levelsTable.collectAsStateWithLifecycle()
+    val iddetPlusStatus by viewModel.myIddetPlusStatus.collectAsStateWithLifecycle()
     
     LaunchedEffect(Unit) {
         viewModel.refreshProfile()
         viewModel.refreshActfiles()
         viewModel.refreshMyLevel()
         viewModel.loadLevelsTable()
+        viewModel.loadIddetPlusData()
     }
     
     var showEditDialog by remember { mutableStateOf(false) }
@@ -587,6 +589,15 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 2.5. Iddet Plus VIP Promotional Banner
+                    com.example.ui.components.IddetPlusPromoBanner(
+                        onClick = { navController.navigate("iddet_plus") },
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                        isPremium = iddetPlusStatus?.is_iddet_plus == true
+                    )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
