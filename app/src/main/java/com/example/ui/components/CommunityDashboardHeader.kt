@@ -1,17 +1,17 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Label
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,12 +20,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.data.Community
 import com.example.data.getCategoryDefaultBanner
 import com.example.data.getCategoryDefaultIcon
-
 import com.example.utils.FormatUtils
 
 @Composable
@@ -33,172 +33,292 @@ fun CommunityDashboardHeader(
     community: Community,
     onJoinClick: () -> Unit,
     onRulesClick: () -> Unit,
+    onShareClick: (() -> Unit)? = null,
+    onNewPostClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var isExpandedDescription by remember { mutableStateOf(false) }
+    // Simulated online members proportion for realistic Reddit feel (5-15% of members or at least 12)
+    val onlineCount = remember(community.membersCount) {
+        val base = (community.membersCount * 0.12).toInt()
+        if (base > 0) base else 14
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        // Banner with gradient
+        // Banner with Reddit styling
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(160.dp)
+                .height(140.dp)
         ) {
-            val bannerModel = if (!community.bannerUrl.isNullOrBlank()) com.example.utils.UrlHelper.fixCloudinaryUrl(community.bannerUrl) else getCategoryDefaultBanner(community.category)
+            val bannerModel = if (!community.bannerUrl.isNullOrBlank()) {
+                com.example.utils.UrlHelper.fixCloudinaryUrl(community.bannerUrl)
+            } else {
+                getCategoryDefaultBanner(community.category)
+            }
             AsyncImage(
                 model = bannerModel,
-                contentDescription = "Community Banner",
+                contentDescription = "Bannière de la communauté",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
-            // Bottom gradient overlay for smooth transition
+            // Gradient overlay
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, MaterialTheme.colorScheme.surface.copy(alpha = 0.8f), MaterialTheme.colorScheme.surface),
-                            startY = 100f
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.2f),
+                                Color.Transparent,
+                                MaterialTheme.colorScheme.surface
+                            ),
+                            startY = 0f
                         )
                     )
             )
         }
 
-        // Profile and Main Info
+        // Community Profile row & Join button
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .offset(y = (-40).dp)
+                .offset(y = (-36).dp)
                 .padding(horizontal = 16.dp)
         ) {
-            // Icon & Join Button Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
-                // Icon
+                // Avatar with high-contrast border
                 Box(
                     modifier = Modifier
-                        .size(80.dp)
+                        .size(76.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surface)
-                        .padding(4.dp)
+                        .padding(3.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    val iconModel = if (!community.iconUrl.isNullOrBlank()) com.example.utils.UrlHelper.fixCloudinaryUrl(community.iconUrl) else getCategoryDefaultIcon(community.category)
+                    val iconModel = if (!community.iconUrl.isNullOrBlank()) {
+                        com.example.utils.UrlHelper.fixCloudinaryUrl(community.iconUrl)
+                    } else {
+                        getCategoryDefaultIcon(community.category)
+                    }
                     AsyncImage(
                         model = iconModel,
-                        contentDescription = "Community Icon",
+                        contentDescription = "Icône ${community.name}",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
                 }
-                
-                // Join Button
-                Button(
-                    onClick = onJoinClick,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (community.isMember) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
-                        contentColor = if (community.isMember) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
-                    ),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.testTag("detail_join_button")
+
+                // Action Buttons
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(if (community.isMember) "Quitter" else "Rejoindre", fontWeight = FontWeight.Bold)
+                    if (onShareClick != null) {
+                        IconButton(
+                            onClick = onShareClick,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+                                .testTag("header_share_button")
+                        ) {
+                            Icon(
+                                Icons.Default.Share,
+                                contentDescription = "Partager",
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (onNewPostClick != null) {
+                        FilledTonalButton(
+                            onClick = onNewPostClick,
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Publier", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    Button(
+                        onClick = onJoinClick,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (community.isMember) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
+                            contentColor = if (community.isMember) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                        modifier = Modifier.testTag("detail_join_button")
+                    ) {
+                        if (community.isMember) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Membre", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                        } else {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Rejoindre", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Title & Meta
+            // Community Name & Reddit Tag
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = community.name,
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 if (community.isPrivate) {
                     Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Private",
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Privé",
+                                modifier = Modifier.size(12.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "Privé",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 2.dp)
+            ) {
+                Text(
+                    text = "c/${community.slug}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+
+                // Category Flair Pill
+                val catInfo = com.example.ui.components.getCategoryById(community.category)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = (catInfo?.color ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = "${catInfo?.emoji ?: "🏷️"} ${community.category}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = catInfo?.color ?: MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
                 }
             }
-            Text(
-                text = "c/${community.slug}",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
-            )
 
+            // Description
             if (!community.description.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = community.description,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = if (isExpandedDescription) Int.MAX_VALUE else 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clickable { isExpandedDescription = !isExpandedDescription }
                 )
             }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = onRulesClick,
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Règles de la communauté")
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Stats Row
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Reddit Stats Bar: Members + Online indicator + Rules shortcut
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Group,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${FormatUtils.formatCount(community.membersCount)} Membres",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Total Members
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = FormatUtils.formatCount(community.membersCount),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "membres",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Online active members with green pulse dot
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF4CAF50))
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "$onlineCount en ligne",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
+
+                // Quick rules link
+                TextButton(
+                    onClick = onRulesClick,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
                     Icon(
-                        imageVector = Icons.Outlined.ChatBubbleOutline,
+                        imageVector = Icons.Default.Gavel,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "${FormatUtils.formatCount(community.postsCount)} Discussions",
+                        text = "Règles",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }

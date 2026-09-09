@@ -28,6 +28,8 @@ data class IddetPlusStatusResponse(
     val credits: Int,
     val card_style: String,
     val monthly_price_usd: Double,
+    val monthly_price_cdf: Double? = 2800.0,
+    val monthly_prices: Map<String, Double>? = null,
     val monthly_credits: Int,
     val history: List<IddetPlusHistoryItem>
 )
@@ -50,19 +52,27 @@ data class UserCardResponse(
     val card_style: String,
     val is_iddet_plus: Boolean,
     val credits: Int? = null,
-    val level: LevelInfo
+    val level: LevelInfo? = null
 )
 
-data class LevelsTableResponse(val levels: List<LevelInfo>)
+data class LevelTableItem(
+    val name: String = "",
+    val min_score: Int = 0
+)
+
+data class LevelsTableResponse(
+    val levels: List<LevelTableItem> = emptyList()
+)
+
 data class LevelInfo(
-    val score: Int,
-    val level_index: Int,
-    val level_name: String,
-    val next_level_name: String?,
-    val next_level_score: Int?,
-    val points_to_next: Int,
-    val progress: Double,
-    val is_max_level: Boolean
+    val score: Int = 0,
+    val level_index: Int = 0,
+    val level_name: String = "Débutant",
+    val next_level_name: String? = null,
+    val next_level_score: Int? = null,
+    val points_to_next: Int = 0,
+    val progress: Double = 0.0,
+    val is_max_level: Boolean = false
 )
 
 
@@ -83,12 +93,38 @@ data class CreditTransaction(
     val created_at: String
 )
 
-data class IddetPlusCheckoutRequest(val currency: String = "USD")
+data class PhoneRequest(
+    val number: String,
+    val country_code: String
+)
+
+data class ChariowWidgetConfig(
+    val product_id: String = "prd_zs6iyq84",
+    val store_domain: String = "xnycggrc.mychariow.market",
+    val customer_email: String? = null
+)
+
+data class IddetPlusCheckoutRequest(
+    val currency: String = "CDF"
+)
+
 data class IddetPlusCheckoutResponse(
+    val reference: String? = null,
+    val amount: Double? = null,
+    val currency: String? = null,
+    val widget: ChariowWidgetConfig? = null,
+    val checkout_url: String? = null,
+    val url: String? = null,
+    val payment_url: String? = null
+)
+
+data class IddetPlusCheckoutStatusResponse(
     val reference: String,
-    val checkout_url: String,
+    val status: String, // "pending", "success", "failed"
     val amount: Double,
-    val currency: String
+    val currency: String,
+    val created_at: String,
+    val confirmed_at: String? = null
 )
 data class TokenResponse(val access_token: String, val token_type: String)
 
@@ -157,8 +193,14 @@ data class SearchResultItem(
 data class MessageReactionGroup(
     val emoji: String,
     val count: Int = 1,
+    @Json(name = "user_ids") val user_ids: List<String> = emptyList(),
     val users: List<String> = emptyList(),
     @Json(name = "has_reacted") val has_reacted: Boolean = false
+)
+
+data class MessageReactionsResponse(
+    val message_id: String? = null,
+    val reactions: List<MessageReactionGroup> = emptyList()
 )
 
 data class ConversationNetwork(
@@ -327,8 +369,14 @@ interface ApiService {
     @retrofit2.http.POST("/api/iddet-plus/checkout")
     suspend fun createIddetPlusCheckout(
         @retrofit2.http.Header("Authorization") token: String,
-        @retrofit2.http.Body request: IddetPlusCheckoutRequest = IddetPlusCheckoutRequest()
+        @retrofit2.http.Body request: IddetPlusCheckoutRequest
     ): IddetPlusCheckoutResponse
+
+    @retrofit2.http.GET("/api/iddet-plus/checkout/{reference}/status")
+    suspend fun getCheckoutStatus(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("reference") reference: String
+    ): IddetPlusCheckoutStatusResponse
     @POST("/api/users/profile")
     suspend fun updateProfile(
         @retrofit2.http.Header("Authorization") token: String,
@@ -483,7 +531,7 @@ interface ApiService {
     suspend fun getMessageReactions(
         @retrofit2.http.Header("Authorization") token: String?,
         @retrofit2.http.Path("id") id: String
-    ): List<MessageReactionGroup>
+    ): MessageReactionsResponse
 
     @retrofit2.http.DELETE("/api/messages/{id}/react")
     suspend fun removeMessageReaction(
@@ -681,7 +729,135 @@ interface ApiService {
 
     @retrofit2.http.GET("/api/levels")
     suspend fun getLevelsTable(): LevelsTableResponse
+
+    // ── STRIP SOUNDS & MUSIQUE ──
+    @retrofit2.http.GET("/api/sounds/recommendations")
+    suspend fun getRecommendedSounds(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Query("limit") limit: Int = 20
+    ): List<SoundNetwork>
+
+    @retrofit2.http.GET("/api/sounds/{id}")
+    suspend fun getSoundDetails(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String
+    ): SoundDetailsResponse
+
+    @retrofit2.http.GET("/api/sounds/{id}/short")
+    suspend fun getSoundShort(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String
+    ): SoundShortResponse
+
+    @retrofit2.http.POST("/api/sounds/{id}/play")
+    suspend fun recordSoundPlay(
+        @retrofit2.http.Path("id") id: String
+    ): Map<String, Any>
+
+    @retrofit2.http.POST("/api/sounds/{id}/like")
+    suspend fun likeSound(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("id") id: String
+    ): Map<String, Any>
+
+    @retrofit2.http.GET("/api/sounds/{id}/likes/count")
+    suspend fun getSoundLikesCount(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String
+    ): SoundLikesCountResponse
+
+    @retrofit2.http.GET("/api/sounds/category/{category}")
+    suspend fun getSoundsByCategory(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("category") category: String,
+        @retrofit2.http.Query("limit") limit: Int = 20
+    ): List<SoundNetwork>
+
+    @retrofit2.http.GET("/api/users/{user_id}/sounds")
+    suspend fun getUserSounds(
+        @retrofit2.http.Path("user_id") userId: String
+    ): List<SoundNetwork>
+
+    // ── CLOUDFLARE LIVE STREAMING ──
+    @retrofit2.http.POST("/api/live/create")
+    suspend fun createCloudflareLive(
+        @retrofit2.http.Header("Authorization") token: String
+    ): LiveCreateResponse
+
+    @retrofit2.http.GET("/api/live/{input_id}/status")
+    suspend fun getCloudflareLiveStatus(
+        @retrofit2.http.Path("input_id") inputId: String
+    ): LiveStatusResponse
+
+    @retrofit2.http.GET("/api/live/{input_id}/playback")
+    suspend fun getCloudflareLivePlayback(
+        @retrofit2.http.Path("input_id") inputId: String
+    ): LivePlaybackResponse
 }
+
+data class SoundNetwork(
+    val id: String = "",
+    val title: String = "",
+    val description: String? = "",
+    val audio_url: String? = null,
+    val cover_url: String? = null,
+    val category: String = "Autres",
+    val duration: Double? = 0.0,
+    val plays_count: Int = 0,
+    val likes_count: Int = 0,
+    val uses_count: Int = 0,
+    val created_at: String? = null,
+    val author_id: String? = null,
+    val author_username: String? = null,
+    val is_verified: Boolean? = false,
+    val author_is_verified: Boolean? = false,
+    val algo_score: Double? = null,
+    val liked: Boolean = false
+)
+
+data class SoundDetailsResponse(
+    val sound: SoundNetwork,
+    val attribution_label: String? = null,
+    val videos: List<Map<String, Any>> = emptyList()
+)
+
+data class SoundShortResponse(
+    val sound_id: String,
+    val name: String,
+    val covers: String? = null,
+    val ondes_des_sound: String? = null,
+    val creator_is_verified: Boolean = false,
+    val tags: String? = null,
+    val mini_description: String? = null,
+    val status: String? = null,
+    val sound_ecoute_voila: String? = null
+)
+
+data class SoundLikesCountResponse(
+    val sound_id: String,
+    val likes_count: Int,
+    val has_liked: Boolean
+)
+
+data class LiveCreateResponse(
+    val status: String,
+    val live_id: String,
+    val stream_url: String?,
+    val stream_key: String?,
+    val message: String?
+)
+
+data class LiveStatusResponse(
+    val live_id: String,
+    val is_live: Boolean,
+    val details: Map<String, Any>? = null
+)
+
+data class LivePlaybackResponse(
+    val live_id: String,
+    val hls_url: String?,
+    val dash_url: String?
+)
 
 object RetrofitClient {
     private const val BASE_URL = "https://hoosthubs-g.onrender.com"

@@ -1,13 +1,20 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -16,35 +23,27 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import com.example.data.ActfileWithUser
 import com.example.data.Channel
+import com.example.data.ChannelMessage
 import com.example.data.Community
 import com.example.data.getCategoryDefaultIcon
-import com.example.data.getCategoryDefaultBanner
 import com.example.ui.IddetViewModel
-import com.example.utils.AiModelState
-import kotlinx.coroutines.launch
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.lazy.LazyRow
-import com.example.ui.components.CommunityDashboardHeader
-import com.example.ui.components.ActfileCard
-import com.example.ui.components.VerificationBadge
-import com.example.ui.components.CommunityModerationTabContent
+import com.example.ui.components.*
 import com.example.utils.FormatUtils
-import androidx.compose.foundation.lazy.itemsIndexed
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,55 +56,81 @@ fun CommunityDetailScreen(
     var refreshTrigger by remember { mutableStateOf(0) }
     var showComposerDialog by remember { mutableStateOf(false) }
     
-    // Fetch community details using collectAsState
+    // Fetch community details
     val communityState by remember(slug, refreshTrigger) {
         viewModel.getCommunityFlow(slug)
     }.collectAsState(initial = null)
     val community = communityState
     
-    // Fetch community channels using collectAsState
+    // Fetch community channels
     val channelsState by remember(slug, refreshTrigger) {
         viewModel.getCommunityChannelsFlow(slug)
     }.collectAsState(initial = emptyList())
     val channels = channelsState
 
-    var selectedTab by remember { mutableStateOf(0) } // 0 = Publications, 1 = Canaux
+    // Tabs: 0 = Feed (Reddit style), 1 = Salons (Channels), 2 = À propos, 3 = Modération
+    var selectedTab by remember { mutableStateOf(0) }
     
-    // Fetch community posts using collectAsState
+    // Feed Sort: "hot", "new", "top"
+    var feedSort by remember { mutableStateOf("hot") }
+    
+    // Fetch community posts
     val communityPostsState by remember(slug, refreshTrigger) {
         viewModel.getCommunityPostsFlow(slug)
     }.collectAsState(initial = emptyList())
-    val communityPosts = communityPostsState
+    
+    val sortedPosts = remember(communityPostsState, feedSort) {
+        when (feedSort) {
+            "new" -> communityPostsState.sortedByDescending { it.createdAt }
+            "top" -> communityPostsState.sortedByDescending { it.likesCount }
+            else -> communityPostsState.sortedByDescending { it.likesCount * 3 + it.commentsCount * 2 + (it.viewsCount / 10) }
+        }
+    }
 
     var showCreateChannelDialog by remember { mutableStateOf(false) }
     var showRulesDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var showShareDialog by remember { mutableStateOf(false) }
+    var selectedChannel by remember { mutableStateOf<Channel?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("community_rules", android.content.Context.MODE_PRIVATE) }
-    val defaultRules = "1. Soyez respectueux envers tous les membres.\n2. Pas de spam, de publicité ou de harcèlement.\n3. Restez dans le thème de la communauté.\n4. Partagez des contenus de qualité."
+    val defaultRules = "1. Respectez les autres membres de la communauté.\n2. Pas de spam, de contenu offensant ou hors-sujet.\n3. Partagez des publications constructives et de qualité.\n4. Utilisez les salons dédiés pour les discussions thématiques."
     var communityRules by remember(slug) {
         mutableStateOf(prefs.getString(slug, defaultRules) ?: defaultRules)
     }
     
-    var selectedChannel by remember { mutableStateOf<Channel?>(null) }
-    var snackbarHostState = remember { SnackbarHostState() }
-    
-    var showEditDialog by remember { mutableStateOf(false) }
     val currentUserState by viewModel.currentUser.collectAsState()
+    val isAdmin = community?.myRole == "admin" || community?.creatorId == currentUserState?.id
+    val isModeratorOrAdmin = isAdmin || community?.myRole == "moderator"
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(community?.name ?: "Chargement...", fontWeight = FontWeight.Bold) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (community != null) "c/${community.slug}" else "Communauté",
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Retour")
                     }
                 },
                 actions = {
-                    val isAdmin = community?.myRole == "admin" || community?.creatorId == currentUserState?.id
-                    val isModeratorOrAdmin = isAdmin || community?.myRole == "moderator"
+                    IconButton(
+                        onClick = { showShareDialog = true },
+                        modifier = Modifier.testTag("top_share_community_button")
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = "Partager")
+                    }
                     if (isModeratorOrAdmin) {
                         IconButton(
                             onClick = { selectedTab = 3 },
@@ -113,7 +138,7 @@ fun CommunityDetailScreen(
                         ) {
                             Icon(
                                 Icons.Default.Shield,
-                                contentDescription = "Modération & Bots",
+                                contentDescription = "Modération",
                                 tint = if (selectedTab == 3) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -128,22 +153,31 @@ fun CommunityDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
         floatingActionButton = {
             if (selectedTab == 0 && community != null) {
-                ExtendedFloatingActionButton(
+                FloatingActionButton(
                     onClick = { showComposerDialog = true },
-                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("Publier") },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = CircleShape,
                     modifier = Modifier.testTag("publish_in_community_fab")
-                )
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Publier")
+                }
+            } else if (selectedTab == 1 && isModeratorOrAdmin) {
+                FloatingActionButton(
+                    onClick = { showCreateChannelDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = CircleShape
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Nouveau salon")
+                }
             }
         }
     ) { paddingValues ->
@@ -157,12 +191,13 @@ fun CommunityDetailScreen(
                 CircularProgressIndicator()
             }
         } else {
-            val com = community!!
+            val com = community
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
+                // Header (Reddit Banner + Avatar + Details + Metrics)
                 item {
                     CommunityDashboardHeader(
                         community = com,
@@ -178,51 +213,107 @@ fun CommunityDetailScreen(
                                 }
                             }
                         },
-                        onRulesClick = {
-                            showRulesDialog = true
-                        }
+                        onRulesClick = { showRulesDialog = true },
+                        onShareClick = { showShareDialog = true },
+                        onNewPostClick = { showComposerDialog = true }
                     )
                 }
 
+                // Reddit Navigation Tabs
                 item {
-                    val isModeratorOrAdmin = com.myRole == "admin" || com.myRole == "moderator" || com.creatorId == currentUserState?.id
-                    TabRow(
+                    ScrollableTabRow(
                         selectedTabIndex = selectedTab,
-                        containerColor = MaterialTheme.colorScheme.background,
+                        containerColor = MaterialTheme.colorScheme.surface,
                         contentColor = MaterialTheme.colorScheme.primary,
+                        edgePadding = 16.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Tab(
                             selected = selectedTab == 0,
                             onClick = { selectedTab = 0 },
                             text = { Text("Publications", fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.Default.Article, contentDescription = null) }
+                            icon = { Icon(Icons.Default.Article, contentDescription = null, modifier = Modifier.size(18.dp)) }
                         )
                         Tab(
                             selected = selectedTab == 1,
                             onClick = { selectedTab = 1 },
-                            text = { Text("Canaux", fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.Default.Chat, contentDescription = null) }
+                            text = { 
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Salons", fontWeight = FontWeight.Bold)
+                                    if (channels.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Badge { Text("${channels.size}") }
+                                    }
+                                }
+                            },
+                            icon = { Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(18.dp)) }
                         )
                         Tab(
                             selected = selectedTab == 2,
                             onClick = { selectedTab = 2 },
-                            text = { Text("À propos", fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.Default.Info, contentDescription = null) }
+                            text = { Text("À propos & Règles", fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) }
                         )
                         if (isModeratorOrAdmin) {
                             Tab(
                                 selected = selectedTab == 3,
                                 onClick = { selectedTab = 3 },
                                 text = { Text("Modération", fontWeight = FontWeight.Bold) },
-                                icon = { Icon(Icons.Default.Shield, contentDescription = null) }
+                                icon = { Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(18.dp)) }
                             )
                         }
                     }
                 }
 
+                // TAB 0: REDDIT-STYLE FEED
                 if (selectedTab == 0) {
-                    if (communityPosts.isEmpty()) {
+                    // Reddit Sort Selector Bar (Hot, New, Top)
+                    item {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    listOf(
+                                        "hot" to "🔥 Populaire",
+                                        "new" to "✨ Nouveau",
+                                        "top" to "🏆 Top"
+                                    ).forEach { (key, label) ->
+                                        val isSelected = feedSort == key
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { feedSort = key },
+                                            label = { Text(label, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                            ),
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = isSelected,
+                                                borderColor = if (isSelected) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                            )
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = "${sortedPosts.size} post${if (sortedPosts.size > 1) "s" else ""}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    if (sortedPosts.isEmpty()) {
                         item {
                             Box(
                                 modifier = Modifier
@@ -232,47 +323,60 @@ fun CommunityDetailScreen(
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Icon(
-                                        imageVector = Icons.Default.Article,
+                                        imageVector = Icons.Outlined.Forum,
                                         contentDescription = null,
-                                        modifier = Modifier.size(48.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        modifier = Modifier.size(56.dp),
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                                     )
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
                                     Text(
-                                        text = "Aucune publication pour le moment",
-                                        style = MaterialTheme.typography.titleSmall,
+                                        text = "Aucune publication pour l'instant dans c/${com.slug}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = "Soyez le premier à lancer une discussion !",
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Button(
+                                        onClick = { showComposerDialog = true },
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Créer une publication")
+                                    }
                                 }
                             }
                         }
                     } else {
-                        items(communityPosts, key = { it.id }) { actfile ->
+                        items(sortedPosts, key = { it.id }) { actfile ->
                             val isMine = actfile.userId == currentUserState?.id
-                            val targetLanguage by viewModel.targetLanguage.collectAsState()
-                            val aiState by viewModel.aiState.collectAsState()
-                            ActfileCard(
+                            RedditPostCard(
                                 actfile = actfile,
+                                communitySlug = com.slug,
                                 onLike = { viewModel.likeActfile(it) },
                                 onView = { viewModel.incrementView(it) },
-                                targetLanguageName = targetLanguage,
-                                isAiReady = aiState == AiModelState.READY,
-                                onLinkClick = { url ->
-                                    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
-                                    navController.navigate("browser/$encodedUrl")
-                                },
-                                onUserClick = {
+                                onUserClick = { userId ->
                                     val currentUserId = viewModel.currentUser.value?.id
-                                    if (it == currentUserId) {
+                                    if (userId == currentUserId) {
                                         navController.navigate("profile")
                                     } else {
-                                        navController.navigate("profile/$it")
+                                        navController.navigate("profile/$userId")
                                     }
                                 },
                                 onComment = { actfileId ->
                                     navController.navigate("discussion/$actfileId")
                                 },
-                                onDelete = if (isMine) { { viewModel.deleteActfile(it) } } else null,
+                                onDelete = if (isMine || isModeratorOrAdmin) { { viewModel.deleteActfile(actfile.id) } } else null,
+                                onLinkClick = { url ->
+                                    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                    navController.navigate("browser/$encodedUrl")
+                                },
                                 onMentionClick = { username ->
                                     coroutineScope.launch {
                                         val u = viewModel.getUserByUsername(username)
@@ -284,37 +388,48 @@ fun CommunityDetailScreen(
                             )
                         }
                     }
-                } else if (selectedTab == 1) {
-                    // Channel divider text
+                }
+
+                // TAB 1: PRIVATE CHANNELS
+                else if (selectedTab == 1) {
                     item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "CANAUX ET DISCUSSIONS",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.primary
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
                             )
-                            
-                            val isAdmin = com.myRole == "admin" || com.creatorId == currentUserState?.id
-                            if (isAdmin) {
-                                IconButton(onClick = {
-                                    showCreateChannelDialog = true
-                                }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = "Créer un canal",
-                                        tint = MaterialTheme.colorScheme.primary
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Lock,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Salons de discussion privés",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "Les messages envoyés ici sont privés et réservés aux membres du salon.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                         }
                     }
 
-                    // Channels list
                     if (channels.isEmpty()) {
                         item {
                             Box(
@@ -332,7 +447,7 @@ fun CommunityDetailScreen(
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "Aucun canal disponible",
+                                        text = "Aucun salon disponible",
                                         style = MaterialTheme.typography.titleSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -347,7 +462,7 @@ fun CommunityDetailScreen(
                                 onClick = {
                                     if (com.isPrivate && !com.isMember) {
                                         coroutineScope.launch {
-                                            snackbarHostState.showSnackbar("Rejoignez d'abord cette communauté privée pour accéder à ce canal.")
+                                            snackbarHostState.showSnackbar("Rejoignez cette communauté pour accéder à ce salon privé.")
                                         }
                                     } else {
                                         selectedChannel = channel
@@ -356,8 +471,10 @@ fun CommunityDetailScreen(
                             )
                         }
                     }
-                } else {
-                    // TAB 2: À PROPOS & MEMBRES
+                }
+
+                // TAB 2: ABOUT & RULES (REDDIT SIDEBAR STYLE)
+                else if (selectedTab == 2) {
                     item {
                         Column(
                             modifier = Modifier
@@ -365,19 +482,42 @@ fun CommunityDetailScreen(
                                 .padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            // Info Card
+                            // About Card
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                             ) {
-                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text(
-                                        text = "À propos de la communauté",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "À propos de la communauté",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                        ) {
+                                            Text(
+                                                text = "c/${com.slug}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                     
                                     if (!com.description.isNullOrBlank()) {
@@ -411,6 +551,8 @@ fun CommunityDetailScreen(
                                         }
                                     }
                                     
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
@@ -420,47 +562,65 @@ fun CommunityDetailScreen(
                                             Text(FormatUtils.formatCount(com.membersCount), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
                                         }
                                         Column {
-                                            Text("Total Discussions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text("Publications", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             Text(FormatUtils.formatCount(com.postsCount), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
                                         }
                                         Column {
-                                            Text("Canaux", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text("Salons", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             Text("${channels.size}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
                                         }
                                     }
                                 }
                             }
 
-                            // Rules Quick Access Card
+                            // Rules Card
                             Card(
-                                onClick = { showRulesDialog = true },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                             ) {
-                                Row(
+                                Column(
                                     modifier = Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Gavel, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Text("Règles du groupe", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                            Text("Consulter les règles et directives", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Gavel, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Règles officielles",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        if (isAdmin) {
+                                            TextButton(onClick = { showRulesDialog = true }) {
+                                                Text("Modifier")
+                                            }
                                         }
                                     }
-                                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                                    Text(
+                                        text = communityRules,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
 
-                            val isModeratorOrAdmin = com.myRole == "admin" || com.myRole == "moderator" || com.creatorId == currentUserState?.id
+                            // Moderation shortcut card
                             if (isModeratorOrAdmin) {
                                 Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { selectedTab = 3 },
+                                    onClick = { selectedTab = 3 },
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
                                 ) {
@@ -474,7 +634,7 @@ fun CommunityDetailScreen(
                                             Spacer(modifier = Modifier.width(12.dp))
                                             Column {
                                                 Text("Espace Modération & Bots", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                                Text("Gérer les bots, les filtres et le journal d'audit", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("Gérer les membres, bots et filtres", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
                                         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -485,7 +645,8 @@ fun CommunityDetailScreen(
                     }
                 }
 
-                if (selectedTab == 3) {
+                // TAB 3: MODERATION
+                else if (selectedTab == 3) {
                     item {
                         CommunityModerationTabContent(
                             community = com,
@@ -501,7 +662,7 @@ fun CommunityDetailScreen(
             }
         }
 
-        // Active channel discussion Dialog (modal layout mimicking a chat workspace room)
+        // Dedicated Private Channel Chat Room
         selectedChannel?.let { activeChannel ->
             ChannelChatRoomDialog(
                 channel = activeChannel,
@@ -511,30 +672,35 @@ fun CommunityDetailScreen(
             )
         }
 
+        // Full-featured standard Actfile Composer with community preset
         if (showComposerDialog && community != null) {
-            val allCategories by viewModel.allCategories.collectAsState()
-            ActfileComposer(
+            ActfileComposerScreen(
                 viewModel = viewModel,
-                allCategories = allCategories,
+                initialCommunity = community,
+                initialCategory = community.category,
                 onDismiss = { showComposerDialog = false },
-                onPublish = { content, category, imageUrl ->
+                onPublish = { content, tags, category, postAsIddet ->
                     showComposerDialog = false
                     val taggedContent = if (!content.contains("@c/${community.slug}")) {
                         "$content\n\n@c/${community.slug}"
                     } else content
                     viewModel.publishActfile(
                         content = taggedContent,
-                        category = category,
+                        tags = tags,
+                        category = category ?: community.category,
                         communityId = community.slug,
-                        channelId = null
+                        channelId = null,
+                        postAsIddet = postAsIddet
                     )
                     refreshTrigger++
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Publication ajoutée à c/${community.slug} !")
+                    }
                 }
             )
         }
 
         if (showRulesDialog && community != null) {
-            val isAdmin = community?.myRole == "admin" || community?.creatorId == currentUserState?.id
             RulesDialog(
                 rules = communityRules,
                 isAdmin = isAdmin,
@@ -558,11 +724,11 @@ fun CommunityDetailScreen(
                         if (created != null) {
                             refreshTrigger++
                             coroutineScope.launch {
-                                snackbarHostState.showSnackbar("Le canal #${created.name} a été créé !")
+                                snackbarHostState.showSnackbar("Le salon #${created.name} a été créé !")
                             }
                         } else {
                             coroutineScope.launch {
-                                snackbarHostState.showSnackbar("Erreur lors de la création du canal.")
+                                snackbarHostState.showSnackbar("Erreur lors de la création du salon.")
                             }
                         }
                     }
@@ -573,12 +739,12 @@ fun CommunityDetailScreen(
         if (showEditDialog && community != null) {
             val categories = listOf("Fun", "Amour", "Motivation", "Tech", "Sport", "Musique", "Actu", "Business", "Spiritualité", "Autres")
             EditCommunityDialog(
-                community = community!!,
+                community = community,
                 categories = categories,
                 onDismiss = { showEditDialog = false },
                 onSave = { name, desc, cat, priv, presetIconUrl ->
                     viewModel.updateCommunity(
-                        slug = community!!.slug,
+                        slug = community.slug,
                         name = name,
                         description = desc,
                         category = cat,
@@ -593,24 +759,41 @@ fun CommunityDetailScreen(
                                 }
                             } else {
                                 coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("Erreur lors de la mise à jour de la communauté.")
+                                    snackbarHostState.showSnackbar("Erreur lors de la mise à jour.")
                                 }
                             }
                         }
                     )
                 },
                 onUploadIcon = { file ->
-                    viewModel.updateCommunityIcon(community!!.slug, file) { success ->
+                    viewModel.updateCommunityIcon(community.slug, file) { success ->
                         if (success) {
                             refreshTrigger++
                             coroutineScope.launch {
-                                snackbarHostState.showSnackbar("Photo de profil de la communauté mise à jour !")
+                                snackbarHostState.showSnackbar("Photo de profil mise à jour !")
                             }
                         } else {
                             coroutineScope.launch {
-                                snackbarHostState.showSnackbar("Erreur lors du téléchargement de la photo.")
+                                snackbarHostState.showSnackbar("Erreur lors du téléchargement.")
                             }
                         }
+                    }
+                }
+            )
+        }
+
+        if (showShareDialog && community != null) {
+            val conversations by viewModel.conversations.collectAsState()
+            CommunityShareDialog(
+                community = community,
+                conversations = conversations,
+                onDismiss = { showShareDialog = false },
+                onSendToConversations = { receiverIds, messageContent ->
+                    receiverIds.forEach { receiverId ->
+                        viewModel.sendMessage(
+                            receiverId = receiverId,
+                            content = messageContent
+                        )
                     }
                 }
             )
@@ -618,7 +801,616 @@ fun CommunityDetailScreen(
     }
 }
 
+/**
+ * Reddit-style Post Card with karma upvotes/downvotes, flair pills, markdown rendering, and comment counts.
+ */
+@Composable
+fun RedditPostCard(
+    actfile: ActfileWithUser,
+    communitySlug: String,
+    onLike: (String) -> Unit,
+    onView: (String) -> Unit,
+    onUserClick: (String) -> Unit,
+    onComment: (String) -> Unit,
+    onDelete: (() -> Unit)?,
+    onLinkClick: (String) -> Unit,
+    onMentionClick: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val relativeTime = remember(actfile.createdAt) { getRelativeTimeString(actfile.createdAt) }
 
+    LaunchedEffect(actfile.id) {
+        onView(actfile.id)
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clickable { onComment(actfile.id) },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Header: Author u/username • Time • Category Flair
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .clickable { onUserClick(actfile.userId) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!actfile.avatarUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = com.example.utils.UrlHelper.fixCloudinaryUrl(actfile.avatarUrl),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text(
+                                text = actfile.username.firstOrNull()?.uppercase() ?: "U",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "u/${actfile.username}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.clickable { onUserClick(actfile.userId) }
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            VerificationBadge(userName = actfile.username, isVerified = actfile.isVerified, modifier = Modifier.size(12.dp))
+                        }
+                        Text(
+                            text = relativeTime,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Category Flair Pill
+                val catInfo = com.example.ui.components.getCategoryById(actfile.category)
+                if (catInfo != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = catInfo.color.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = "${catInfo.emoji} ${catInfo.name}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = catInfo.color,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                if (onDelete != null) {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.Delete,
+                            contentDescription = "Supprimer",
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Body Markdown content
+            MarkdownContent(
+                content = actfile.content,
+                onLinkClick = onLinkClick,
+                onMentionClick = onMentionClick,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Reddit Bottom Action Bar: Upvote pill + Comments + Share
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Karma Upvote / Downvote pill
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (actfile.isLikedByMe) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        IconButton(
+                            onClick = { onLike(actfile.id) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (actfile.isLikedByMe) Icons.Default.ArrowUpward else Icons.Outlined.ArrowUpward,
+                                contentDescription = "Upvote",
+                                tint = if (actfile.isLikedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "${actfile.likesCount}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (actfile.isLikedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+
+                        IconButton(
+                            onClick = { onLike(actfile.id) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ArrowDownward,
+                                contentDescription = "Downvote",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Comments button
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.clickable { onComment(actfile.id) }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ChatBubbleOutline,
+                            contentDescription = "Commentaires",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "${actfile.commentsCount}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Share button
+                IconButton(
+                    onClick = {
+                        val sendIntent = android.content.Intent().apply {
+                            action = android.content.Intent.ACTION_SEND
+                            putExtra(
+                                android.content.Intent.EXTRA_TEXT,
+                                "Regarde cette publication sur c/$communitySlug :\n👉 https://bit.gopu.inc/s/actfile/${actfile.id}"
+                            )
+                            type = "text/plain"
+                        }
+                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Partager")
+                        context.startActivity(shareIntent)
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = "Partager",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Dedicated, private channel chat room dialog with real-time Room persistence, audio messages, and member avatars.
+ * Isolated from the main actfile feed.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChannelChatRoomDialog(
+    channel: Channel,
+    community: Community?,
+    viewModel: IddetViewModel,
+    onDismiss: () -> Unit
+) {
+    var messageText by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    
+    // Dedicated private channel messages flow from Room
+    val messagesState by viewModel.getChannelMessagesFlow(channel.id).collectAsState(initial = emptyList())
+    val currentUser by viewModel.currentUser.collectAsState()
+
+    // Auto-scroll to bottom when a new message arrives
+    LaunchedEffect(messagesState.size) {
+        if (messagesState.isNotEmpty()) {
+            listState.animateScrollToItem(messagesState.size - 1)
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header of Channel
+                TopAppBar(
+                    title = {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("# ${channel.name}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                ) {
+                                    Text(
+                                        text = "Salon privé",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            if (!channel.description.isNullOrBlank()) {
+                                Text(
+                                    text = channel.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Fermer")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                // Messages list
+                if (messagesState.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ChatBubbleOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(56.dp),
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Salon privé #${channel.name}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Les messages échangés ici sont réservés à ce salon et n'apparaissent pas dans le flux public.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = 14.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(messagesState, key = { it.id }) { msg ->
+                            val isMine = msg.senderId == currentUser?.id
+                            ChannelMessageBubble(
+                                message = msg,
+                                isMine = isMine,
+                                onDelete = { viewModel.deleteChannelMessage(msg.id) }
+                            )
+                        }
+                    }
+                }
+
+                // Chat Input or Read-Only Membership Prompt Area
+                val isCommunityMember = community?.isMember == true
+                if (!isCommunityMember) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        tonalElevation = 3.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .imePadding()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Lecture seule 🔒",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Vous devez être membre de c/${community?.slug ?: ""} pour écrire dans ce salon.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Button(
+                                onClick = {
+                                    if (community != null) {
+                                        viewModel.toggleCommunityJoin(community.slug) { }
+                                    }
+                                },
+                                shape = RoundedCornerShape(20.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Rejoindre", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 4.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .imePadding()
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = messageText,
+                                    onValueChange = { messageText = it },
+                                    placeholder = { Text("Écrire dans #${channel.name}...") },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("channel_message_input"),
+                                    shape = RoundedCornerShape(24.dp),
+                                    maxLines = 4,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                    )
+                                )
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                // Send Button
+                                IconButton(
+                                    onClick = {
+                                        if (messageText.isNotBlank()) {
+                                            val contentToSend = messageText.trim()
+                                            messageText = ""
+                                            viewModel.sendChannelMessage(
+                                                channelId = channel.id,
+                                                communitySlug = community?.slug ?: "",
+                                                content = contentToSend,
+                                                type = "text"
+                                            )
+                                        }
+                                    },
+                                    enabled = messageText.isNotBlank(),
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(if (messageText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                        .testTag("send_channel_message_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Send,
+                                        contentDescription = "Envoyer",
+                                        tint = if (messageText.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ChannelMessageBubble(
+    message: ChannelMessage,
+    isMine: Boolean,
+    onDelete: () -> Unit
+) {
+    val context = LocalContext.current
+    var showMenu by remember { mutableStateOf(false) }
+    val timeFormatted = remember(message.createdAt) {
+        val date = java.util.Date(message.createdAt)
+        java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(date)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showMenu = !showMenu },
+        horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top
+    ) {
+        if (!isMine) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!message.senderAvatarUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = com.example.utils.UrlHelper.fixCloudinaryUrl(message.senderAvatarUrl),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = message.senderUsername.firstOrNull()?.uppercase() ?: "U",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
+        Column(
+            horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
+            modifier = Modifier.widthIn(max = 280.dp)
+        ) {
+            if (!isMine) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = message.senderUsername,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    VerificationBadge(userName = message.senderUsername, isVerified = message.isVerified, modifier = Modifier.size(10.dp))
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+            }
+
+            Surface(
+                shape = RoundedCornerShape(
+                    topStart = 16.dp,
+                    topEnd = 16.dp,
+                    bottomStart = if (isMine) 16.dp else 4.dp,
+                    bottomEnd = if (isMine) 4.dp else 16.dp
+                ),
+                color = if (isMine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                tonalElevation = 1.dp
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    if (isVoiceMessage(message.content)) {
+                        VoiceMessagePlayer(content = message.content, isMine = isMine)
+                    } else {
+                        MarkdownActfile(
+                            content = message.content,
+                            isMine = isMine,
+                            onLinkClick = { url ->
+                                try {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) { }
+                            },
+                            onMentionClick = { }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = timeFormatted,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        color = if (isMine) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.align(Alignment.End)
+                    )
+                }
+            }
+
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false }
+            ) {
+                if (isMine) {
+                    DropdownMenuItem(
+                        text = { Text("Supprimer", color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            showMenu = false
+                            onDelete()
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun ChannelListItem(
@@ -632,24 +1424,33 @@ fun ChannelListItem(
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .clickable { onClick() }
             .testTag("channel_item_${channel.slug}"),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.Tag,
-                contentDescription = null,
-                tint = if (isLocked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (isLocked) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.Tag,
+                    contentDescription = null,
+                    tint = if (isLocked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = channel.name,
+                    text = "# ${channel.name}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (isLocked) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface
@@ -670,251 +1471,6 @@ fun ChannelListItem(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.outline
                 )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ChannelChatRoomDialog(
-    channel: Channel,
-    community: Community?,
-    viewModel: IddetViewModel,
-    onDismiss: () -> Unit
-) {
-    var messageText by remember { mutableStateOf("") }
-    val coroutineScope = rememberCoroutineScope()
-    var refreshCount by remember { mutableStateOf(0) }
-    
-    // Query list of all actfiles and filter by channel scope to show relevant posts using collectAsState
-    val actfilesState by viewModel.actfiles.collectAsState(initial = emptyList())
-    val posts = remember(actfilesState, refreshCount, channel.id) {
-        actfilesState.filter { post ->
-            post.channelId == channel.id || post.content.contains("@#${channel.slug}")
-        }.sortedBy { it.createdAt }
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Header of Channel
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text("# ${channel.name}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                            if (!channel.description.isNullOrBlank()) {
-                                Text(channel.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Fermer")
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { refreshCount++ }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Rafraîchir")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface
-                    )
-                )
-                
-                // Messages / Feed Area
-                if (posts.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.ChatBubbleOutline,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Bienvenue dans #${channel.name} !",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Commencez la discussion en envoyant le premier message.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(horizontal = 16.dp),
-                        contentPadding = PaddingValues(vertical = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(posts, key = { it.id }) { post ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                // User Avatar
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primaryContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (!post.avatarUrl.isNullOrBlank()) {
-                                        AsyncImage(
-                                            model = post.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
-                                            contentDescription = null,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        Text(
-                                            text = post.username.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    }
-                                }
-                                
-                                Spacer(modifier = Modifier.width(12.dp))
-                                
-                                // Message Bubble
-                                Card(
-                                    shape = RoundedCornerShape(0.dp, 16.dp, 16.dp, 16.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                                    ),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = post.username,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                VerificationBadge(userName = post.username, isVerified = post.isVerified, modifier = Modifier.size(10.dp))
-                                            }
-                                            Text(
-                                                text = android.text.format.DateUtils.getRelativeTimeSpanString(post.createdAt).toString(),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = post.content,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Floating elevated Chat Input capsule to make writing more comfortable and modern
-                Surface(
-                    tonalElevation = 6.dp,
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .imePadding()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = messageText,
-                            onValueChange = { messageText = it },
-                            placeholder = { Text("Écrire dans #${channel.name}...") },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("channel_message_input"),
-                            shape = RoundedCornerShape(24.dp),
-                            maxLines = 3,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color.Transparent,
-                                unfocusedBorderColor = Color.Transparent,
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        IconButton(
-                            onClick = {
-                                if (messageText.isNotBlank()) {
-                                    coroutineScope.launch {
-                                        // Auto-append tags so Markdown and list filters pick it up correctly
-                                        val taggedContent = "$messageText\n\n@c/${community?.slug} @#${channel.slug}"
-                                        viewModel.publishActfile(
-                                            content = taggedContent,
-                                            category = community?.category,
-                                            communityId = community?.slug,
-                                            channelId = channel.slug
-                                        )
-                                        messageText = ""
-                                        refreshCount++
-                                    }
-                                }
-                            },
-                            enabled = messageText.isNotBlank(),
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(if (messageText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                                .testTag("send_channel_message_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Send,
-                                contentDescription = "Envoyer",
-                                tint = if (messageText.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
             }
         }
     }
@@ -1047,7 +1603,7 @@ fun CreateChannelDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "Créer un nouveau canal",
+                    text = "Créer un nouveau salon",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.primary
@@ -1058,8 +1614,8 @@ fun CreateChannelDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Nom du canal") },
-                    placeholder = { Text("ex: actualités") },
+                    label = { Text("Nom du salon") },
+                    placeholder = { Text("ex: actualites") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
@@ -1069,7 +1625,7 @@ fun CreateChannelDialog(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("Description (Optionnel)") },
-                    placeholder = { Text("De quoi parle ce canal...") },
+                    placeholder = { Text("De quoi parle ce salon...") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -1112,10 +1668,8 @@ fun EditCommunityDialog(
     var customIconUrl by remember { mutableStateOf(community.iconUrl ?: "") }
     
     var categoryExpanded by remember { mutableStateOf(false) }
-    
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
-    // Activity result launcher for picking gallery photo profile
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -1159,7 +1713,7 @@ fun EditCommunityDialog(
                 // Community Profile Picture (Icon) Section
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Photo de profil de la communauté",
+                        text = "Photo de profil",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1196,56 +1750,6 @@ fun EditCommunityDialog(
                                 Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Importer de la galerie", style = MaterialTheme.typography.labelMedium)
-                            }
-                            
-                            Text(
-                                text = "Ou sélectionnez un avatar thématique ci-dessous.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                             )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-                    
-                    // Preset themed community avatars
-                    Text(
-                        text = "Avatars prédéfinis :",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                    )
-                    val presetIcons = listOf(
-                        "Gaming" to "https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=200&q=80",
-                        "Tech" to "https://images.unsplash.com/photo-1542831371-29b0f74f9713?w=200&q=80",
-                        "Art" to "https://images.unsplash.com/photo-1452421820245-17cd229f72e7?w=200&q=80",
-                        "Music" to "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=200&q=80",
-                        "Sport" to "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=200&q=80",
-                        "Cooking" to "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=200&q=80",
-                        "Books" to "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=200&q=80",
-                        "Business" to "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=200&q=80",
-                        "Love" to "https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=200&q=80"
-                    )
-                    
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(presetIcons) { (label, url) ->
-                            Card(
-                                modifier = Modifier
-                                    .size(50.dp)
-                                    .clickable { customIconUrl = url },
-                                shape = CircleShape,
-                                border = if (customIconUrl == url) {
-                                    androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.primary)
-                                } else null
-                            ) {
-                                AsyncImage(
-                                    model = url,
-                                    contentDescription = label,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
                             }
                         }
                     }
@@ -1350,7 +1854,7 @@ fun EditCommunityDialog(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Seuls les membres approuvés peuvent voir les canaux et publier.",
+                            text = "Seuls les membres peuvent accéder aux salons.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1358,49 +1862,49 @@ fun EditCommunityDialog(
                     Switch(
                         checked = isPrivate,
                         onCheckedChange = { isPrivate = it }
-                     )
-                 }
- 
-                 Spacer(modifier = Modifier.height(12.dp))
- 
-                 // Actions
-                 Row(
-                     modifier = Modifier.fillMaxWidth(),
-                     horizontalArrangement = Arrangement.End,
-                     verticalAlignment = Alignment.CenterVertically
-                 ) {
-                     TextButton(onClick = onDismiss) {
-                         Text("Annuler", fontWeight = FontWeight.Bold)
-                     }
-                     Spacer(modifier = Modifier.width(12.dp))
-                     Button(
-                         onClick = {
-                             onSave(name, description, selectedCategory, isPrivate, customIconUrl.ifBlank { null })
-                         },
-                         shape = RoundedCornerShape(12.dp)
-                     ) {
-                         Text("Enregistrer", fontWeight = FontWeight.Bold)
-                     }
-                 }
-             }
-         }
-     }
- }
- 
- fun uriToTempFile(context: android.content.Context, uri: android.net.Uri): java.io.File? {
-     return try {
-         val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-         val tempFile = java.io.File.createTempFile("community_icon_", ".jpg", context.cacheDir)
-         tempFile.deleteOnExit()
-         val outputStream = java.io.FileOutputStream(tempFile)
-         inputStream.use { input ->
-             outputStream.use { output ->
-                 input.copyTo(output)
-             }
-         }
-         tempFile
-     } catch (e: Exception) {
-         e.printStackTrace()
-         null
-     }
- }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Actions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Annuler", fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = {
+                            onSave(name, description, selectedCategory, isPrivate, customIconUrl.ifBlank { null })
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Enregistrer", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun uriToTempFile(context: android.content.Context, uri: android.net.Uri): java.io.File? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        val tempFile = java.io.File.createTempFile("community_icon_", ".jpg", context.cacheDir)
+        tempFile.deleteOnExit()
+        val outputStream = java.io.FileOutputStream(tempFile)
+        inputStream.use { input ->
+            outputStream.use { output ->
+                input.copyTo(output)
+            }
+        }
+        tempFile
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}

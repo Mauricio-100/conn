@@ -130,7 +130,17 @@ class MainActivity : ComponentActivity() {
 
             val db = AppDatabase.getDatabase(this)
             val prefs = getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-            val repository = IddetRepository(db.userDao(), db.actfileDao(), db.messageDao(), db.followDao(), db.commentDao(), db.notificationDao(), db.savedAccountDao(), prefs)
+            val repository = IddetRepository(
+                db.userDao(),
+                db.actfileDao(),
+                db.messageDao(),
+                db.followDao(),
+                db.commentDao(),
+                db.notificationDao(),
+                db.savedAccountDao(),
+                db.channelMessageDao(),
+                prefs
+            )
             
             val factory = object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {

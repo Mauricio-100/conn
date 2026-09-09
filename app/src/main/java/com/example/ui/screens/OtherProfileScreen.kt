@@ -63,11 +63,18 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showFullScreenAvatar by remember { mutableStateOf(false) }
+    var showFollowListSheet by remember { mutableStateOf(false) }
+    var followListInitialTab by remember { mutableIntStateOf(0) }
     var waveSentRecently by remember { mutableStateOf(false) }
+    var userLevel by remember { mutableStateOf<com.example.data.UserLevelResponse?>(null) }
+    var showLadderDialog by remember { mutableStateOf(false) }
+    val levelsTable by viewModel.levelsTable.collectAsStateWithLifecycle()
 
     LaunchedEffect(userId) {
         viewModel.refreshUserProfile(userId)
         viewModel.refreshActfiles()
+        viewModel.loadLevelsTable()
+        userLevel = viewModel.fetchUserLevel(userId)
     }
 
     if (user == null) {
@@ -309,18 +316,10 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                 isVerified = profileUser.isVerified
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
-                            ) {
-                                Text(
-                                    text = "Niv. ${profileUser.level}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
+                            com.example.ui.components.UserLevelBadge(
+                                level = userLevel,
+                                onClick = { showLadderDialog = true }
+                            )
                         }
 
                         Text(
@@ -374,7 +373,12 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                 // Followers
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            followListInitialTab = 1
+                                            showFollowListSheet = true
+                                        }
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.People,
@@ -406,7 +410,12 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                 // Following
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            followListInitialTab = 0
+                                            showFollowListSheet = true
+                                        }
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Person,
@@ -493,6 +502,16 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // User Level & Progression Card
+                        com.example.ui.components.UserLevelCard(
+                            level = userLevel,
+                            onOpenLadder = { showLadderDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            subtitle = "Score calculé sur ses likes et commentaires"
+                        )
 
                         val friendOnMap = friendsLocations.find { 
                             it.id == profileUser.id || it.username.equals(profileUser.username, ignoreCase = true) 
@@ -775,5 +794,23 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                 )
             }
         }
+    }
+
+    if (showFollowListSheet) {
+        com.example.ui.components.FollowListBottomSheet(
+            viewModel = viewModel,
+            navController = navController,
+            userId = profileUser.id,
+            initialTab = followListInitialTab,
+            onDismissRequest = { showFollowListSheet = false }
+        )
+    }
+
+    if (showLadderDialog) {
+        com.example.ui.components.LevelsLadderDialog(
+            currentLevel = userLevel,
+            table = levelsTable,
+            onDismiss = { showLadderDialog = false }
+        )
     }
 }

@@ -41,6 +41,53 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
     private val _isModActionsLoading = MutableStateFlow(false)
     val isModActionsLoading: StateFlow<Boolean> = _isModActionsLoading.asStateFlow()
 
+    private val _pendingPaymentReference = MutableStateFlow<String?>(null)
+    val pendingPaymentReference: StateFlow<String?> = _pendingPaymentReference.asStateFlow()
+
+    private val _pendingPaymentStatus = MutableStateFlow<String?>(null)
+    val pendingPaymentStatus: StateFlow<String?> = _pendingPaymentStatus.asStateFlow()
+
+    private var pollingJob: kotlinx.coroutines.Job? = null
+
+    fun setPendingPayment(reference: String?) {
+        _pendingPaymentReference.value = reference
+        _pendingPaymentStatus.value = if (reference != null) "pending" else null
+        pollingJob?.cancel()
+        if (reference != null) {
+            startPollingPaymentStatus(reference)
+        }
+    }
+
+    fun clearPendingPayment() {
+        pollingJob?.cancel()
+        _pendingPaymentReference.value = null
+        _pendingPaymentStatus.value = null
+    }
+
+    fun startPollingPaymentStatus(reference: String) {
+        pollingJob?.cancel()
+        pollingJob = viewModelScope.launch {
+            _pendingPaymentStatus.value = "pending"
+            // Interroger régulièrement le serveur (toutes les 4s pendant max 2 minutes)
+            for (i in 0 until 30) {
+                delay(4000)
+                try {
+                    val statusRes = repository.getCheckoutStatus(reference)
+                    val st = statusRes.status.lowercase()
+                    _pendingPaymentStatus.value = st
+                    if (st == "success") {
+                        loadIddetPlusData()
+                        break
+                    } else if (st == "failed") {
+                        break
+                    }
+                } catch (e: Exception) {
+                    // Erreur réseau passagère, continuer à scruter
+                }
+            }
+        }
+    }
+
     fun loadIddetPlusData() {
         viewModelScope.launch {
             try {
@@ -74,13 +121,91 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
         }
     }
 
-    fun createCheckoutSession(onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+    private val _currentCheckoutResponse = MutableStateFlow<com.example.data.IddetPlusCheckoutResponse?>(null)
+    val currentCheckoutResponse: StateFlow<com.example.data.IddetPlusCheckoutResponse?> = _currentCheckoutResponse.asStateFlow()
+
+    fun createCheckoutSession(
+        email: String? = null,
+        phoneNumber: String? = null,
+        countryCode: String? = "243",
+        currency: String = "CDF",
+        onSuccess: (com.example.data.IddetPlusCheckoutResponse) -> Unit,
+        onError: (String) -> Unit
+    ) {
         viewModelScope.launch {
             try {
-                val res = repository.createIddetPlusCheckout()
-                onSuccess(res.checkout_url)
+                val user = currentUser.value
+                val resolvedEmail = if (!email.isNullOrBlank()) email.trim() else user?.email?.trim()
+
+                if (resolvedEmail.isNullOrBlank()) {
+                    onError("Un email est requis pour payer Iddet Plus.")
+                    return@launch
+                }
+
+                val cleanNumber = phoneNumber?.let { com.example.utils.PhoneUtils.cleanNumber(it) } ?: ""
+                val cleanCountry = countryCode?.let { com.example.utils.PhoneUtils.cleanCountryCode(it) } ?: "243"
+                val fullPhone = if (cleanNumber.isNotBlank()) "+$cleanCountry$cleanNumber" else user?.phoneNumber
+
+                if (user != null && (user.email.isNullOrBlank() || user.email != resolvedEmail || (!fullPhone.isNullOrBlank() && user.phoneNumber != fullPhone))) {
+                    try {
+                        repository.updateProfile(
+                            username = user.username,
+                            avatarUrl = user.avatarUrl,
+                            bio = user.bio,
+                            privacySetting = user.privacySetting,
+                            email = resolvedEmail,
+                            phoneNumber = fullPhone ?: user.phoneNumber,
+                            birthDate = user.birthDate,
+                            zodiacSign = user.zodiacSign,
+                            preferredCategory = user.preferredCategory
+                        )
+                    } catch (e: Exception) {
+                        // Non-critical profile update
+                    }
+                }
+
+                val curr = if (currency.equals("USD", ignoreCase = true)) "USD" else "CDF"
+                val res = repository.createIddetPlusCheckout(currency = curr)
+                _currentCheckoutResponse.value = res
+
+                val ref = res.reference
+                if (!ref.isNullOrBlank()) {
+                    setPendingPayment(ref)
+                }
+                onSuccess(res)
+            } catch (e: retrofit2.HttpException) {
+                val code = e.code()
+                val errorBody = try { e.response()?.errorBody()?.string() ?: "" } catch (_: Exception) { "" }
+                if (code == 400 && (errorBody.contains("email", ignoreCase = true) || e.message().contains("email", ignoreCase = true))) {
+                    onError("Un email est requis pour payer Iddet Plus.")
+                } else if (code == 503) {
+                    onError("Passerelle Chariow momentanément indisponible. Réessayez plus tard.")
+                } else {
+                    onError(e.message() ?: "Erreur de création de session Chariow ($code)")
+                }
             } catch (e: Exception) {
-                onError(e.message ?: "Erreur de création du checkout")
+                val msg = e.message ?: "Erreur de création du checkout"
+                if (msg.contains("email", ignoreCase = true)) {
+                    onError("Un email est requis pour payer Iddet Plus.")
+                } else {
+                    onError(msg)
+                }
+            }
+        }
+    }
+
+    fun checkPaymentStatus(reference: String, onResult: (status: String, isSuccess: Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val res = repository.getCheckoutStatus(reference)
+                if (res.status.equals("success", ignoreCase = true)) {
+                    loadIddetPlusData()
+                    onResult("success", true)
+                } else {
+                    onResult(res.status, false)
+                }
+            } catch (e: Exception) {
+                onResult("error", false)
             }
         }
     }
@@ -810,6 +935,14 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
         return repository.isFollowing(otherUserId)
     }
 
+    fun getFollowedUsers(userId: String? = null): Flow<List<User>> {
+        return repository.getFollowedUsers(userId)
+    }
+
+    fun getFollowerUsers(userId: String? = null): Flow<List<User>> {
+        return repository.getFollowerUsers(userId)
+    }
+
     fun followUser(otherUserId: String) {
         viewModelScope.launch {
             repository.followUser(otherUserId)
@@ -851,6 +984,29 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
 
     fun getCommunityPostsFlow(slug: String): Flow<List<com.example.data.ActfileWithUser>> {
         return repository.getCommunityPostsFlow(slug)
+    }
+
+    fun getChannelMessagesFlow(channelId: String): Flow<List<com.example.data.ChannelMessage>> {
+        return repository.getChannelMessagesFlow(channelId)
+    }
+
+    fun sendChannelMessage(
+        channelId: String,
+        communitySlug: String,
+        content: String,
+        type: String = "text",
+        onComplete: (com.example.data.ChannelMessage?) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val msg = repository.sendChannelMessage(channelId, communitySlug, content, type)
+            onComplete(msg)
+        }
+    }
+
+    fun deleteChannelMessage(messageId: String) {
+        viewModelScope.launch {
+            repository.deleteChannelMessage(messageId)
+        }
     }
 
     fun createChannel(slug: String, name: String, description: String?, onResult: (com.example.data.Channel?) -> Unit) {
@@ -1270,8 +1426,8 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
     private val _myLevel = MutableStateFlow<com.example.data.UserLevelResponse?>(null)
     val myLevel: StateFlow<com.example.data.UserLevelResponse?> = _myLevel.asStateFlow()
 
-    private val _levelsTable = MutableStateFlow<List<com.example.data.LevelInfo>>(emptyList())
-    val levelsTable: StateFlow<List<com.example.data.LevelInfo>> = _levelsTable.asStateFlow()
+    private val _levelsTable = MutableStateFlow<List<com.example.data.LevelTableItem>>(emptyList())
+    val levelsTable: StateFlow<List<com.example.data.LevelTableItem>> = _levelsTable.asStateFlow()
 
     fun refreshMyLevel() {
         viewModelScope.launch {
@@ -1286,6 +1442,10 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
         viewModelScope.launch {
             _levelsTable.value = repository.getLevelsTable()
         }
+    }
+
+    suspend fun fetchUserLevel(userId: String): com.example.data.UserLevelResponse? {
+        return repository.getUserLevel(userId)
     }
 
     fun getUserLevelFlow(userId: String): Flow<com.example.data.UserLevelResponse?> = flow {

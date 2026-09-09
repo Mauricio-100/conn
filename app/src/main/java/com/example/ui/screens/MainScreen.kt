@@ -66,11 +66,16 @@ fun MainScreen(viewModel: IddetViewModel) {
     LaunchedEffect(Unit) {
         viewModel.refreshProfile()
         viewModel.refreshActfiles()
+        viewModel.refreshMyLevel()
+        viewModel.loadLevelsTable()
     }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val currentUser by viewModel.currentUser.collectAsState()
+    val myLevel by viewModel.myLevel.collectAsState()
+    val levelsTable by viewModel.levelsTable.collectAsState()
+    var showLadderDialog by remember { mutableStateOf(false) }
     val currentFeedTab by viewModel.feedTab.collectAsState()
     val currentSelectedCategory by viewModel.selectedCategoryFilter.collectAsState()
     val notifications by viewModel.notifications.collectAsState(initial = emptyList())
@@ -191,9 +196,14 @@ fun MainScreen(viewModel: IddetViewModel) {
                                         isVerified = currentUser?.isVerified == true,
                                         modifier = Modifier.size(16.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    com.example.ui.components.UserLevelBadge(
+                                        level = myLevel,
+                                        onClick = { showLadderDialog = true }
+                                    )
                                 }
                                 Text(
-                                    text = currentUser?.bio ?: "Welcome to my profile!",
+                                    text = currentUser?.bio ?: "Bienvenue sur mon profil IDDET !",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -204,53 +214,13 @@ fun MainScreen(viewModel: IddetViewModel) {
                         
                         Spacer(modifier = Modifier.height(12.dp))
                         
-                        // LEVEL & XP PROGRESS WIDGET
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Star,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "Niveau ${currentUser?.level ?: 1}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Text(
-                                        text = "${currentUser?.xp ?: 0}/100 XP",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                LinearProgressIndicator(
-                                    progress = { ((currentUser?.xp ?: 0) % 100) / 100f },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(6.dp)
-                                        .clip(RoundedCornerShape(3.dp)),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                )
-                            }
-                        }
+                        // GAMIFIED LEVEL & RANK WIDGET
+                        com.example.ui.components.UserLevelCard(
+                            level = myLevel,
+                            onOpenLadder = { showLadderDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            subtitle = "Score calculé sur likes & commentaires"
+                        )
                         
                         Spacer(modifier = Modifier.height(12.dp))
                         
@@ -781,6 +751,14 @@ fun MainScreen(viewModel: IddetViewModel) {
                 }
             }
         }
+    }
+
+    if (showLadderDialog) {
+        com.example.ui.components.LevelsLadderDialog(
+            currentLevel = myLevel,
+            table = levelsTable,
+            onDismiss = { showLadderDialog = false }
+        )
     }
 }
 }

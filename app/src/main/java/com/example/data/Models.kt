@@ -152,6 +152,20 @@ data class Channel(
     @Json(name = "created_at") val createdAt: String = ""
 )
 
+@Entity(tableName = "channel_messages")
+data class ChannelMessage(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val channelId: String,
+    val communitySlug: String,
+    val senderId: String,
+    val senderUsername: String,
+    val senderAvatarUrl: String? = null,
+    val isVerified: Boolean = false,
+    val content: String,
+    val type: String = "text", // "text", "voice", "image"
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 data class CommunityBot(
     val id: String = "",
     @Json(name = "community_id") val communityId: String? = null,

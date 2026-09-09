@@ -175,7 +175,9 @@ fun ActfileComposerScreen(
     viewModel: IddetViewModel,
     onDismiss: () -> Unit,
     onPublish: (String, String, String?, Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialCommunity: Community? = null,
+    initialCategory: String? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -196,7 +198,9 @@ fun ActfileComposerScreen(
 
     // Categories
     val categories = APP_CATEGORIES
-    var selectedCategory by remember { mutableStateOf(categories.firstOrNull()?.id ?: "@(fun)") }
+    var selectedCategory by remember(initialCategory) { 
+        mutableStateOf(initialCategory ?: categories.firstOrNull()?.id ?: "@(fun)") 
+    }
 
     // Modes & States
     var isPreviewMode by remember { mutableStateOf(false) }
@@ -213,7 +217,7 @@ fun ActfileComposerScreen(
     val myCommunities by produceState<List<Community>>(initialValue = emptyList()) {
         viewModel.getMyCommunitiesFlow().collect { value = it }
     }
-    var selectedCommunity by remember { mutableStateOf<Community?>(null) }
+    var selectedCommunity by remember(initialCommunity) { mutableStateOf<Community?>(initialCommunity) }
     var showDestinationMenu by remember { mutableStateOf(false) }
 
     // Dialogs

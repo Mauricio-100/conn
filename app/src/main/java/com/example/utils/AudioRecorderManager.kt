@@ -21,10 +21,11 @@ class AudioRecorderManager(private val context: Context) {
     fun startRecording(): File? {
         stopRecording() // Clean up before starting a new one
 
+        val voiceDir = File(context.filesDir, "voice_notes").apply { if (!exists()) mkdirs() }
         val tempFile = try {
-            File.createTempFile("voice_record_", ".m4a", context.cacheDir)
+            File.createTempFile("voice_record_", ".m4a", voiceDir)
         } catch (e: IOException) {
-            Log.e(TAG, "Failed to create temp file", e)
+            Log.e(TAG, "Failed to create voice file", e)
             return null
         }
 
@@ -118,8 +119,9 @@ class AudioRecorderManager(private val context: Context) {
 
         var file = currentFile
         if (file == null) {
+            val voiceDir = File(context.filesDir, "voice_notes").apply { if (!exists()) mkdirs() }
             file = try {
-                File.createTempFile("voice_record_", ".wav", context.cacheDir)
+                File.createTempFile("voice_record_", ".wav", voiceDir)
             } catch (e: Exception) {
                 null
             }

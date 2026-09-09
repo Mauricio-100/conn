@@ -103,37 +103,25 @@ object RealAudioPlayer {
                     stop()
                 }
                 setOnErrorListener { _, what, extra ->
-                    Log.w(TAG, "MediaPlayer error: what=$what, extra=$extra. Seamless fallback to VoiceSynthPlayer")
+                    Log.w(TAG, "MediaPlayer error: what=$what, extra=$extra.")
                     stopProgressUpdate()
                     try {
                         mediaPlayer?.release()
                     } catch (ignored: Exception) {}
                     mediaPlayer = null
-                    VoiceSynthPlayer.play(
-                        amplitudes = List(24) { 0.45f },
-                        durationSeconds = 4,
-                        onProgress = { p -> activeListener?.onProgress(p, (p * 4000).toInt(), 4000) },
-                        onFinished = {
-                            activeListener?.onFinished()
-                            stop()
-                        }
-                    )
+                    activeListener?.onError("Erreur de lecture audio ($what)")
+                    activeListener?.onFinished()
+                    stop()
                     true
                 }
                 prepareAsync()
             }
             mediaPlayer = player
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to initialize MediaPlayer for $url, falling back to VoiceSynthPlayer", e)
-            VoiceSynthPlayer.play(
-                amplitudes = List(24) { 0.45f },
-                durationSeconds = 4,
-                onProgress = { p -> activeListener?.onProgress(p, (p * 4000).toInt(), 4000) },
-                onFinished = {
-                    activeListener?.onFinished()
-                    stop()
-                }
-            )
+            Log.w(TAG, "Failed to initialize MediaPlayer for $url", e)
+            activeListener?.onError(e.message ?: "Impossible de lire le fichier audio")
+            activeListener?.onFinished()
+            stop()
         }
     }
 
@@ -152,7 +140,26 @@ object RealAudioPlayer {
     }
 
     private fun resolveAudioSource(url: String, context: Context?): String {
-        val trimmed = url.trim()
+        var trimmed = url.trim()
+
+        // If it's a voice:// URI or markdown [Voice Message](voice://...)
+        if (trimmed.contains("voice://")) {
+            val uriPart = trimmed.substringAfter("voice://").removeSuffix(")")
+            val params = uriPart.split("&").associate {
+                val parts = it.split("=")
+                parts[0] to parts.getOrNull(1)
+            }
+            val rawUrl = params["url"]
+            if (!rawUrl.isNullOrBlank()) {
+                val decoded = try {
+                    java.net.URLDecoder.decode(rawUrl, "UTF-8")
+                } catch (e: Exception) {
+                    rawUrl
+                }
+                trimmed = decoded
+            }
+        }
+
         if (trimmed.startsWith("data:") || trimmed.contains("base64,") || (!trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("/") && trimmed.length > 50)) {
             return try {
                 val base64Data = if (trimmed.contains("base64,")) trimmed.substringAfter("base64,").trim() else trimmed.trim()

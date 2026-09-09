@@ -22,13 +22,15 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 
-class IddetRepository(    private val userDao: UserDao,
+class IddetRepository(
+    private val userDao: UserDao,
     private val actfileDao: ActfileDao,
     private val messageDao: MessageDao,
     private val followDao: FollowDao,
     private val commentDao: CommentDao,
     private val notificationDao: NotificationDao,
     private val savedAccountDao: SavedAccountDao,
+    private val channelMessageDao: ChannelMessageDao,
     private val prefs: android.content.SharedPreferences
 ) {
 
@@ -66,9 +68,17 @@ class IddetRepository(    private val userDao: UserDao,
         return RetrofitClient.apiService.getMyCredits("Bearer $token")
     }
 
-    suspend fun createIddetPlusCheckout(): IddetPlusCheckoutResponse {
+    suspend fun createIddetPlusCheckout(
+        currency: String = "CDF"
+    ): IddetPlusCheckoutResponse {
         val token = getValidToken()
-        return RetrofitClient.apiService.createIddetPlusCheckout("Bearer $token", IddetPlusCheckoutRequest("USD"))
+        val request = IddetPlusCheckoutRequest(currency = currency)
+        return RetrofitClient.apiService.createIddetPlusCheckout("Bearer $token", request)
+    }
+
+    suspend fun getCheckoutStatus(reference: String): IddetPlusCheckoutStatusResponse {
+        val token = getValidToken()
+        return RetrofitClient.apiService.getCheckoutStatus("Bearer $token", reference)
     }
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -259,23 +269,58 @@ class IddetRepository(    private val userDao: UserDao,
                 }
                 usersToInsert.add(userToInsert)
 
-                actfilesToInsert.add(
-                    Actfile(
+                // Detect if this is a private channel conversation (@#salon, @c/... @#... or channel_id)
+                val hasChannelTag = net.content.contains("@#")
+                val isChannelConversation = !net.channel_id.isNullOrBlank() || hasChannelTag || (net.content.contains("@c/") && hasChannelTag)
+                if (isChannelConversation) {
+                    val channelIdentifier = if (!net.channel_id.isNullOrBlank()) net.channel_id else {
+                        val match = Regex("@#([a-zA-Z0-9_-]+)").find(net.content)
+                        match?.groupValues?.get(1) ?: "general"
+                    }
+                    val communityIdentifier = if (!net.community_id.isNullOrBlank()) net.community_id else {
+                        val match = Regex("@c/([a-zA-Z0-9_-]+)").find(net.content)
+                        match?.groupValues?.get(1) ?: ""
+                    }
+                    val cleanText = net.content
+                        .replace(Regex("@c/[a-zA-Z0-9_-]+"), "")
+                        .replace(Regex("@#[a-zA-Z0-9_-]+"), "")
+                        .trim()
+                    
+                    val channelMsg = ChannelMessage(
                         id = net.id,
-                        userId = net.user_id,
-                        content = net.content,
-                        likesCount = net.likes_count,
-                        viewsCount = net.views_count,
-                        commentsCount = net.comments_count ?: 0,
-                        createdAt = parseIso(net.created_at),
-                        isLikedByMe = net.liked,
-                        category = net.category,
-                        communityId = net.community_id,
-                        channelId = net.channel_id,
-                        channelSlug = net.channel_slug,
-                        channelName = net.channel_name
+                        channelId = channelIdentifier,
+                        communitySlug = communityIdentifier,
+                        senderId = net.user_id,
+                        senderUsername = net.username.ifBlank { "Utilisateur" },
+                        senderAvatarUrl = net.avatar_url,
+                        isVerified = net.is_verified,
+                        content = if (cleanText.isNotBlank()) cleanText else net.content,
+                        type = if (net.content.contains("[!AUDIO]") || net.content.contains("audio_msg_") || net.content.contains("voice_") || net.content.contains("voice://")) "voice" else "text",
+                        createdAt = parseIso(net.created_at)
                     )
-                )
+                    channelMessageDao.insertMessage(channelMsg)
+                    
+                    // Also clean up any accidental entry from actfiles local table
+                    actfileDao.deleteActfileLocal(net.id)
+                } else {
+                    actfilesToInsert.add(
+                        Actfile(
+                            id = net.id,
+                            userId = net.user_id,
+                            content = net.content,
+                            likesCount = net.likes_count,
+                            viewsCount = net.views_count,
+                            commentsCount = net.comments_count ?: 0,
+                            createdAt = parseIso(net.created_at),
+                            isLikedByMe = net.liked,
+                            category = net.category,
+                            communityId = net.community_id,
+                            channelId = net.channel_id,
+                            channelSlug = net.channel_slug,
+                            channelName = net.channel_name
+                        )
+                    )
+                }
             }
 
             // Insert new and updated actfiles without wiping out old cached profile actfiles
@@ -1141,7 +1186,7 @@ class IddetRepository(    private val userDao: UserDao,
         return try {
             val header = currentToken?.let { "Bearer $it" }
             if (header != null) {
-                RetrofitClient.apiService.getMessageReactions(header, messageId)
+                RetrofitClient.apiService.getMessageReactions(header, messageId).reactions
             } else {
                 val local = messageDao.getMessageById(messageId)
                 if (local?.reaction != null) {
@@ -1170,7 +1215,7 @@ class IddetRepository(    private val userDao: UserDao,
     @OptIn(ExperimentalCoroutinesApi::class)
     fun getFollowedActfiles(): Flow<List<ActfileWithUser>> {
         return _currentUser.flatMapLatest { me ->
-            val myId = me?.id ?: ""
+            val myId = me?.id ?: prefs.getString("user_id", "") ?: ""
             if (myId.isEmpty()) {
                 flowOf(emptyList())
             } else {
@@ -1182,33 +1227,44 @@ class IddetRepository(    private val userDao: UserDao,
     @OptIn(ExperimentalCoroutinesApi::class)
     fun isFollowing(otherUserId: String): Flow<Boolean> {
         return _currentUser.flatMapLatest { me ->
-            val myId = me?.id ?: ""
+            val myId = me?.id ?: prefs.getString("user_id", "") ?: ""
             if (myId.isEmpty() || otherUserId.isEmpty()) {
                 flowOf(false)
             } else {
-                flow {
-                    val targetUser = userDao.getUserById(otherUserId) ?: userDao.getUserByUsername(otherUserId)
-                    val resolvedOtherId = targetUser?.id ?: otherUserId
-                    emitAll(followDao.isFollowingFlow(myId, resolvedOtherId))
-                }
+                followDao.isFollowingFlow(myId, otherUserId)
             }
         }
     }
 
+    fun getFollowedUsers(userId: String? = null): Flow<List<User>> {
+        val targetId = userId ?: _currentUser.value?.id ?: prefs.getString("user_id", "") ?: ""
+        if (targetId.isEmpty()) return flowOf(emptyList())
+        return followDao.getFollowedUsersFlow(targetId)
+    }
+
+    fun getFollowerUsers(userId: String? = null): Flow<List<User>> {
+        val targetId = userId ?: _currentUser.value?.id ?: prefs.getString("user_id", "") ?: ""
+        if (targetId.isEmpty()) return flowOf(emptyList())
+        return followDao.getFollowerUsersFlow(targetId)
+    }
+
     suspend fun followUser(otherUserId: String) {
-        val myId = _currentUser.value?.id ?: return
+        val myId = _currentUser.value?.id ?: prefs.getString("user_id", null) ?: return
         val targetUser = userDao.getUserById(otherUserId) ?: userDao.getUserByUsername(otherUserId)
         val resolvedOtherId = targetUser?.id ?: otherUserId
         if (myId == resolvedOtherId || resolvedOtherId.isEmpty()) return
         
-        val isAlreadyFollowing = followDao.isFollowing(myId, resolvedOtherId)
+        val isAlreadyFollowing = followDao.isFollowing(myId, otherUserId) || followDao.isFollowing(myId, resolvedOtherId)
         if (isAlreadyFollowing) return
 
-        // 1. Insert local follow record
+        // 1. Insert local follow record (both resolved ID and raw otherUserId for maximum compatibility)
         followDao.insertFollow(Follow(followerId = myId, followingId = resolvedOtherId))
+        if (resolvedOtherId != otherUserId && otherUserId.isNotBlank()) {
+            followDao.insertFollow(Follow(followerId = myId, followingId = otherUserId))
+        }
 
         // 2. Update follower/following counts locally for current user
-        val me = userDao.getUserById(myId)
+        val me = userDao.getUserById(myId) ?: userDao.getUserByUsername(myId)
         if (me != null) {
             val updatedMe = me.copy(followingCount = me.followingCount + 1)
             userDao.insertUser(updatedMe)
@@ -1223,9 +1279,17 @@ class IddetRepository(    private val userDao: UserDao,
 
         // 4. Try network call
         try {
-            val token = currentToken
+            val token = currentToken ?: prefs.getString("auth_token", null) ?: prefs.getString("token", null)
             if (token != null) {
-                RetrofitClient.apiService.followUser("Bearer $token", resolvedOtherId)
+                try {
+                    RetrofitClient.apiService.followUser("Bearer $token", resolvedOtherId)
+                } catch (_: Exception) {
+                    if (resolvedOtherId != otherUserId) {
+                        try {
+                            RetrofitClient.apiService.followUser("Bearer $token", otherUserId)
+                        } catch (_: Exception) {}
+                    }
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1233,19 +1297,22 @@ class IddetRepository(    private val userDao: UserDao,
     }
 
     suspend fun unfollowUser(otherUserId: String) {
-        val myId = _currentUser.value?.id ?: return
+        val myId = _currentUser.value?.id ?: prefs.getString("user_id", null) ?: return
         val targetUser = userDao.getUserById(otherUserId) ?: userDao.getUserByUsername(otherUserId)
         val resolvedOtherId = targetUser?.id ?: otherUserId
         if (myId == resolvedOtherId || resolvedOtherId.isEmpty()) return
         
-        val isFollowing = followDao.isFollowing(myId, resolvedOtherId)
+        val isFollowing = followDao.isFollowing(myId, otherUserId) || followDao.isFollowing(myId, resolvedOtherId)
         if (!isFollowing) return
 
         // 1. Delete local follow record
         followDao.deleteFollow(myId, resolvedOtherId)
+        if (resolvedOtherId != otherUserId && otherUserId.isNotBlank()) {
+            followDao.deleteFollow(myId, otherUserId)
+        }
 
         // 2. Update follower/following counts locally for current user
-        val me = userDao.getUserById(myId)
+        val me = userDao.getUserById(myId) ?: userDao.getUserByUsername(myId)
         if (me != null) {
             val updatedMe = me.copy(followingCount = (me.followingCount - 1).coerceAtLeast(0))
             userDao.insertUser(updatedMe)
@@ -1260,9 +1327,17 @@ class IddetRepository(    private val userDao: UserDao,
 
         // 4. Try network call
         try {
-            val token = currentToken
+            val token = currentToken ?: prefs.getString("auth_token", null) ?: prefs.getString("token", null)
             if (token != null) {
-                RetrofitClient.apiService.unfollowUser("Bearer $token", resolvedOtherId)
+                try {
+                    RetrofitClient.apiService.unfollowUser("Bearer $token", resolvedOtherId)
+                } catch (_: Exception) {
+                    if (resolvedOtherId != otherUserId) {
+                        try {
+                            RetrofitClient.apiService.unfollowUser("Bearer $token", otherUserId)
+                        } catch (_: Exception) {}
+                    }
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1407,10 +1482,19 @@ class IddetRepository(    private val userDao: UserDao,
 
     suspend fun getCommunity(slug: String): Community? {
         val local = localCommunities.find { it.slug == slug }
-        val header = currentToken?.let { "Bearer $it" }
+        val token = currentToken ?: prefs.getString("auth_token", null)
+        val header = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
         return try {
             val net = RetrofitClient.apiService.getCommunity(header, slug)
-            net ?: local
+            if (net != null) {
+                // Keep local membership state if toggled locally
+                val isMem = local?.isMember ?: net.isMember
+                val count = local?.membersCount ?: net.membersCount
+                val merged = net.copy(isMember = isMem, membersCount = count)
+                localCommunities.removeAll { it.slug == slug }
+                localCommunities.add(merged)
+                merged
+            } else local
         } catch (e: Exception) {
             e.printStackTrace()
             local
@@ -1420,14 +1504,31 @@ class IddetRepository(    private val userDao: UserDao,
     suspend fun joinCommunity(slug: String): Boolean {
         val token = currentToken ?: prefs.getString("auth_token", null)
         val local = localCommunities.find { it.slug == slug }
-        if (local != null) {
-            val updated = local.copy(
-                isMember = !local.isMember,
-                membersCount = if (local.isMember) (local.membersCount - 1).coerceAtLeast(1) else local.membersCount + 1
+        val target = local ?: try {
+            val header = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+            RetrofitClient.apiService.getCommunity(header, slug)
+        } catch (_: Exception) { null }
+
+        if (target != null) {
+            val updated = target.copy(
+                isMember = !target.isMember,
+                membersCount = if (target.isMember) (target.membersCount - 1).coerceAtLeast(1) else target.membersCount + 1
             )
             localCommunities.removeAll { it.slug == slug }
             localCommunities.add(updated)
+        } else {
+            val fallback = Community(
+                id = slug,
+                slug = slug,
+                name = slug.replaceFirstChar { it.uppercase() },
+                category = "General",
+                description = "Communauté $slug",
+                isMember = true,
+                membersCount = 1
+            )
+            localCommunities.add(fallback)
         }
+
         if (token == null) return true
         return try {
             val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
@@ -1501,7 +1602,48 @@ class IddetRepository(    private val userDao: UserDao,
         return newChannel
     }
 
+    fun getChannelMessagesFlow(channelId: String): Flow<List<ChannelMessage>> {
+        return channelMessageDao.getMessagesForChannel(channelId)
+    }
+
+    suspend fun sendChannelMessage(
+        channelId: String,
+        communitySlug: String,
+        content: String,
+        type: String = "text"
+    ): ChannelMessage? {
+        val user = _currentUser.value ?: return null
+        val message = ChannelMessage(
+            id = "cmsg_" + java.util.UUID.randomUUID().toString(),
+            channelId = channelId,
+            communitySlug = communitySlug,
+            senderId = user.id,
+            senderUsername = user.username,
+            senderAvatarUrl = user.avatarUrl,
+            isVerified = user.isVerified,
+            content = content,
+            type = type,
+            createdAt = System.currentTimeMillis()
+        )
+        channelMessageDao.insertMessage(message)
+        return message
+    }
+
+    suspend fun deleteChannelMessage(id: String) {
+        channelMessageDao.deleteMessage(id)
+    }
+
     fun getCommunityPostsFlow(slug: String): Flow<List<ActfileWithUser>> = kotlinx.coroutines.flow.flow {
+        val localList = try {
+            val community = getCommunity(slug)
+            actfileDao.getCommunityActfilesList(community?.id ?: slug, slug)
+        } catch (e: Exception) {
+            emptyList()
+        }
+        if (localList.isNotEmpty()) {
+            emit(localList)
+        }
+
         try {
             val header = currentToken?.let { "Bearer $it" }
             val netActfiles = RetrofitClient.apiService.getCommunityPosts(header, slug)
@@ -1544,10 +1686,15 @@ class IddetRepository(    private val userDao: UserDao,
                     channelName = net.channel_name
                 )
             }
-            emit(mapped)
+            val combined = (mapped + localList).distinctBy { it.id }.sortedByDescending { it.createdAt }
+            emit(combined)
         } catch (e: Exception) {
             e.printStackTrace()
-            emit(emptyList())
+            if (localList.isNotEmpty()) {
+                emit(localList)
+            } else {
+                emit(emptyList())
+            }
         }
     }
 
@@ -2139,22 +2286,29 @@ class IddetRepository(    private val userDao: UserDao,
         }
     }
 
-    suspend fun getLevelsTable(): List<LevelInfo> {
+    suspend fun getLevelsTable(): List<LevelTableItem> {
         return try {
-            RetrofitClient.apiService.getLevelsTable().levels
+            val res = RetrofitClient.apiService.getLevelsTable()
+            if (res.levels.isNotEmpty()) {
+                res.levels
+            } else {
+                fallbackLevelsTable()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
-            listOf(
-                LevelInfo(0, 0, "Débutant", null, null, 0, 0.0, false),
-                LevelInfo(0, 0, "Bronze", null, null, 100, 0.0, false),
-                LevelInfo(0, 0, "Argent", null, null, 500, 0.0, false),
-                LevelInfo(0, 0, "Or", null, null, 2000, 0.0, false),
-                LevelInfo(0, 0, "Platine", null, null, 10000, 0.0, false),
-                LevelInfo(0, 0, "Diamant", null, null, 50000, 0.0, false),
-                LevelInfo(0, 0, "Légende", null, null, 200000, 0.0, false)
-            )
+            fallbackLevelsTable()
         }
     }
+
+    private fun fallbackLevelsTable(): List<LevelTableItem> = listOf(
+        LevelTableItem("Débutant", 0),
+        LevelTableItem("Bronze", 100),
+        LevelTableItem("Argent", 500),
+        LevelTableItem("Or", 2000),
+        LevelTableItem("Platine", 10000),
+        LevelTableItem("Diamant", 50000),
+        LevelTableItem("Légende", 200000)
+    )
 
     private fun calculateFallbackLevel(userId: String, score: Int): UserLevelResponse {
         val tiers = listOf(

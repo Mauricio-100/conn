@@ -108,6 +108,8 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     var showVibeEditorDialog by remember { mutableStateOf(false) }
     var showBadgesDialog by remember { mutableStateOf(false) }
     var showLevelsLadderDialog by remember { mutableStateOf(false) }
+    var showFollowListSheet by remember { mutableStateOf(false) }
+    var followListInitialTab by remember { mutableIntStateOf(0) }
     var isRefreshing by remember { mutableStateOf(false) }
     
     var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
@@ -462,6 +464,11 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         VerificationBadge(modifier = Modifier.size(24.dp), userName = user.username, isVerified = user.isVerified)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        com.example.ui.components.UserLevelBadge(
+                            level = myLevel,
+                            onClick = { showLevelsLadderDialog = true }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -584,100 +591,12 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                     Spacer(modifier = Modifier.height(12.dp))
 
                     // 3. Gamified Level & Daily Streak Card
-                    Card(
-                        onClick = { showLevelsLadderDialog = true },
+                    com.example.ui.components.UserLevelCard(
+                        level = myLevel,
+                        onOpenLadder = { showLevelsLadderDialog = true },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            val levelInfo = myLevel
-                            val levelNum = (levelInfo?.level_index ?: 0) + 1
-                            val rankTitle = levelInfo?.level_name ?: when (user.level) {
-                                1 -> "Initié Markdown"
-                                2 -> "Apprenti Rédacteur"
-                                3 -> "Maître des Balises"
-                                4 -> "Expert Synthax"
-                                else -> "Légende IDDET"
-                            }
-                            val rankEmoji = when (levelNum) {
-                                1 -> "🔰"
-                                2 -> "🥉"
-                                3 -> "🥈"
-                                4 -> "🥇"
-                                5 -> "💎"
-                                6 -> "👑"
-                                else -> "🌟"
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(rankEmoji, fontSize = 18.sp)
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(rankTitle, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                        Text(
-                                            "Niveau $levelNum • ${levelInfo?.score ?: user.xp} pts",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                                // Ladder Palier badge button
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("🏆", fontSize = 12.sp)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Paliers", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-                            val progressVal = levelInfo?.progress ?: ((user.xp % 100) / 100f).coerceIn(0f, 1f)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    if (levelInfo?.next_level_name != null) "Objectif : ${levelInfo.next_level_name}" else "Rang maximal atteint !",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    if (levelInfo?.next_level_score != null) "${levelInfo.score} / ${levelInfo.next_level_score} pts" else "${levelInfo?.score ?: user.xp} pts",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            LinearProgressIndicator(
-                                progress = { progressVal },
-                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                                color = MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            )
-                        }
-                    }
+                        subtitle = "Score calculé sur les likes et commentaires"
+                    )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -781,7 +700,12 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                         ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        followListInitialTab = 1
+                                        showFollowListSheet = true
+                                    }
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.People,
@@ -812,7 +736,12 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
 
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        followListInitialTab = 0
+                                        showFollowListSheet = true
+                                    }
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Person,
@@ -1547,144 +1476,22 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     }
 
     if (showLevelsLadderDialog) {
-        LevelsLadderDialog(
+        com.example.ui.components.LevelsLadderDialog(
             currentLevel = myLevel,
             table = levelsTable,
             onDismiss = { showLevelsLadderDialog = false }
         )
     }
-}
 
-@Composable
-fun LevelsLadderDialog(
-    currentLevel: com.example.data.UserLevelResponse?,
-    table: List<com.example.data.LevelInfo>,
-    onDismiss: () -> Unit
-) {
-    val displayTable = if (table.isNotEmpty()) table else listOf(
-        com.example.data.LevelInfo(0, 0, "Débutant", null, null, 0, 0.0, false),
-        com.example.data.LevelInfo(0, 0, "Bronze", null, null, 100, 0.0, false),
-        com.example.data.LevelInfo(0, 0, "Argent", null, null, 500, 0.0, false),
-        com.example.data.LevelInfo(0, 0, "Or", null, null, 2000, 0.0, false),
-        com.example.data.LevelInfo(0, 0, "Platine", null, null, 10000, 0.0, false),
-        com.example.data.LevelInfo(0, 0, "Diamant", null, null, 50000, 0.0, false),
-        com.example.data.LevelInfo(0, 0, "Légende", null, null, 200000, 0.0, false)
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("📈 Système de Niveaux & Rangs", fontWeight = FontWeight.Black)
-            }
-        },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                if (currentLevel != null) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Votre Statut Actuel :", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "👑 Niveau ${currentLevel.level_index + 1} - ${currentLevel.level_name}",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                "Score : ${currentLevel.score} pts • Progression : ${(currentLevel.progress * 100).toInt()}%" +
-                                (if (currentLevel.next_level_name != null) " • Prochain palier : ${currentLevel.next_level_name} (${currentLevel.points_to_next} pts restants)" else " • Rang Maximum atteint !"),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-
-                Text(
-                    "Comment monter de niveau ? Chaque publication, like reçu et commentaire constructif vous rapporte des points d'expérience !",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 10.dp)
-                )
-
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp)
-                ) {
-                    items(displayTable.size) { idx ->
-                        val tier = displayTable[idx]
-                        val tierLevel = idx + 1
-                        val userLvl = (currentLevel?.level_index ?: 0) + 1
-                        val isCurrent = userLvl == tierLevel
-                        val isUnlocked = userLvl >= tierLevel
-                        val emoji = when (tierLevel) {
-                            1 -> "🔰"
-                            2 -> "🥉"
-                            3 -> "🥈"
-                            4 -> "🥇"
-                            5 -> "💎"
-                            6 -> "👑"
-                            else -> "🌟"
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else if (isUnlocked) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                            border = androidx.compose.foundation.BorderStroke(
-                                width = if (isCurrent) 2.dp else 1.dp,
-                                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(emoji, fontSize = 22.sp)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            "Niv. $tierLevel - ${tier.level_name}",
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        )
-                                        if (isCurrent) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = MaterialTheme.colorScheme.primary,
-                                                contentColor = Color.White
-                                            ) {
-                                                Text("ACTUEL", fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
-                                            }
-                                        }
-                                    }
-                                    Text(
-                                        "${tier.points_to_next} pts requis",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onDismiss, shape = RoundedCornerShape(12.dp)) {
-                Text("Compris !")
-            }
-        }
-    )
+    if (showFollowListSheet) {
+        com.example.ui.components.FollowListBottomSheet(
+            viewModel = viewModel,
+            navController = navController,
+            userId = user.id,
+            initialTab = followListInitialTab,
+            onDismissRequest = { showFollowListSheet = false }
+        )
+    }
 }
 
 @Composable

@@ -70,6 +70,7 @@ interface ActfileDao {
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
+        WHERE (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun getAllActfilesWithUser(): Flow<List<ActfileWithUser>>
@@ -78,7 +79,7 @@ interface ActfileDao {
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
-        WHERE (a.userId = :userId OR u.username = :userId OR u.id = :userId) AND (a.channelId IS NULL OR a.channelId = '')
+        WHERE (a.userId = :userId OR u.username = :userId OR u.id = :userId) AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun getActfilesByUser(userId: String): Flow<List<ActfileWithUser>>
@@ -87,7 +88,7 @@ interface ActfileDao {
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
-        WHERE (a.content LIKE '%' || :query || '%' OR a.tags LIKE '%' || :query || '%') AND (a.channelId IS NULL OR a.channelId = '')
+        WHERE (a.content LIKE '%' || :query || '%' OR a.tags LIKE '%' || :query || '%') AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun searchActfiles(query: String): Flow<List<ActfileWithUser>>
@@ -100,12 +101,33 @@ interface ActfileDao {
     
     @Query("UPDATE actfiles SET likesCount = likesCount + 1 WHERE id = :id")
     suspend fun incrementLikeCount(id: String)
+
+    @Query("UPDATE actfiles SET likesCount = MAX(0, likesCount - 1) WHERE id = :id")
+    suspend fun decrementLikeCount(id: String)
     
     @Query("UPDATE actfiles SET commentsCount = commentsCount + 1 WHERE id = :id")
     suspend fun incrementCommentCount(id: String)
 
     @Query("UPDATE actfiles SET commentsCount = :count WHERE id = :id")
     suspend fun updateCommentCount(id: String, count: Int)
+
+    @Query("""
+        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
+        FROM actfiles a 
+        LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
+        WHERE (a.communityId = :communityId OR a.communityId = :slug OR a.channelSlug = :slug OR a.content LIKE '%@c/' || :slug || '%') AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
+        ORDER BY a.createdAt DESC
+    """)
+    fun getCommunityActfiles(communityId: String, slug: String): Flow<List<ActfileWithUser>>
+
+    @Query("""
+        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
+        FROM actfiles a 
+        LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
+        WHERE (a.communityId = :communityId OR a.communityId = :slug OR a.channelSlug = :slug OR a.content LIKE '%@c/' || :slug || '%') AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
+        ORDER BY a.createdAt DESC
+    """)
+    suspend fun getCommunityActfilesList(communityId: String, slug: String): List<ActfileWithUser>
 
     @Query("""
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
@@ -120,7 +142,7 @@ interface ActfileDao {
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
-        WHERE a.isLikedByMe = 1 AND (a.channelId IS NULL OR a.channelId = '')
+        WHERE a.isLikedByMe = 1 AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun getLikedActfiles(): Flow<List<ActfileWithUser>>
@@ -130,7 +152,7 @@ interface ActfileDao {
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         INNER JOIN actfile_comments c ON a.id = c.actfileId
-        WHERE (c.userId = :userId OR u.username = :userId) AND (a.channelId IS NULL OR a.channelId = '')
+        WHERE (c.userId = :userId OR u.username = :userId) AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun getCommentedActfiles(userId: String): Flow<List<ActfileWithUser>>
@@ -171,26 +193,78 @@ interface FollowDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFollow(follow: Follow)
 
-    @Query("DELETE FROM follows WHERE followerId = :followerId AND followingId = :followingId")
+    @Query("""
+        DELETE FROM follows 
+        WHERE (followerId = :followerId OR followerId IN (SELECT id FROM users WHERE username = :followerId) OR followerId IN (SELECT username FROM users WHERE id = :followerId))
+          AND (followingId = :followingId OR followingId IN (SELECT id FROM users WHERE username = :followingId) OR followingId IN (SELECT username FROM users WHERE id = :followingId))
+    """)
     suspend fun deleteFollow(followerId: String, followingId: String)
 
-    @Query("SELECT EXISTS(SELECT 1 FROM follows WHERE followerId = :followerId AND followingId = :followingId)")
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM follows f
+            WHERE (f.followerId = :followerId OR f.followerId IN (SELECT id FROM users WHERE username = :followerId) OR f.followerId IN (SELECT username FROM users WHERE id = :followerId))
+              AND (f.followingId = :followingId OR f.followingId IN (SELECT id FROM users WHERE username = :followingId) OR f.followingId IN (SELECT username FROM users WHERE id = :followingId))
+        )
+    """)
     fun isFollowingFlow(followerId: String, followingId: String): Flow<Boolean>
 
-    @Query("SELECT EXISTS(SELECT 1 FROM follows WHERE followerId = :followerId AND followingId = :followingId)")
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM follows f
+            WHERE (f.followerId = :followerId OR f.followerId IN (SELECT id FROM users WHERE username = :followerId) OR f.followerId IN (SELECT username FROM users WHERE id = :followerId))
+              AND (f.followingId = :followingId OR f.followingId IN (SELECT id FROM users WHERE username = :followingId) OR f.followingId IN (SELECT username FROM users WHERE id = :followingId))
+        )
+    """)
     suspend fun isFollowing(followerId: String, followingId: String): Boolean
 
-    @Query("SELECT followingId FROM follows WHERE followerId = :followerId")
+    @Query("""
+        SELECT followingId FROM follows 
+        WHERE followerId = :followerId OR followerId IN (SELECT id FROM users WHERE username = :followerId) OR followerId IN (SELECT username FROM users WHERE id = :followerId)
+    """)
     fun getFollowingIdsFlow(followerId: String): Flow<List<String>>
 
     @Query("""
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
         FROM actfiles a 
-        LEFT JOIN users u ON a.userId = u.id 
-        WHERE (a.userId IN (SELECT followingId FROM follows WHERE followerId = :followerId) OR a.userId = :followerId) AND (a.channelId IS NULL OR a.channelId = '')
+        LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username)
+        WHERE (
+            a.userId = :followerId 
+            OR a.userId IN (SELECT username FROM users WHERE id = :followerId)
+            OR a.userId IN (SELECT id FROM users WHERE username = :followerId)
+            OR a.userId IN (SELECT followingId FROM follows WHERE followerId = :followerId OR followerId IN (SELECT id FROM users WHERE username = :followerId) OR followerId IN (SELECT username FROM users WHERE id = :followerId))
+            OR a.userId IN (
+                SELECT u2.id FROM users u2 
+                INNER JOIN follows f ON (f.followingId = u2.id OR f.followingId = u2.username) 
+                WHERE f.followerId = :followerId OR f.followerId IN (SELECT id FROM users WHERE username = :followerId) OR f.followerId IN (SELECT username FROM users WHERE id = :followerId)
+            )
+            OR a.userId IN (
+                SELECT u3.username FROM users u3 
+                INNER JOIN follows f2 ON (f2.followingId = u3.id OR f2.followingId = u3.username) 
+                WHERE f2.followerId = :followerId OR f2.followerId IN (SELECT id FROM users WHERE username = :followerId) OR f2.followerId IN (SELECT username FROM users WHERE id = :followerId)
+            )
+        )
+        AND (a.channelId IS NULL OR a.channelId = '')
+        AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun getFollowedActfiles(followerId: String): Flow<List<ActfileWithUser>>
+
+    @Query("""
+        SELECT u.* FROM users u
+        INNER JOIN follows f ON (f.followingId = u.id OR f.followingId = u.username)
+        WHERE f.followerId = :userId OR f.followerId IN (SELECT id FROM users WHERE username = :userId) OR f.followerId IN (SELECT username FROM users WHERE id = :userId)
+        GROUP BY u.id
+    """)
+    fun getFollowedUsersFlow(userId: String): Flow<List<User>>
+
+    @Query("""
+        SELECT u.* FROM users u
+        INNER JOIN follows f ON (f.followerId = u.id OR f.followerId = u.username)
+        WHERE f.followingId = :userId OR f.followingId IN (SELECT id FROM users WHERE username = :userId) OR f.followingId IN (SELECT username FROM users WHERE id = :userId)
+        GROUP BY u.id
+    """)
+    fun getFollowerUsersFlow(userId: String): Flow<List<User>>
 }
 
 @Dao
@@ -240,6 +314,25 @@ interface SavedAccountDao {
     @Query("DELETE FROM saved_accounts")
     suspend fun clearSavedAccounts()
 }
+
+@Dao
+interface ChannelMessageDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMessage(message: ChannelMessage)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMessages(messages: List<ChannelMessage>)
+
+    @Query("SELECT * FROM channel_messages WHERE channelId = :channelId ORDER BY createdAt ASC")
+    fun getMessagesForChannel(channelId: String): Flow<List<ChannelMessage>>
+
+    @Query("DELETE FROM channel_messages WHERE id = :id")
+    suspend fun deleteMessage(id: String)
+
+    @Query("SELECT COUNT(*) FROM channel_messages WHERE channelId = :channelId")
+    suspend fun getMessageCount(channelId: String): Int
+}
+
 
 
 

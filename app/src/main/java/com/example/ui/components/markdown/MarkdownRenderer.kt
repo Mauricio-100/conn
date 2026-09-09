@@ -679,6 +679,13 @@ fun MarkdownRenderedText(
             annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
                 .firstOrNull()?.let { annotation ->
                     val url = annotation.item
+                    if (url.startsWith("https://iddet.app/c/") || url.startsWith("iddet://community/")) {
+                        val slug = if (url.startsWith("https://iddet.app/c/")) url.substringAfter("https://iddet.app/c/").substringBefore("/") else url.substringAfter("iddet://community/").substringBefore("/")
+                        if (slug.isNotBlank()) {
+                            communityClickHandler?.invoke(slug)
+                            return@ClickableText
+                        }
+                    }
                     if (onLinkClick != null) {
                         onLinkClick(url)
                     } else {
@@ -727,9 +734,11 @@ fun rememberRichMarkdownStyles(
             val codeTextColor = if (isMine) Color.White else primaryColor
 
             while (i < text.length) {
-                // Mentions: @username, @c/community, @#channel
+                val isBoundary = (i == 0 || text[i - 1].isWhitespace() || "()[]{}<>,.?!:;\"'".contains(text[i - 1]))
+
+                // 1. Mentions: @username, @c/community, @#channel
                 if (text[i] == '@') {
-                    val mentionRegex = Regex("^(@([a-zA-Z0-9_.]+)|@c/([a-z0-9_]+)|@#([a-z0-9-]+))")
+                    val mentionRegex = Regex("^(@c/([a-zA-Z0-9_-]+)|@#([a-zA-Z0-9_-]+)|@([a-zA-Z0-9_.]+))")
                     val match = mentionRegex.find(text.substring(i))
                     if (match != null) {
                         val fullMatch = match.value
@@ -756,6 +765,77 @@ fun rememberRichMarkdownStyles(
                             SpanStyle(
                                 color = mentionColor,
                                 fontWeight = FontWeight.ExtraBold,
+                                textDecoration = TextDecoration.Underline
+                            )
+                        ) {
+                            append(fullMatch)
+                        }
+                        pop()
+                        i += fullMatch.length
+                        continue
+                    }
+                }
+
+                // 2. Community shortcut starting with / (e.g. /c/slug or /slug)
+                if (text[i] == '/' && isBoundary) {
+                    val slashRegex = Regex("^(/c/([a-zA-Z0-9_-]+)|/([a-zA-Z0-9_-]{2,}))")
+                    val match = slashRegex.find(text.substring(i))
+                    if (match != null) {
+                        val fullMatch = match.value
+                        val slug = if (fullMatch.startsWith("/c/")) fullMatch.substring(3) else fullMatch.substring(1)
+                        if (!fullMatch.startsWith("//") && slug.isNotEmpty() && !slug.equals("voice", ignoreCase = true)) {
+                            pushStringAnnotation(tag = "COMMUNITY", annotation = slug)
+                            withStyle(
+                                SpanStyle(
+                                    color = Color(0xFF8B5CF6),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    textDecoration = TextDecoration.Underline
+                                )
+                            ) {
+                                append(fullMatch)
+                            }
+                            pop()
+                            i += fullMatch.length
+                            continue
+                        }
+                    }
+                }
+
+                // 3. Community shortcut starting with c/slug (e.g. c/general, c/crypto)
+                if (text[i] == 'c' && i + 2 < text.length && text[i + 1] == '/' && isBoundary) {
+                    val cSlugRegex = Regex("^(c/([a-zA-Z0-9_-]+))")
+                    val match = cSlugRegex.find(text.substring(i))
+                    if (match != null) {
+                        val fullMatch = match.value
+                        val slug = fullMatch.substring(2)
+                        pushStringAnnotation(tag = "COMMUNITY", annotation = slug)
+                        withStyle(
+                            SpanStyle(
+                                color = Color(0xFF8B5CF6),
+                                fontWeight = FontWeight.ExtraBold,
+                                textDecoration = TextDecoration.Underline
+                            )
+                        ) {
+                            append(fullMatch)
+                        }
+                        pop()
+                        i += fullMatch.length
+                        continue
+                    }
+                }
+
+                // 4. Channel shortcut starting with #channel (when not heading)
+                if (text[i] == '#' && isBoundary && (i + 1 < text.length && !text[i + 1].isWhitespace())) {
+                    val channelRegex = Regex("^(#([a-zA-Z0-9_-]+))")
+                    val match = channelRegex.find(text.substring(i))
+                    if (match != null) {
+                        val fullMatch = match.value
+                        val channelName = fullMatch.substring(1)
+                        pushStringAnnotation(tag = "CHANNEL", annotation = channelName)
+                        withStyle(
+                            SpanStyle(
+                                color = Color(0xFF10B981),
+                                fontWeight = FontWeight.Bold,
                                 textDecoration = TextDecoration.Underline
                             )
                         ) {

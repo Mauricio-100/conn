@@ -42,7 +42,7 @@ fun VoiceMessagePlayer(
     
     val voiceData = remember(content) {
         if (isVoiceMessage(content)) {
-            parseVoiceMessage(content) ?: VoiceMessageData(5, List(24) { 0.4f }, null)
+            parseVoiceMessage(content) ?: VoiceMessageData(5, List(24) { 0.4f }, null, null)
         } else {
             val hash = content.hashCode()
             val random = java.util.Random(hash.toLong())
@@ -51,7 +51,7 @@ fun VoiceMessagePlayer(
                 val base = 0.25f + 0.65f * kotlin.math.abs(kotlin.math.sin((idx + hash % 10).toFloat() * 0.45f))
                 base.coerceIn(0.15f, 1.0f)
             }
-            VoiceMessageData(duration, generatedAmps, null)
+            VoiceMessageData(duration, generatedAmps, content, null)
         }
     }
 
@@ -63,11 +63,7 @@ fun VoiceMessagePlayer(
 
     DisposableEffect(content) {
         onDispose {
-            if (isVoiceMessage(content)) {
-                com.example.utils.VoiceSynthPlayer.stop()
-            } else {
-                com.example.utils.RealAudioPlayer.stop()
-            }
+            com.example.utils.RealAudioPlayer.stop()
         }
     }
 
@@ -133,57 +129,34 @@ fun VoiceMessagePlayer(
                 // Play / Pause Circle Button
                 IconButton(
                     onClick = {
-                        val isRealAudio = !isVoiceMessage(content)
+                        val audioSource = voiceData.audioUrl ?: content
                         if (isPlaying) {
-                            if (isRealAudio) {
-                                com.example.utils.RealAudioPlayer.pause()
-                            } else {
-                                com.example.utils.VoiceSynthPlayer.stop()
-                            }
+                            com.example.utils.RealAudioPlayer.pause()
                             isPlaying = false
                         } else {
                             isPlaying = true
-                            if (isRealAudio) {
-                                com.example.utils.RealAudioPlayer.setPlaybackSpeed(playbackSpeed)
-                                com.example.utils.RealAudioPlayer.play(
-                                    url = content,
-                                    listener = object : com.example.utils.RealAudioPlayer.PlaybackListener {
-                                        override fun onProgress(p: Float, currentMs: Int, durationMs: Int) {
-                                            progress = p
-                                            if (durationMs > 0) {
-                                                currentDurationMs = durationMs
-                                            }
+                            com.example.utils.RealAudioPlayer.setPlaybackSpeed(playbackSpeed)
+                            com.example.utils.RealAudioPlayer.play(
+                                url = audioSource,
+                                listener = object : com.example.utils.RealAudioPlayer.PlaybackListener {
+                                    override fun onProgress(p: Float, currentMs: Int, durationMs: Int) {
+                                        progress = p
+                                        if (durationMs > 0) {
+                                            currentDurationMs = durationMs
                                         }
-                                        override fun onFinished() {
-                                            isPlaying = false
-                                            progress = 0f
-                                        }
-                                        override fun onError(error: String) {
-                                            Log.w("VoiceMessagePlayer", "RealAudioPlayer failed, falling back to VoiceSynthPlayer")
-                                            com.example.utils.VoiceSynthPlayer.play(
-                                                amplitudes = voiceData.amplitudes,
-                                                durationSeconds = voiceData.durationSeconds,
-                                                onProgress = { p -> progress = p },
-                                                onFinished = {
-                                                    isPlaying = false
-                                                    progress = 0f
-                                                }
-                                            )
-                                        }
-                                    },
-                                    context = context
-                                )
-                            } else {
-                                com.example.utils.VoiceSynthPlayer.play(
-                                    amplitudes = voiceData.amplitudes,
-                                    durationSeconds = voiceData.durationSeconds,
-                                    onProgress = { p -> progress = p },
-                                    onFinished = {
+                                    }
+                                    override fun onFinished() {
                                         isPlaying = false
                                         progress = 0f
                                     }
-                                )
-                            }
+                                    override fun onError(error: String) {
+                                        Log.w("VoiceMessagePlayer", "RealAudioPlayer playback issue: $error")
+                                        isPlaying = false
+                                        progress = 0f
+                                    }
+                                },
+                                context = context
+                            )
                         }
                     },
                     modifier = Modifier
@@ -209,9 +182,7 @@ fun VoiceMessagePlayer(
                             detectTapGestures { offset ->
                                 val tapRatio = (offset.x / size.width).coerceIn(0f, 1f)
                                 progress = tapRatio
-                                if (!isVoiceMessage(content)) {
-                                    com.example.utils.RealAudioPlayer.seekTo(tapRatio)
-                                }
+                                com.example.utils.RealAudioPlayer.seekTo(tapRatio)
                             }
                         },
                     contentAlignment = Alignment.Center
@@ -720,7 +691,9 @@ fun VoiceRecorderUI(
                         }
                         val ampsString = finalAmps.map { String.format(java.util.Locale.US, "%.2f", it) }.joinToString(",")
                         val finalDuration = if (durationSeconds == 0) 2 else durationSeconds
-                        val voiceMarkdown = "[Voice Message](voice://duration=$finalDuration&amplitudes=$ampsString)"
+                        val audioPath = file?.absolutePath ?: ""
+                        val encodedPath = java.net.URLEncoder.encode(audioPath, "UTF-8")
+                        val voiceMarkdown = "[Voice Message](voice://url=$encodedPath&duration=$finalDuration&amplitudes=$ampsString)"
 
                         if (onSendVoice != null) {
                             onSendVoice(voiceMarkdown)
@@ -756,7 +729,12 @@ fun isVoiceMessage(content: String): Boolean {
     return trimmed.startsWith("[Voice Message]") || trimmed.startsWith("voice://") || trimmed.contains("voice://")
 }
 
-data class VoiceMessageData(val durationSeconds: Int, val amplitudes: List<Float>, val transcription: String?)
+data class VoiceMessageData(
+    val durationSeconds: Int,
+    val amplitudes: List<Float>,
+    val audioUrl: String? = null,
+    val transcription: String? = null
+)
 
 fun parseVoiceMessage(content: String): VoiceMessageData? {
     if (!isVoiceMessage(content)) return null
@@ -773,13 +751,15 @@ fun parseVoiceMessage(content: String): VoiceMessageData? {
         val duration = params["duration"]?.toIntOrNull() ?: 5
         val ampsString = params["amplitudes"] ?: ""
         val amplitudes = ampsString.split(",").mapNotNull { it.toFloatOrNull() }
+        val audioUrl = params["url"]?.let { java.net.URLDecoder.decode(it, "UTF-8") }
         val transcription = params["transcription"]?.let { java.net.URLDecoder.decode(it, "UTF-8") }
         VoiceMessageData(
             durationSeconds = duration,
             amplitudes = if (amplitudes.isEmpty()) List(20) { 0.4f } else amplitudes,
+            audioUrl = audioUrl,
             transcription = transcription
         )
     } catch (e: Exception) {
-        VoiceMessageData(5, List(20) { 0.4f }, null)
+        VoiceMessageData(5, List(20) { 0.4f }, null, null)
     }
 }
