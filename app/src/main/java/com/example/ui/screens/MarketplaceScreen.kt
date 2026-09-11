@@ -52,6 +52,7 @@ fun MarketplaceScreen(navController: NavController) {
             AndroidView(
                 factory = { context ->
                     WebView(context).apply {
+                        setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.useWideViewPort = true
@@ -59,6 +60,16 @@ fun MarketplaceScreen(navController: NavController) {
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                                 return false
+                            }
+
+                            override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                                try {
+                                    (view?.parent as? android.view.ViewGroup)?.removeView(view)
+                                    view?.destroy()
+                                } catch (e: Exception) {
+                                    // ignore
+                                }
+                                return true
                             }
                         }
                         webChromeClient = WebChromeClient()

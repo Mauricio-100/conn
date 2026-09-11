@@ -89,18 +89,60 @@ object TrendingTopicsService {
             category = TrendingCategory.AI,
             snippet = "Les balises de code Markdown permettent une séparation stricte entre explications et code exécutable dans les interfaces de chat IA.",
             tags = listOf("#PromptEngineering", "#LLM", "#DevTools"),
-            isHot = false
+            isHot = false,
+            keyTakeaways = listOf(
+                "🎯 Séparation nette entre code et texte explicatif",
+                "⚡ Amélioration de 30% de la fidélité de restitution syntaxique",
+                "💡 Format universel interopérable avec tous les éditeurs"
+            ),
+            readTimeMin = 3
+        ),
+        TrendingTopic(
+            id = "trend_7",
+            title = "Cybersécurité : L'ANSSI publie son guide sur la protection des communications chiffrées et la souveraineté numérique",
+            source = "Google Actualités • ZDNet",
+            link = "https://news.google.com/search?q=Cybersecurite+ANSSI+chiffrement",
+            pubDateFormatted = "Il y a 2 h",
+            category = TrendingCategory.CYBER,
+            snippet = "Recommandations techniques pour sécuriser les messageries instantanées, éviter les fuites de métadonnées et adopter la cryptographie post-quantique.",
+            tags = listOf("#Cyber", "#Sécurité", "#Chiffrement", "#Privacy"),
+            isHot = true,
+            keyTakeaways = listOf(
+                "🎯 Renforcement du chiffrement de bout en bout",
+                "⚡ Audit des dépendances open-source et bibliothèques tierces",
+                "💡 Protection proactive contre les attaques de type phishing et exfiltration"
+            ),
+            readTimeMin = 4
+        ),
+        TrendingTopic(
+            id = "trend_8",
+            title = "Sciences & Espace : Le télescope James Webb détecte de nouvelles signatures d'exoplanètes habitables",
+            source = "Google Actualités • Sciences & Avenir",
+            link = "https://news.google.com/search?q=James+Webb+NASA+exoplanetes",
+            pubDateFormatted = "Il y a 4 h",
+            category = TrendingCategory.SCIENCE,
+            snippet = "L'analyse spectrale révèle des molécules d'eau et de méthane dans l'atmosphère de plusieurs super-Terres situées dans la zone habitable de leur étoile.",
+            tags = listOf("#Espace", "#Science", "#NASA", "#JamesWebb"),
+            isHot = false,
+            keyTakeaways = listOf(
+                "🎯 Première détection spectrale à haute résolution",
+                "⚡ Données ouvertes traitées par des modèles d'IA astronomiques",
+                "💡 Prochaines campagnes d'observation programmées fin 2026"
+            ),
+            readTimeMin = 5
         )
     )
 
     suspend fun fetchTrendingTopics(category: TrendingCategory = TrendingCategory.ALL): List<TrendingTopic> = withContext(Dispatchers.IO) {
         try {
             val queryParam = when (category) {
-                TrendingCategory.ALL -> "Intelligence Artificielle OR Markdown OR \"tech\" OR programmation"
-                TrendingCategory.AI -> "Intelligence Artificielle OR LLM OR Gemini OR Claude OR ChatGPT"
+                TrendingCategory.ALL -> "Intelligence Artificielle OR Markdown OR tech OR programmation OR Android"
+                TrendingCategory.AI -> "Intelligence Artificielle OR LLM OR Gemini OR Claude OR ChatGPT OR Mistral"
+                TrendingCategory.DEV -> "programmation OR \"open source\" OR developpeur OR Kotlin OR Python"
                 TrendingCategory.MARKDOWN -> "Markdown OR documentation OR Obsidian OR Notion OR GitHub"
-                TrendingCategory.DEV -> "programmation OR \"open source\" OR developpeur OR Kotlin"
                 TrendingCategory.OPEN_SOURCE -> "\"open source\" OR GitHub OR Linux OR \"logiciel libre\""
+                TrendingCategory.CYBER -> "cybersecurite OR piratage OR vulnerabilite OR chiffrement OR privacy"
+                TrendingCategory.SCIENCE -> "espace OR science OR NASA OR robotique OR quantique"
             }
 
             val encodedQuery = URLEncoder.encode(queryParam, "UTF-8")
@@ -132,6 +174,40 @@ object TrendingTopicsService {
         } catch (e: Exception) {
             Log.w(TAG, "Error fetching trending topics: ${e.message}")
             return@withContext filterCurated(category)
+        }
+    }
+
+    suspend fun searchGoogleNews(query: String, category: TrendingCategory = TrendingCategory.ALL): List<TrendingTopic> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) {
+            return@withContext fetchTrendingTopics(category)
+        }
+        try {
+            val encodedQuery = URLEncoder.encode(query.trim(), "UTF-8")
+            val url = "https://news.google.com/rss/search?q=$encodedQuery&hl=fr&gl=FR&ceid=FR:fr"
+
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36")
+                .header("Accept", "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8")
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                val xmlBody = response.body?.string()
+                if (!xmlBody.isNullOrBlank()) {
+                    val parsed = parseGoogleNewsRss(xmlBody, category)
+                    if (parsed.isNotEmpty()) return@withContext parsed
+                }
+            }
+
+            defaultCuratedTopics.filter {
+                it.title.contains(query, ignoreCase = true) || 
+                (it.snippet?.contains(query, ignoreCase = true) == true) ||
+                it.tags.any { tag -> tag.contains(query, ignoreCase = true) }
+            }.ifEmpty { filterCurated(category) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Search Google News error: ${e.message}")
+            filterCurated(category)
         }
     }
 
@@ -185,12 +261,17 @@ object TrendingTopicsService {
                             if (!currentTitle.isNullOrBlank()) {
                                 val (cleanTitle, extractedSource) = sanitizeTitleAndSource(currentTitle, currentSource)
                                 val cleanSnippet = sanitizeSnippet(currentDescription)
+                                val imageUrl = extractImageUrl(currentDescription)
                                 val relativeDate = formatPubDate(currentPubDate)
                                 val tags = generateTagsForTitle(cleanTitle, category)
+                                val keyPoints = generateKeyTakeaways(cleanTitle, cleanSnippet)
+                                val readTime = ((cleanTitle.length + (cleanSnippet?.length ?: 0)) / 120).coerceIn(2, 5)
 
                                 val itemCategory = when {
                                     cleanTitle.contains("markdown", ignoreCase = true) || cleanTitle.contains("obsidian", ignoreCase = true) || cleanTitle.contains("notion", ignoreCase = true) -> TrendingCategory.MARKDOWN
                                     cleanTitle.contains("ia", ignoreCase = true) || cleanTitle.contains("gemini", ignoreCase = true) || cleanTitle.contains("gpt", ignoreCase = true) || cleanTitle.contains("llm", ignoreCase = true) || cleanTitle.contains("intelligence", ignoreCase = true) -> TrendingCategory.AI
+                                    cleanTitle.contains("cyber", ignoreCase = true) || cleanTitle.contains("securite", ignoreCase = true) || cleanTitle.contains("pirat", ignoreCase = true) -> TrendingCategory.CYBER
+                                    cleanTitle.contains("espace", ignoreCase = true) || cleanTitle.contains("science", ignoreCase = true) || cleanTitle.contains("nasa", ignoreCase = true) -> TrendingCategory.SCIENCE
                                     cleanTitle.contains("open source", ignoreCase = true) || cleanTitle.contains("github", ignoreCase = true) || cleanTitle.contains("linux", ignoreCase = true) -> TrendingCategory.OPEN_SOURCE
                                     else -> if (category != TrendingCategory.ALL) category else TrendingCategory.DEV
                                 }
@@ -205,7 +286,10 @@ object TrendingTopicsService {
                                         category = itemCategory,
                                         snippet = cleanSnippet,
                                         tags = tags,
-                                        isHot = topics.isEmpty() || topics.size == 1
+                                        isHot = topics.size < 2,
+                                        imageUrl = imageUrl,
+                                        keyTakeaways = keyPoints,
+                                        readTimeMin = readTime
                                     )
                                 )
                             }
@@ -217,7 +301,33 @@ object TrendingTopicsService {
         } catch (e: Exception) {
             Log.e(TAG, "XML parsing error: ${e.message}")
         }
-        return topics.take(12)
+        return topics.take(25)
+    }
+
+    private fun extractImageUrl(rawDescription: String?): String? {
+        if (rawDescription.isNullOrBlank()) return null
+        val match = Regex("""<img[^>]+src=["']([^"']+)["']""").find(rawDescription)
+        return match?.groupValues?.getOrNull(1)
+    }
+
+    private fun generateKeyTakeaways(title: String, snippet: String?): List<String> {
+        val takeaways = mutableListOf<String>()
+        takeaways.add("🎯 $title")
+        if (!snippet.isNullOrBlank()) {
+            val sentences = snippet.split(Regex("[.!?]\\s+")).filter { it.isNotBlank() }
+            if (sentences.isNotEmpty()) {
+                takeaways.add("⚡ " + sentences.first().trim().removeSuffix(".") + ".")
+            }
+            if (sentences.size > 1) {
+                takeaways.add("💡 " + sentences[1].trim().removeSuffix(".") + ".")
+            } else {
+                takeaways.add("🌐 Répercussions directes sur l'écosystème numérique et les technologies émergentes.")
+            }
+        } else {
+            takeaways.add("⚡ Sujet majeur en une sur Google Actualités générant de vives discussions.")
+            takeaways.add("💡 Débat ouvert aux contributeurs et analystes de la communauté IDDET.")
+        }
+        return takeaways.take(3)
     }
 
     private fun sanitizeTitleAndSource(rawTitle: String, sourceTag: String?): Pair<String, String> {
@@ -229,7 +339,7 @@ object TrendingTopicsService {
             val sourceFinal = if (!sourceTag.isNullOrBlank()) sourceTag else sourcePart
             return Pair(titlePart, "Google Actualités • $sourceFinal")
         }
-        val sourceFinal = if (!sourceTag.isNullOrBlank()) sourceTag else "Google Recherche & News"
+        val sourceFinal = if (!sourceTag.isNullOrBlank()) sourceTag else "Google Actualités"
         return Pair(decoded, "Google Actualités • $sourceFinal")
     }
 
@@ -237,7 +347,7 @@ object TrendingTopicsService {
         if (rawSnippet.isNullOrBlank()) return null
         val decoded = Html.fromHtml(rawSnippet, Html.FROM_HTML_MODE_LEGACY).toString().trim()
         val cleaned = decoded.replace(Regex("<.*?>"), "").replace("\n", " ").trim()
-        return if (cleaned.length > 180) cleaned.substring(0, 180) + "..." else cleaned
+        return if (cleaned.length > 220) cleaned.substring(0, 220) + "..." else cleaned
     }
 
     private fun formatPubDate(rawDate: String?): String {
@@ -269,11 +379,13 @@ object TrendingTopicsService {
         if (lower.contains("markdown") || lower.contains(".md")) tags.add("#Markdown")
         if (lower.contains("gemini") || lower.contains("google")) tags.add("#Google")
         if (lower.contains("ia") || lower.contains("intelligence") || lower.contains("ai")) tags.add("#IA")
-        if (lower.contains("llm") || lower.contains("gpt") || lower.contains("claude")) tags.add("#LLM")
+        if (lower.contains("llm") || lower.contains("gpt") || lower.contains("claude") || lower.contains("mistral")) tags.add("#LLM")
         if (lower.contains("github")) tags.add("#GitHub")
         if (lower.contains("open source")) tags.add("#OpenSource")
         if (lower.contains("kotlin") || lower.contains("android")) tags.add("#Kotlin")
         if (lower.contains("code") || lower.contains("dev") || lower.contains("developp")) tags.add("#Dev")
+        if (lower.contains("cyber") || lower.contains("pirat") || lower.contains("securite")) tags.add("#Cybersécurité")
+        if (lower.contains("espace") || lower.contains("nasa") || lower.contains("science")) tags.add("#Sciences")
 
         if (tags.isEmpty()) {
             when (category) {
@@ -281,7 +393,9 @@ object TrendingTopicsService {
                 TrendingCategory.MARKDOWN -> tags.addAll(listOf("#Markdown", "#Docs"))
                 TrendingCategory.DEV -> tags.addAll(listOf("#Dev", "#Tech"))
                 TrendingCategory.OPEN_SOURCE -> tags.addAll(listOf("#OpenSource", "#Dev"))
-                TrendingCategory.ALL -> tags.addAll(listOf("#Tech", "#Tendance"))
+                TrendingCategory.CYBER -> tags.addAll(listOf("#Cybersécurité", "#Privacy"))
+                TrendingCategory.SCIENCE -> tags.addAll(listOf("#Sciences", "#Espace"))
+                TrendingCategory.ALL -> tags.addAll(listOf("#Tech", "#GoogleNews"))
             }
         }
         return tags.distinct().take(4)

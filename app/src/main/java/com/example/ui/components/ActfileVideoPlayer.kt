@@ -48,82 +48,21 @@ fun ActfileVideoPlayer(
 
     Surface(
         modifier = modifier
-            .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .testTag("actfile_video_player"),
         color = Color.Black,
-        shape = RoundedCornerShape(14.dp),
-        shadowElevation = 2.dp
+        shape = RoundedCornerShape(14.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // Header platform indicator
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF141414))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = when (videoInfo.type) {
-                            VideoUrlHelper.VideoType.YOUTUBE -> Icons.Default.PlayCircle
-                            VideoUrlHelper.VideoType.TIKTOK -> Icons.Default.MusicNote
-                            VideoUrlHelper.VideoType.INSTAGRAM -> Icons.Default.CameraAlt
-                            VideoUrlHelper.VideoType.DIRECT_FILE -> Icons.Default.Movie
-                            else -> Icons.Default.Videocam
-                        },
-                        contentDescription = "Platform",
-                        tint = when (videoInfo.type) {
-                            VideoUrlHelper.VideoType.YOUTUBE -> Color(0xFFFF0000)
-                            VideoUrlHelper.VideoType.TIKTOK -> Color(0xFF00F2FE)
-                            VideoUrlHelper.VideoType.INSTAGRAM -> Color(0xFFE1306C)
-                            VideoUrlHelper.VideoType.DIRECT_FILE -> Color(0xFF4CAF50)
-                            else -> MaterialTheme.colorScheme.primary
-                        },
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = when (videoInfo.type) {
-                            VideoUrlHelper.VideoType.YOUTUBE -> "YouTube Video"
-                            VideoUrlHelper.VideoType.TIKTOK -> "TikTok Video"
-                            VideoUrlHelper.VideoType.INSTAGRAM -> "Instagram Reel"
-                            VideoUrlHelper.VideoType.DIRECT_FILE -> if (videoUrl.lowercase().contains("github")) "GitHub Video" else "Vidéo Actfile"
-                            else -> "Vidéo Web"
-                        },
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White
-                    )
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            when (videoInfo.type) {
+                VideoUrlHelper.VideoType.DIRECT_FILE -> {
+                    DirectVideoView(videoUrl = videoInfo.originalUrl)
                 }
-
-                if (!title.isNullOrBlank()) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.LightGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            // Video Player view depending on type
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 220.dp, max = 340.dp)
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
-                when (videoInfo.type) {
-                    VideoUrlHelper.VideoType.DIRECT_FILE -> {
-                        DirectVideoView(videoUrl = videoInfo.originalUrl)
-                    }
-                    else -> {
-                        EmbeddedWebVideoView(videoInfo = videoInfo)
-                    }
+                else -> {
+                    EmbeddedWebVideoView(videoInfo = videoInfo)
                 }
             }
         }
@@ -136,35 +75,67 @@ private fun DirectVideoView(videoUrl: String) {
     var isPlaying by remember { mutableStateOf(false) }
     var isMuted by remember { mutableStateOf(false) }
     var mediaPlayerInstance by remember { mutableStateOf<MediaPlayer?>(null) }
+    var videoViewInstance by remember { mutableStateOf<VideoView?>(null) }
     var isError by remember { mutableStateOf(false) }
+    var currentPositionMs by remember { mutableStateOf(0) }
+    var durationMs by remember { mutableStateOf(0) }
+    var isSeeking by remember { mutableStateOf(false) }
+    var sliderPosition by remember { mutableStateOf(0f) }
+    var showControls by remember { mutableStateOf(true) }
+
+    // Periodic progress ticker
+    LaunchedEffect(isPlaying, isSeeking) {
+        while (isPlaying && !isSeeking) {
+            videoViewInstance?.let { vv ->
+                if (vv.isPlaying) {
+                    currentPositionMs = vv.currentPosition
+                    durationMs = vv.duration.coerceAtLeast(1)
+                }
+            }
+            kotlinx.coroutines.delay(250)
+        }
+    }
+
+    // Auto-hide controls after 3.5 seconds if playing
+    LaunchedEffect(showControls, isPlaying) {
+        if (showControls && isPlaying && !isSeeking) {
+            kotlinx.coroutines.delay(3500)
+            showControls = false
+        }
+    }
+
+    fun formatTime(millis: Int): String {
+        val totalSec = (millis / 1000).coerceAtLeast(0)
+        val minutes = totalSec / 60
+        val seconds = totalSec % 60
+        return String.format("%d:%02d", minutes, seconds)
+    }
 
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(240.dp)
-            .background(Color.Black),
+            .fillMaxSize()
+            .background(Color.Black)
+            .clickable { showControls = !showControls },
         contentAlignment = Alignment.Center
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 VideoView(ctx).apply {
+                    videoViewInstance = this
                     layoutParams = FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     setVideoURI(Uri.parse(videoUrl))
-                    
-                    val controller = MediaController(ctx)
-                    controller.setAnchorView(this)
-                    setMediaController(controller)
 
                     setOnPreparedListener { mp ->
                         mediaPlayerInstance = mp
                         mp.isLooping = true
-                        mp.setVolume(1.0f, 1.0f) // Audio turned ON loud & clear
+                        mp.setVolume(if (isMuted) 0f else 1.0f, if (isMuted) 0f else 1.0f)
                         start()
                         isPlaying = true
+                        durationMs = duration.coerceAtLeast(1)
                     }
 
                     setOnErrorListener { _, _, _ ->
@@ -174,40 +145,137 @@ private fun DirectVideoView(videoUrl: String) {
                 }
             },
             update = { view ->
-                if (!view.isPlaying && isPlaying) {
-                    view.start()
-                }
+                videoViewInstance = view
             }
         )
 
-        // Overlay audio mute toggle button
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
+        // Minimal Controls Overlay
+        AnimatedVisibility(
+            visible = showControls || !isPlaying,
+            enter = fadeIn(androidx.compose.animation.core.tween(200)),
+            exit = fadeOut(androidx.compose.animation.core.tween(300)),
+            modifier = Modifier.fillMaxSize()
         ) {
-            IconButton(
-                onClick = {
-                    isMuted = !isMuted
-                    mediaPlayerInstance?.let { mp ->
-                        if (isMuted) {
-                            mp.setVolume(0f, 0f)
-                        } else {
-                            mp.setVolume(1.0f, 1.0f)
-                        }
-                    }
-                },
+            Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.6f))
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.35f))
             ) {
-                Icon(
-                    imageVector = if (isMuted) Icons.Outlined.VolumeOff else Icons.Outlined.VolumeUp,
-                    contentDescription = "Toggle Mute",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
+                // Top controls (Mute / Unmute)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    IconButton(
+                        onClick = {
+                            isMuted = !isMuted
+                            mediaPlayerInstance?.let { mp ->
+                                if (isMuted) {
+                                    mp.setVolume(0f, 0f)
+                                } else {
+                                    mp.setVolume(1.0f, 1.0f)
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.6f))
+                            .testTag("video_mute_btn")
+                    ) {
+                        Icon(
+                            imageVector = if (isMuted) Icons.Outlined.VolumeOff else Icons.Outlined.VolumeUp,
+                            contentDescription = if (isMuted) "Activer le son" else "Couper le son",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                // Center Play / Pause Button
+                IconButton(
+                    onClick = {
+                        videoViewInstance?.let { vv ->
+                            if (vv.isPlaying) {
+                                vv.pause()
+                                isPlaying = false
+                            } else {
+                                vv.start()
+                                isPlaying = true
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .size(56.dp)
+                        .align(Alignment.Center)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .testTag("video_play_pause_btn")
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Lire",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                // Bottom Timeline Slider & Timestamps
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    val currentFraction = if (durationMs > 0) {
+                        if (isSeeking) sliderPosition else (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                    } else 0f
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = formatTime(if (isSeeking) (sliderPosition * durationMs).toInt() else currentPositionMs),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = formatTime(durationMs),
+                            color = Color.White.copy(alpha = 0.8f),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    Slider(
+                        value = currentFraction,
+                        onValueChange = { newPos ->
+                            isSeeking = true
+                            sliderPosition = newPos
+                        },
+                        onValueChangeFinished = {
+                            val seekToMs = (sliderPosition * durationMs).toInt()
+                            videoViewInstance?.seekTo(seekToMs)
+                            currentPositionMs = seekToMs
+                            isSeeking = false
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(24.dp)
+                            .testTag("video_timeline_slider"),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                        )
+                    )
+                }
             }
         }
 
@@ -327,6 +395,7 @@ private fun EmbeddedWebVideoView(videoInfo: VideoUrlHelper.VideoInfo) {
             .height(260.dp),
         factory = { ctx ->
             WebView(ctx).apply {
+                setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -340,10 +409,15 @@ private fun EmbeddedWebVideoView(videoInfo: VideoUrlHelper.VideoInfo) {
                     useWideViewPort = true
                     loadWithOverviewMode = true
                 }
-                setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                 webChromeClient = WebChromeClient()
                 webViewClient = object : WebViewClient() {
                     override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                        try {
+                            (view?.parent as? android.view.ViewGroup)?.removeView(view)
+                            view?.destroy()
+                        } catch (e: Exception) {
+                            // ignore
+                        }
                         return true
                     }
                 }

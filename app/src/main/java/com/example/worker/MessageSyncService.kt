@@ -48,7 +48,8 @@ class MessageSyncService : Service() {
             val notification: Notification = NotificationCompat.Builder(this, channelId)
                 .setContentTitle("IDDET")
                 .setContentText("Écoute des messages en arrière-plan...")
-                .setSmallIcon(R.drawable.ic_cat_logo)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(0xFFDC2626.toInt())
                 .setPriority(NotificationCompat.PRIORITY_MIN)
                 .build()
 

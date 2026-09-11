@@ -92,8 +92,11 @@ class PushNotificationReceiver : BroadcastReceiver() {
         val notificationId = System.currentTimeMillis().hashCode()
         val pendingIntent = PendingIntent.getActivity(context, notificationId, intent, flags)
 
+        val appLogo = com.example.utils.HideItProManager.getNotificationLargeIconBitmap(context)
+
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(appLogo)
             .setContentTitle(title)
             .setContentText(message)
             .setAutoCancel(true)

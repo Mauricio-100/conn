@@ -118,13 +118,9 @@ fun MainScreen(viewModel: IddetViewModel) {
                             .padding(horizontal = 20.dp, vertical = 18.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Image(
-                            painter = painterResource(id = com.example.R.drawable.ic_cat_logo),
-                            contentDescription = "IDDET Logo",
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Crop
+                        com.example.ui.components.AppDynamicLogo(
+                            size = 46.dp,
+                            showGlow = true
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
@@ -544,7 +540,9 @@ fun MainScreen(viewModel: IddetViewModel) {
 
                     // Drawer menu list
                     val drawerItems = listOf(
+                        Triple("Google Actualités 📰", "google_news", Icons.Outlined.Newspaper),
                         Triple("Iddet Plus VIP ✨", "iddet_plus", Icons.Outlined.Star),
+                        Triple("Hide It Pro Studio 🐱", "hide_it_pro", Icons.Outlined.VisibilityOff),
                         Triple("Radar des Potes 🗺️", "friends_map", Icons.Outlined.Place),
                         Triple("Rechercher", "search", Icons.Outlined.Search),
                         Triple("Discussions", "messages", Icons.Outlined.Message),
@@ -747,6 +745,16 @@ fun MainScreen(viewModel: IddetViewModel) {
                 composable("settings") { SettingsScreen(viewModel, navController) }
                 composable("marketplace") { MarketplaceScreen(navController) }
                 composable("iddet_plus") { IddetPlusScreen(viewModel, navController) }
+                composable("hide_it_pro") { HideItProScreen(navController) }
+                composable(
+                    "google_news",
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) }
+                ) {
+                    GoogleNewsScreen(viewModel, navController)
+                }
                 composable(
                     "browser/{url}",
                     arguments = listOf(navArgument("url") { type = NavType.StringType }),

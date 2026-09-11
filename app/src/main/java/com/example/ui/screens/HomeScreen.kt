@@ -186,13 +186,9 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Start
                     ) {
-                        Image(
-                            painter = painterResource(id = com.example.R.drawable.ic_cat_logo),
-                            contentDescription = "IDDET Logo",
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Crop
+                        com.example.ui.components.AppDynamicLogo(
+                            size = 32.dp,
+                            showGlow = false
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("IDDET", fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
@@ -367,6 +363,9 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                                 """.trimMargin().trim()
                                 viewModel.setComposerInitialContent(debateDocument)
                                 viewModel.setShowComposer(true)
+                            },
+                            onOpenGoogleNewsHub = {
+                                navController.navigate("google_news")
                             }
                         )
                     }

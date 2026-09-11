@@ -301,7 +301,11 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
     }
 
     fun refreshTrendingTopics() {
-        loadTrendingTopics(_selectedTrendingCategory.value)
+        if (_newsSearchQuery.value.isNotBlank()) {
+            searchGoogleNewsQuery(_newsSearchQuery.value, _selectedTrendingCategory.value)
+        } else {
+            loadTrendingTopics(_selectedTrendingCategory.value)
+        }
     }
 
     fun loadTrendingTopics(category: com.example.data.TrendingCategory = _selectedTrendingCategory.value) {
@@ -318,14 +322,131 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
         }
     }
 
+    // Google News Bookmarks & Live Search
+    private val _bookmarkedNews = MutableStateFlow<List<com.example.data.TrendingTopic>>(emptyList())
+    val bookmarkedNews: StateFlow<List<com.example.data.TrendingTopic>> = _bookmarkedNews.asStateFlow()
+
+    private val _newsSearchQuery = MutableStateFlow("")
+    val newsSearchQuery: StateFlow<String> = _newsSearchQuery.asStateFlow()
+
+    fun setNewsSearchQuery(query: String) {
+        _newsSearchQuery.value = query
+    }
+
+    fun isNewsBookmarked(topicId: String): Boolean {
+        return _bookmarkedNews.value.any { it.id == topicId }
+    }
+
+    fun initBookmarkedNews(context: android.content.Context) {
+        try {
+            val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+            val jsonStr = prefs.getString("saved_google_news", null) ?: return
+            val jsonArray = org.json.JSONArray(jsonStr)
+            val list = mutableListOf<com.example.data.TrendingTopic>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val catName = obj.optString("category", "ALL")
+                val cat = try { com.example.data.TrendingCategory.valueOf(catName) } catch (e: Exception) { com.example.data.TrendingCategory.ALL }
+                val takeaways = mutableListOf<String>()
+                val arr = obj.optJSONArray("keyTakeaways")
+                if (arr != null) {
+                    for (j in 0 until arr.length()) takeaways.add(arr.getString(j))
+                }
+                val tagsList = mutableListOf<String>()
+                val tagsArr = obj.optJSONArray("tags")
+                if (tagsArr != null) {
+                    for (j in 0 until tagsArr.length()) tagsList.add(tagsArr.getString(j))
+                }
+                list.add(
+                    com.example.data.TrendingTopic(
+                        id = obj.getString("id"),
+                        title = obj.getString("title"),
+                        source = obj.optString("source", "Google Actualités"),
+                        link = obj.optString("link", "https://news.google.com"),
+                        pubDateFormatted = obj.optString("pubDateFormatted", "Récemment"),
+                        category = cat,
+                        snippet = if (obj.has("snippet")) obj.optString("snippet") else null,
+                        tags = tagsList,
+                        isHot = obj.optBoolean("isHot", false),
+                        imageUrl = if (obj.has("imageUrl")) obj.optString("imageUrl") else null,
+                        keyTakeaways = takeaways,
+                        readTimeMin = obj.optInt("readTimeMin", 3),
+                        isBookmarked = true
+                    )
+                )
+            }
+            _bookmarkedNews.value = list
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun toggleBookmarkNews(topic: com.example.data.TrendingTopic, context: android.content.Context) {
+        val current = _bookmarkedNews.value.toMutableList()
+        val index = current.indexOfFirst { it.id == topic.id }
+        if (index >= 0) {
+            current.removeAt(index)
+        } else {
+            current.add(0, topic.copy(isBookmarked = true))
+        }
+        _bookmarkedNews.value = current
+
+        try {
+            val prefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+            val jsonArray = org.json.JSONArray()
+            for (item in current) {
+                val obj = org.json.JSONObject().apply {
+                    put("id", item.id)
+                    put("title", item.title)
+                    put("source", item.source)
+                    put("link", item.link)
+                    put("pubDateFormatted", item.pubDateFormatted)
+                    put("category", item.category.name)
+                    put("snippet", item.snippet ?: "")
+                    put("imageUrl", item.imageUrl ?: "")
+                    put("isHot", item.isHot)
+                    put("readTimeMin", item.readTimeMin)
+                    val takeawaysArr = org.json.JSONArray()
+                    item.keyTakeaways.forEach { takeawaysArr.put(it) }
+                    put("keyTakeaways", takeawaysArr)
+                    val tagsArr = org.json.JSONArray()
+                    item.tags.forEach { tagsArr.put(it) }
+                    put("tags", tagsArr)
+                }
+                jsonArray.put(obj)
+            }
+            prefs.edit().putString("saved_google_news", jsonArray.toString()).apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun searchGoogleNewsQuery(query: String, category: com.example.data.TrendingCategory = _selectedTrendingCategory.value) {
+        _newsSearchQuery.value = query
+        viewModelScope.launch {
+            _isTrendingLoading.value = true
+            try {
+                val results = com.example.data.TrendingTopicsService.searchGoogleNews(query, category)
+                _trendingTopics.value = results
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isTrendingLoading.value = false
+            }
+        }
+    }
+
     // Friends Live Radar / Real-Time Map & Real GPS Location
     private var realLocationProvider: com.example.data.RealLocationProvider? = null
     private val _realLocation = MutableStateFlow(com.example.data.UserRealLocation())
     val realLocation: StateFlow<com.example.data.UserRealLocation> = _realLocation.asStateFlow()
 
     val friendsLocations = com.example.data.FriendsLocationService.friends
+    val chillSpots = com.example.data.FriendsLocationService.chillSpots
     val isGhostMode = com.example.data.FriendsLocationService.isGhostMode
     val currentUserVibe = com.example.data.FriendsLocationService.currentUserVibe
+    val radarScanRadiusKm = com.example.data.FriendsLocationService.radarScanRadiusKm
+    val lastChillWaveSent = com.example.data.FriendsLocationService.lastChillWaveSent
 
     fun initLocationTracking(context: android.content.Context) {
         if (realLocationProvider == null) {
@@ -353,12 +474,36 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
         com.example.data.FriendsLocationService.setGhostMode(enabled)
     }
 
+    fun setRadarScanRadius(radiusKm: Double) {
+        com.example.data.FriendsLocationService.setRadarScanRadius(radiusKm)
+    }
+
     fun updateUserVibe(emoji: String, text: String, activityType: String) {
         com.example.data.FriendsLocationService.updateVibe(emoji, text, activityType)
     }
 
     fun toggleFavoriteFriend(friendId: String) {
         com.example.data.FriendsLocationService.toggleFavorite(friendId)
+    }
+
+    fun dropChillSpot(title: String, category: String, emoji: String, description: String, userLat: Double, userLng: Double) {
+        com.example.data.FriendsLocationService.dropChillSpot(title, category, emoji, description, userLat, userLng)
+    }
+
+    fun joinChillSpot(spotId: String) {
+        com.example.data.FriendsLocationService.joinChillSpot(spotId)
+    }
+
+    fun sendChillWave(friend: com.example.data.FriendLocation, waveType: com.example.data.ChillWaveType) {
+        com.example.data.FriendsLocationService.sendChillWave(friend, waveType)
+        viewModelScope.launch {
+            _lastWavedFriend.value = friend.displayName
+            kotlinx.coroutines.delay(3500)
+            com.example.data.FriendsLocationService.clearLastChillWave()
+            if (_lastWavedFriend.value == friend.displayName) {
+                _lastWavedFriend.value = null
+            }
+        }
     }
 
     fun sendWaveToFriend(friend: com.example.data.FriendLocation) {

@@ -208,6 +208,62 @@ fun SettingsScreen(viewModel: IddetViewModel, navController: NavController) {
                 }
             }
 
+            // Hide It Pro Studio Section
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable { navController.navigate("hide_it_pro") },
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF0F172A)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    com.example.ui.components.AppDynamicLogo(
+                        size = 40.dp,
+                        showGlow = true
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Hide It Pro Studio",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFEF4444)
+                            ) {
+                                Text(
+                                    text = "NOUVEAU",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "Personnaliser le logo, les couleurs & le camouflage furtif launcher",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = Color(0xFF94A3B8)
+                    )
+                }
+            }
+
 // Notifications & Sonneries Section
             Text(
                 text = "Notifications & Sonneries",

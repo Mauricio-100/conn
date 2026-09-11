@@ -95,12 +95,27 @@ object WebSocketManager : ChatSocketClient {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "WebSocket Failure", t)
+                val is404OrHttpError = response?.code in 400..499 ||
+                        t.message?.contains("404") == true ||
+                        (t is java.net.ProtocolException && t.message?.contains("101") == true)
+
+                if (is404OrHttpError) {
+                    Log.i(TAG, "WebSocket endpoint not available on server (${t.message ?: "HTTP ${response?.code}"}). Falling back to REST mode.")
+                } else {
+                    Log.w(TAG, "WebSocket connection failed: ${t.message}")
+                }
+
                 _connectionState.value = SocketConnectionState.DISCONNECTED
                 coroutineScope.launch {
                     _events.emit(WebSocketEvent.Disconnected)
                 }
-                triggerAutoReconnect()
+
+                if (!is404OrHttpError) {
+                    triggerAutoReconnect()
+                } else {
+                    // Do not spam reconnect if the endpoint does not exist on server
+                    reconnectJob?.cancel()
+                }
             }
         })
     }

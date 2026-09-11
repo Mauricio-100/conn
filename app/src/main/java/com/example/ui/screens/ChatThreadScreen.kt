@@ -101,8 +101,9 @@ fun ChatThreadScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
-            val isVideo = uri.toString().contains("video")
-            viewModel.sendMediaMessage(uri.toString(), isVideo)
+            val mime = context.contentResolver.getType(uri) ?: ""
+            val isVideo = mime.contains("video") || uri.toString().contains("video")
+            viewModel.sendMediaMessage(uri, context, isVideo)
         }
     }
 
@@ -586,6 +587,9 @@ fun ChatThreadScreen(
 
     // Full Screen Image/Video Viewer Dialog
     if (fullScreenImageUrl != null) {
+        val mediaUrl = fullScreenImageUrl!!
+        val isVideo = mediaUrl.contains(".mp4") || mediaUrl.contains(".webm") || mediaUrl.contains("/video/") || mediaUrl.contains("chat_vid_")
+
         Dialog(
             onDismissRequest = { fullScreenImageUrl = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -595,14 +599,21 @@ fun ChatThreadScreen(
                     .fillMaxSize()
                     .background(Color.Black)
             ) {
-                AsyncImage(
-                    model = fullScreenImageUrl,
-                    contentDescription = "Image en plein écran",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    contentScale = ContentScale.Fit
-                )
+                if (isVideo) {
+                    ActfileVideoPlayer(
+                        videoUrl = mediaUrl,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    AsyncImage(
+                        model = mediaUrl,
+                        contentDescription = "Image en plein écran",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
 
                 IconButton(
                     onClick = { fullScreenImageUrl = null },

@@ -46,9 +46,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
-import com.example.data.FriendActivityFilter
-import com.example.data.FriendLocation
+import com.example.data.*
 import com.example.ui.IddetViewModel
+import com.example.ui.components.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -86,12 +86,16 @@ fun FriendsMapScreen(
     val scope = rememberCoroutineScope()
 
     val friends by viewModel.friendsLocations.collectAsStateWithLifecycle()
+    val chillSpots by viewModel.chillSpots.collectAsStateWithLifecycle()
     val isGhostMode by viewModel.isGhostMode.collectAsStateWithLifecycle()
     val currentUserVibe by viewModel.currentUserVibe.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val realLocation by viewModel.realLocation.collectAsStateWithLifecycle()
     val lastWavedFriend by viewModel.lastWavedFriend.collectAsStateWithLifecycle()
+    val radarScanRadiusKm by viewModel.radarScanRadiusKm.collectAsStateWithLifecycle()
+    val lastChillWaveSent by viewModel.lastChillWaveSent.collectAsStateWithLifecycle()
 
+    var radarViewMode by remember { mutableStateOf(RadarViewMode.MAP_VIEW) }
     var selectedFilter by remember { mutableStateOf(FriendActivityFilter.ALL) }
     var selectedFriend by remember { mutableStateOf<FriendLocation?>(null) }
     var currentMapTheme by remember { mutableStateOf(MapTileTheme.SNAP_DARK) }
@@ -100,6 +104,20 @@ fun FriendsMapScreen(
     var wavedFriendName by remember { mutableStateOf("") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var isMapLoaded by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                webViewRef?.stopLoading()
+                webViewRef?.destroy()
+            } catch (_: Exception) {}
+            webViewRef = null
+        }
+    }
+
+    var showChillWaveDialogFor by remember { mutableStateOf<FriendLocation?>(null) }
+    var showDropChillSpotDialog by remember { mutableStateOf(false) }
+    var randomMatchedFriend by remember { mutableStateOf<FriendLocation?>(null) }
 
     // Check location permission state
     var hasLocationPermission by remember {
@@ -145,8 +163,9 @@ fun FriendsMapScreen(
             FriendActivityFilter.ALL -> friends
             FriendActivityFilter.NEARBY -> friends.filter { it.distanceKm <= 2.0 }
             FriendActivityFilter.AVAILABLE -> friends.filter { it.activityTag.contains("Dispo", ignoreCase = true) || it.statusEmoji == "⚡" }
+            FriendActivityFilter.MUSIC_LOUNGE -> friends.filter { it.activityTag.contains("Musique", ignoreCase = true) || it.currentlyPlayingMusic != null }
             FriendActivityFilter.STUDY_DEV -> friends.filter { it.activityTag.contains("Dev", ignoreCase = true) || it.activityTag.contains("Docs", ignoreCase = true) }
-            FriendActivityFilter.GAMING -> friends.filter { it.activityTag.contains("Game", ignoreCase = true) || it.activityTag.contains("Musique", ignoreCase = true) }
+            FriendActivityFilter.GAMING -> friends.filter { it.activityTag.contains("Game", ignoreCase = true) }
         }
     }
 
@@ -205,119 +224,149 @@ fun FriendsMapScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "Snap Map des Potes",
-                                fontWeight = FontWeight.Black,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (realLocation.isRealGpsAcquired) Color(0xFF10B981).copy(alpha = 0.2f) else Color(0xFFF59E0B).copy(alpha = 0.2f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+            Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Radar & Chill IDDET",
+                                    fontWeight = FontWeight.Black,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (realLocation.isRealGpsAcquired) Color(0xFF10B981).copy(alpha = 0.2f) else Color(0xFFF59E0B).copy(alpha = 0.2f)
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .clip(CircleShape)
-                                            .background(if (realLocation.isRealGpsAcquired) Color(0xFF10B981) else Color(0xFFF59E0B))
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (realLocation.isRealGpsAcquired) "GPS Réel Fixé" else "Recherche GPS...",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (realLocation.isRealGpsAcquired) Color(0xFF059669) else Color(0xFFD97706),
-                                        fontSize = 10.sp
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(if (realLocation.isRealGpsAcquired) Color(0xFF10B981) else Color(0xFFF59E0B))
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (realLocation.isRealGpsAcquired) "GPS Fixé" else "Recherche GPS...",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (realLocation.isRealGpsAcquired) Color(0xFF059669) else Color(0xFFD97706),
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = if (isGhostMode) "👻 Mode Fantôme (Masqué)" else "📍 ${realLocation.address}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isGhostMode) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                        }
+                    },
+                    actions = {
+                        // Map Theme Selector Button (only when on Map View)
+                        if (radarViewMode == RadarViewMode.MAP_VIEW) {
+                            IconButton(
+                                onClick = {
+                                    val nextTheme = when (currentMapTheme) {
+                                        MapTileTheme.SNAP_DARK -> MapTileTheme.STREETS
+                                        MapTileTheme.STREETS -> MapTileTheme.SATELLITE
+                                        MapTileTheme.SATELLITE -> MapTileTheme.SNAP_DARK
+                                    }
+                                    currentMapTheme = nextTheme
+                                    Toast.makeText(context, "Carte : ${nextTheme.label}", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(currentMapTheme.icon, fontSize = 16.sp)
+                                    }
                                 }
                             }
                         }
-                        Text(
-                            text = if (isGhostMode) "👻 Mode Fantôme activé (Tu es masqué)" else "📍 ${realLocation.address}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isGhostMode) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
-                    }
-                },
-                actions = {
-                    // Map Theme Selector Button
-                    IconButton(
-                        onClick = {
-                            val nextTheme = when (currentMapTheme) {
-                                MapTileTheme.SNAP_DARK -> MapTileTheme.STREETS
-                                MapTileTheme.STREETS -> MapTileTheme.SATELLITE
-                                MapTileTheme.SATELLITE -> MapTileTheme.SNAP_DARK
-                            }
-                            currentMapTheme = nextTheme
-                            Toast.makeText(context, "Carte : ${nextTheme.label}", Toast.LENGTH_SHORT).show()
-                        }
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(currentMapTheme.icon, fontSize = 16.sp)
-                            }
-                        }
-                    }
 
-                    // Quick Status Vibe Button
-                    IconButton(
-                        onClick = { showVibeEditorDialog = true },
-                        modifier = Modifier.testTag("status_vibe_button")
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(34.dp)
+                        // Quick Status Vibe Button
+                        IconButton(
+                            onClick = { showVibeEditorDialog = true },
+                            modifier = Modifier.testTag("status_vibe_button")
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(currentUserVibe.emoji, fontSize = 16.sp)
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(currentUserVibe.emoji, fontSize = 16.sp)
+                                }
                             }
                         }
-                    }
 
-                    // Ghost Mode Button
-                    IconButton(
-                        onClick = {
-                            val newMode = !isGhostMode
-                            viewModel.setGhostMode(newMode)
-                            Toast.makeText(
-                                context,
-                                if (newMode) "👻 Mode Fantôme : Position masquée aux amis !" else "✨ Tu es de nouveau visible sur la carte !",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        },
-                        modifier = Modifier.testTag("ghost_mode_toggle")
-                    ) {
-                        Icon(
-                            imageVector = if (isGhostMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = "Mode Fantôme",
-                            tint = if (isGhostMode) Color(0xFFF59E0B) else MaterialTheme.colorScheme.primary
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                        // Ghost Mode Button
+                        IconButton(
+                            onClick = {
+                                val newMode = !isGhostMode
+                                viewModel.setGhostMode(newMode)
+                                Toast.makeText(
+                                    context,
+                                    if (newMode) "👻 Mode Fantôme : Position masquée aux amis !" else "✨ Tu es de nouveau visible sur la carte !",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            modifier = Modifier.testTag("ghost_mode_toggle")
+                        ) {
+                            Icon(
+                                imageVector = if (isGhostMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = "Mode Fantôme",
+                                tint = if (isGhostMode) Color(0xFFF59E0B) else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
                 )
-            )
+
+                // Mode Selector Segmented Tabs
+                TabRow(
+                    selectedTabIndex = radarViewMode.ordinal,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    divider = {}
+                ) {
+                    RadarViewMode.values().forEach { mode ->
+                        Tab(
+                            selected = radarViewMode == mode,
+                            onClick = { radarViewMode = mode },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(mode.icon, fontSize = 14.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = mode.title,
+                                        fontWeight = if (radarViewMode == mode) FontWeight.Bold else FontWeight.Normal,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        )
+                    }
+                }
+            }
         }
     ) { innerPadding ->
         Box(
@@ -326,289 +375,405 @@ fun FriendsMapScreen(
                 .padding(innerPadding)
                 .background(Color(0xFF0F172A))
         ) {
-            // Real Interactive Leaflet / OpenStreetMap / CartoDB Map via hardware-accelerated AndroidView WebView
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        layoutParams = android.view.ViewGroup.LayoutParams(
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                        settings.apply {
-                            javaScriptEnabled = true
-                            domStorageEnabled = true
-                            loadWithOverviewMode = true
-                            useWideViewPort = true
-                            cacheMode = WebSettings.LOAD_DEFAULT
-                            builtInZoomControls = false
-                            displayZoomControls = false
-                            allowFileAccess = true
-                            setGeolocationEnabled(true)
-                        }
-                        setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
-                        webViewClient = object : WebViewClient() {
-                            override fun onPageFinished(view: WebView?, url: String?) {
-                                super.onPageFinished(view, url)
-                                isMapLoaded = true
-                            }
+            when (radarViewMode) {
+                RadarViewMode.MAP_VIEW -> {
+                    // Real Interactive Leaflet / OpenStreetMap / CartoDB Map
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
+                                layoutParams = android.view.ViewGroup.LayoutParams(
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                                settings.apply {
+                                    javaScriptEnabled = true
+                                    domStorageEnabled = true
+                                    loadWithOverviewMode = true
+                                    useWideViewPort = true
+                                    cacheMode = WebSettings.LOAD_DEFAULT
+                                    builtInZoomControls = false
+                                    displayZoomControls = false
+                                    allowFileAccess = true
+                                    setGeolocationEnabled(true)
+                                }
+                                webViewClient = object : WebViewClient() {
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        super.onPageFinished(view, url)
+                                        isMapLoaded = true
+                                    }
 
-                            override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
-                                return true
-                            }
-                        }
-                        webChromeClient = WebChromeClient()
-
-                        addJavascriptInterface(object {
-                            @JavascriptInterface
-                            fun onFriendClicked(friendId: String) {
-                                scope.launch {
-                                    val f = friends.find { it.id == friendId }
-                                    if (f != null) {
-                                        selectedFriend = f
+                                    override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                                        try {
+                                            (view?.parent as? android.view.ViewGroup)?.removeView(view)
+                                            view?.destroy()
+                                        } catch (e: Exception) {
+                                            // ignore
+                                        }
+                                        webViewRef = null
+                                        isMapLoaded = false
+                                        return true
                                     }
                                 }
-                            }
+                                webChromeClient = WebChromeClient()
 
-                            @JavascriptInterface
-                            fun onMapClicked() {
-                                scope.launch {
-                                    selectedFriend = null
+                                addJavascriptInterface(object {
+                                    @JavascriptInterface
+                                    fun onFriendClicked(friendId: String) {
+                                        scope.launch {
+                                            val f = friends.find { it.id == friendId }
+                                            if (f != null) {
+                                                selectedFriend = f
+                                            }
+                                        }
+                                    }
+
+                                    @JavascriptInterface
+                                    fun onMapClicked() {
+                                        scope.launch {
+                                            selectedFriend = null
+                                        }
+                                    }
+                                }, "AndroidBridge")
+
+                                loadDataWithBaseURL(
+                                    "https://iddet.local/",
+                                    generateLeafletSnapMapHtml(
+                                        userLat = realLocation.latitude,
+                                        userLng = realLocation.longitude,
+                                        tileUrl = currentMapTheme.url,
+                                        tileAttribution = currentMapTheme.attribution
+                                    ),
+                                    "text/html",
+                                    "UTF-8",
+                                    null
+                                )
+                                webViewRef = this
+                            }
+                        },
+                        update = { webView ->
+                            webViewRef = webView
+                        }
+                    )
+
+                    // Permission Request Prompt if not granted
+                    if (!hasLocationPermission) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                                .align(Alignment.TopCenter),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shadowElevation = 8.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.LocationOff,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Localisation requise",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Text(
+                                        "Active le GPS pour te voir en direct sur la carte avec tes amis.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        permissionLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION
+                                            )
+                                        )
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.error,
+                                        contentColor = MaterialTheme.colorScheme.onError
+                                    ),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("Activer", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 }
                             }
-                        }, "AndroidBridge")
-
-                        loadDataWithBaseURL(
-                            "https://iddet.local/",
-                            generateLeafletSnapMapHtml(
-                                userLat = realLocation.latitude,
-                                userLng = realLocation.longitude,
-                                tileUrl = currentMapTheme.url,
-                                tileAttribution = currentMapTheme.attribution
-                            ),
-                            "text/html",
-                            "UTF-8",
-                            null
-                        )
-                        webViewRef = this
+                        }
                     }
-                },
-                update = { webView ->
-                    webViewRef = webView
-                }
-            )
 
-            // Permission Request Prompt if not granted
-            if (!hasLocationPermission) {
+                    // Top Filter Chips (Snap Categories)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter)
+                            .padding(top = if (!hasLocationPermission) 80.dp else 12.dp)
+                    ) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(FriendActivityFilter.values()) { filter ->
+                                val isSelected = filter == selectedFilter
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { selectedFilter = filter },
+                                    label = {
+                                        Text(
+                                            "${filter.emoji} ${filter.label}",
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            fontSize = 12.sp
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                        containerColor = Color(0xFF0F172A).copy(alpha = 0.85f),
+                                        labelColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = FilterChipDefaults.filterChipBorder(
+                                        enabled = true,
+                                        selected = isSelected,
+                                        borderColor = if (isSelected) Color.Transparent else Color(0xFF334155)
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    // Right-Side Map Action Buttons
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Center on Real User GPS
+                        FloatingActionButton(
+                            onClick = {
+                                webViewRef?.evaluateJavascript(
+                                    "if(window.centerOnUser){ window.centerOnUser(${realLocation.latitude}, ${realLocation.longitude}); }",
+                                    null
+                                )
+                                Toast.makeText(context, "Centré sur ma position GPS 📍", Toast.LENGTH_SHORT).show()
+                            },
+                            containerColor = Color(0xFF0F172A),
+                            contentColor = Color(0xFF38BDF8),
+                            shape = CircleShape,
+                            modifier = Modifier.size(46.dp)
+                        ) {
+                            Icon(Icons.Default.MyLocation, contentDescription = "Ma position", modifier = Modifier.size(22.dp))
+                        }
+
+                        // Zoom In (+)
+                        FloatingActionButton(
+                            onClick = {
+                                webViewRef?.evaluateJavascript("if(window.map){ window.map.zoomIn(); }", null)
+                            },
+                            containerColor = Color(0xFF0F172A),
+                            contentColor = Color.White,
+                            shape = CircleShape,
+                            modifier = Modifier.size(46.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Zoom +", modifier = Modifier.size(22.dp))
+                        }
+
+                        // Zoom Out (-)
+                        FloatingActionButton(
+                            onClick = {
+                                webViewRef?.evaluateJavascript("if(window.map){ window.map.zoomOut(); }", null)
+                            },
+                            containerColor = Color(0xFF0F172A),
+                            contentColor = Color.White,
+                            shape = CircleShape,
+                            modifier = Modifier.size(46.dp)
+                        ) {
+                            Icon(Icons.Default.Remove, contentDescription = "Zoom -", modifier = Modifier.size(22.dp))
+                        }
+
+                        // Real-time GPS Pulse Refresh
+                        FloatingActionButton(
+                            onClick = {
+                                viewModel.refreshFriendsRadar()
+                                viewModel.initLocationTracking(context)
+                                Toast.makeText(context, "📡 Actualisation du radar en direct...", Toast.LENGTH_SHORT).show()
+                            },
+                            containerColor = Color(0xFF0F172A),
+                            contentColor = Color(0xFF10B981),
+                            shape = CircleShape,
+                            modifier = Modifier.size(46.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Actualiser", modifier = Modifier.size(22.dp))
+                        }
+                    }
+
+                    // Bottom Friends Carousel / Selected Friend Bottom Sheet Card
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 16.dp)
+                    ) {
+                        AnimatedContent(
+                            targetState = selectedFriend,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(220)) + slideInVertically { it / 2 } togetherWith
+                                        fadeOut(animationSpec = tween(180)) + slideOutVertically { it / 2 }
+                            },
+                            label = "SelectedFriendCard"
+                        ) { friend ->
+                            if (friend != null) {
+                                SelectedFriendDetailCard(
+                                    friend = friend,
+                                    onClose = {
+                                        selectedFriend = null
+                                    },
+                                    onWave = {
+                                        viewModel.sendWaveToFriend(friend)
+                                    },
+                                    onChillWave = {
+                                        showChillWaveDialogFor = friend
+                                    },
+                                    onChat = {
+                                        navController.navigate("chat/${friend.username}")
+                                    },
+                                    onViewProfile = {
+                                        navController.navigate("profile/${friend.username}")
+                                    },
+                                    onToggleFavorite = {
+                                        viewModel.toggleFavoriteFriend(friend.id)
+                                    }
+                                )
+                            } else {
+                                // Quick Carousel of buddies
+                                FriendsQuickCarousel(
+                                    friends = filteredFriends,
+                                    onSelectFriend = { f ->
+                                        selectedFriend = f
+                                        webViewRef?.evaluateJavascript(
+                                            "if(window.centerOnFriend){ window.centerOnFriend(${f.latitude}, ${f.longitude}); }",
+                                            null
+                                        )
+                                    },
+                                    onWaveFriend = { f ->
+                                        showChillWaveDialogFor = f
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                RadarViewMode.SONAR_RADAR -> {
+                    // Tactical 360 Sonar Radar View
+                    TacticalSonarRadarView(
+                        friends = friends,
+                        chillSpots = chillSpots,
+                        userLat = realLocation.latitude,
+                        userLng = realLocation.longitude,
+                        selectedFriend = selectedFriend,
+                        onSelectFriend = { friend ->
+                            selectedFriend = friend
+                        },
+                        onSelectSpot = { spot ->
+                            Toast.makeText(context, "${spot.emoji} ${spot.title} • ${spot.distanceKm} km", Toast.LENGTH_SHORT).show()
+                        },
+                        onTriggerScan = {
+                            viewModel.refreshFriendsRadar()
+                            Toast.makeText(context, "📡 Scan Sonar 360° terminé ! Signaux mis à jour.", Toast.LENGTH_SHORT).show()
+                        },
+                        onRandomMatch = {
+                            if (friends.isNotEmpty()) {
+                                val random = friends.random()
+                                randomMatchedFriend = random
+                            }
+                        },
+                        scanRadiusKm = radarScanRadiusKm,
+                        onRadiusChange = { radius ->
+                            viewModel.setRadarScanRadius(radius)
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Bottom Selected Card if blip is clicked
+                    if (selectedFriend != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(bottom = 76.dp, start = 16.dp, end = 16.dp),
+                            contentAlignment = Alignment.BottomCenter
+                        ) {
+                            SelectedFriendDetailCard(
+                                friend = selectedFriend!!,
+                                onClose = { selectedFriend = null },
+                                onWave = { viewModel.sendWaveToFriend(selectedFriend!!) },
+                                onChillWave = { showChillWaveDialogFor = selectedFriend },
+                                onChat = { navController.navigate("chat/${selectedFriend!!.username}") },
+                                onViewProfile = { navController.navigate("profile/${selectedFriend!!.username}") },
+                                onToggleFavorite = { viewModel.toggleFavoriteFriend(selectedFriend!!.id) }
+                            )
+                        }
+                    }
+                }
+
+                RadarViewMode.CHILL_LOUNGE -> {
+                    // Chill Spots and Lounges Hub
+                    ChillSpotsLoungeView(
+                        spots = chillSpots,
+                        onJoinSpot = { spot ->
+                            viewModel.joinChillSpot(spot.id)
+                            Toast.makeText(context, "✨ Tu as rejoint ${spot.title} !", Toast.LENGTH_SHORT).show()
+                        },
+                        onNavigateToSpot = { spot ->
+                            radarViewMode = RadarViewMode.MAP_VIEW
+                            webViewRef?.evaluateJavascript(
+                                "if(window.centerOnFriend){ window.centerOnFriend(${spot.latitude}, ${spot.longitude}); }",
+                                null
+                            )
+                        },
+                        onDropSpotClick = {
+                            showDropChillSpotDialog = true
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+
+            // Top Floating Banner for sent Chill Waves
+            if (lastChillWaveSent != null) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
                         .align(Alignment.TopCenter),
                     shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shadowElevation = 8.dp
+                    color = Color(0xFF10B981),
+                    shadowElevation = 10.dp
                 ) {
                     Row(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.LocationOff,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Localisation requise",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            Text(
-                                "Active le GPS pour te voir en direct sur la carte avec tes amis.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                permissionLauncher.launch(
-                                    arrayOf(
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                        Manifest.permission.ACCESS_COARSE_LOCATION
-                                    )
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.error,
-                                contentColor = MaterialTheme.colorScheme.onError
-                            ),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("Activer", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-
-            // Top Filter Chips (Snap Categories)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .padding(top = if (!hasLocationPermission) 80.dp else 12.dp)
-            ) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(FriendActivityFilter.values()) { filter ->
-                        val isSelected = filter == selectedFilter
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { selectedFilter = filter },
-                            label = {
-                                Text(
-                                    "${filter.emoji} ${filter.label}",
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 12.sp
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                containerColor = Color(0xFF0F172A).copy(alpha = 0.85f),
-                                labelColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(16.dp),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = isSelected,
-                                borderColor = if (isSelected) Color.Transparent else Color(0xFF334155)
-                            )
-                        )
-                    }
-                }
-            }
-
-            // Right-Side Map Action Buttons (Snapchat style)
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Center on Real User GPS
-                FloatingActionButton(
-                    onClick = {
-                        webViewRef?.evaluateJavascript(
-                            "if(window.centerOnUser){ window.centerOnUser(${realLocation.latitude}, ${realLocation.longitude}); }",
-                            null
-                        )
-                        Toast.makeText(context, "Centré sur ma position GPS 📍", Toast.LENGTH_SHORT).show()
-                    },
-                    containerColor = Color(0xFF0F172A),
-                    contentColor = Color(0xFF38BDF8),
-                    shape = CircleShape,
-                    modifier = Modifier.size(46.dp)
-                ) {
-                    Icon(Icons.Default.MyLocation, contentDescription = "Ma position", modifier = Modifier.size(22.dp))
-                }
-
-                // Zoom In (+)
-                FloatingActionButton(
-                    onClick = {
-                        webViewRef?.evaluateJavascript("if(window.map){ window.map.zoomIn(); }", null)
-                    },
-                    containerColor = Color(0xFF0F172A),
-                    contentColor = Color.White,
-                    shape = CircleShape,
-                    modifier = Modifier.size(46.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Zoom +", modifier = Modifier.size(22.dp))
-                }
-
-                // Zoom Out (-)
-                FloatingActionButton(
-                    onClick = {
-                        webViewRef?.evaluateJavascript("if(window.map){ window.map.zoomOut(); }", null)
-                    },
-                    containerColor = Color(0xFF0F172A),
-                    contentColor = Color.White,
-                    shape = CircleShape,
-                    modifier = Modifier.size(46.dp)
-                ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Zoom -", modifier = Modifier.size(22.dp))
-                }
-
-                // Real-time GPS Pulse Refresh
-                FloatingActionButton(
-                    onClick = {
-                        viewModel.refreshFriendsRadar()
-                        viewModel.initLocationTracking(context)
-                        Toast.makeText(context, "📡 Actualisation de la carte en temps réel...", Toast.LENGTH_SHORT).show()
-                    },
-                    containerColor = Color(0xFF0F172A),
-                    contentColor = Color(0xFF10B981),
-                    shape = CircleShape,
-                    modifier = Modifier.size(46.dp)
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Actualiser", modifier = Modifier.size(22.dp))
-                }
-            }
-
-            // Bottom Friends Carousel / Selected Friend Bottom Sheet Card
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 16.dp)
-            ) {
-                AnimatedContent(
-                    targetState = selectedFriend,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(220)) + slideInVertically { it / 2 } togetherWith
-                                fadeOut(animationSpec = tween(180)) + slideOutVertically { it / 2 }
-                    },
-                    label = "SelectedFriendCard"
-                ) { friend ->
-                    if (friend != null) {
-                        SelectedFriendDetailCard(
-                            friend = friend,
-                            onClose = {
-                                selectedFriend = null
-                            },
-                            onWave = {
-                                viewModel.sendWaveToFriend(friend)
-                            },
-                            onChat = {
-                                navController.navigate("chat/${friend.username}")
-                            },
-                            onViewProfile = {
-                                navController.navigate("profile/${friend.username}")
-                            },
-                            onToggleFavorite = {
-                                viewModel.toggleFavoriteFriend(friend.id)
-                            }
-                        )
-                    } else {
-                        // Quick Carousel of buddies
-                        FriendsQuickCarousel(
-                            friends = filteredFriends,
-                            onSelectFriend = { f ->
-                                selectedFriend = f
-                                webViewRef?.evaluateJavascript(
-                                    "if(window.centerOnFriend){ window.centerOnFriend(${f.latitude}, ${f.longitude}); }",
-                                    null
-                                )
-                            },
-                            onWaveFriend = { f ->
-                                viewModel.sendWaveToFriend(f)
-                            }
+                        Text("✨", fontSize = 20.sp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = lastChillWaveSent!!,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
@@ -641,7 +806,7 @@ fun FriendsMapScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                "Tu as fait une vague à $wavedFriendName sur la Snap Map.",
+                                "Tu as fait une onde amicale à $wavedFriendName sur le radar IDDET.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 textAlign = TextAlign.Center,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -662,6 +827,110 @@ fun FriendsMapScreen(
                 viewModel.updateUserVibe(emoji, text, type)
                 showVibeEditorDialog = false
                 Toast.makeText(context, "Statut du jour mis à jour ! $emoji", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    // Chill Wave Selector Dialog
+    if (showChillWaveDialogFor != null) {
+        ChillWaveSelectorDialog(
+            friend = showChillWaveDialogFor!!,
+            onSelectWave = { waveType ->
+                viewModel.sendChillWave(showChillWaveDialogFor!!, waveType)
+                showChillWaveDialogFor = null
+            },
+            onDismiss = {
+                showChillWaveDialogFor = null
+            }
+        )
+    }
+
+    // Drop Chill Spot Dialog
+    if (showDropChillSpotDialog) {
+        DropChillSpotDialog(
+            userLat = realLocation.latitude,
+            userLng = realLocation.longitude,
+            onConfirm = { title, category, emoji, description ->
+                viewModel.dropChillSpot(title, category, emoji, description, realLocation.latitude, realLocation.longitude)
+                showDropChillSpotDialog = false
+                Toast.makeText(context, "📍 Nouveau Chill Spot créé avec succès !", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = {
+                showDropChillSpotDialog = false
+            }
+        )
+    }
+
+    // Roulette Match Random Dialog
+    if (randomMatchedFriend != null) {
+        val matched = randomMatchedFriend!!
+        AlertDialog(
+            onDismissRequest = { randomMatchedFriend = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🎲", fontSize = 24.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Match Spontané Trouvé !", fontWeight = FontWeight.Black)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF1E293B),
+                        border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF10B981)),
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            if (!matched.avatarUrl.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = matched.avatarUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Text(matched.displayName.take(1), fontSize = 24.sp, color = Color.White)
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = matched.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "📍 ${matched.distanceKm} km • ${matched.district}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "« ${matched.chillStatus} »",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val target = matched
+                        randomMatchedFriend = null
+                        showChillWaveDialogFor = target
+                    }
+                ) {
+                    Text("✨ Envoyer Onde Chill")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { randomMatchedFriend = null }) {
+                    Text("Fermer")
+                }
             }
         )
     }
@@ -750,51 +1019,34 @@ private fun generateLeafletSnapMapHtml(
             box-shadow: 0 4px 10px rgba(0,0,0,0.5);
             white-space: nowrap;
             margin-bottom: 3px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
         .snap-friend-avatar {
             width: 40px;
             height: 40px;
             border-radius: 50%;
             border: 2.5px solid #10b981;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
             background: #1e293b;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #fff;
             font-size: 16px;
+            color: #fff;
             overflow: hidden;
-            position: relative;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
         }
         .snap-friend-avatar img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
-        .snap-friend-badge {
-            position: absolute;
-            bottom: -2px;
-            right: -2px;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #10b981;
-            border: 2px solid #0f172a;
-        }
 
         @keyframes pulse-ring {
             0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
-            70% { box-shadow: 0 0 0 16px rgba(56, 189, 248, 0); }
+            70% { box-shadow: 0 0 0 15px rgba(56, 189, 248, 0); }
             100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
-        }
-
-        .leaflet-control-attribution {
-            background: rgba(15, 23, 42, 0.7) !important;
-            color: #94a3b8 !important;
-            font-size: 9px !important;
-        }
-        .leaflet-control-attribution a {
-            color: #38bdf8 !important;
         }
     </style>
 </head>
@@ -803,19 +1055,92 @@ private fun generateLeafletSnapMapHtml(
     <script>
         var map = L.map('map', {
             center: [$userLat, $userLng],
-            zoom: 14,
+            zoom: 15,
             zoomControl: false,
-            attributionControl: true
+            attributionControl: false
         });
 
         var currentTileLayer = L.tileLayer('$tileUrl', {
             maxZoom: 19,
-            attribution: '$tileAttribution'
+            subdomains: 'abcd'
         }).addTo(map);
 
         var userMarker = null;
-        var accuracyCircle = null;
         var friendMarkers = {};
+
+        function updateMapData(userLat, userLng, accuracy, isGhostMode, vibeEmoji, username, avatarUrl, friends, tileUrl) {
+            if (currentTileLayer && tileUrl && currentTileLayer._url !== tileUrl) {
+                map.removeLayer(currentTileLayer);
+                currentTileLayer = L.tileLayer(tileUrl, { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
+            }
+
+            // Update user marker
+            if (!isGhostMode) {
+                var userIconHtml = '<div class="snap-user-marker">' +
+                    '<div class="snap-user-bubble">' + vibeEmoji + ' ' + username + ' (Moi)</div>' +
+                    '<div class="snap-user-avatar">' +
+                    (avatarUrl ? '<img src="' + avatarUrl + '" />' : vibeEmoji) +
+                    '</div></div>';
+
+                var userIcon = L.divIcon({
+                    html: userIconHtml,
+                    className: '',
+                    iconSize: [44, 70],
+                    iconAnchor: [22, 50]
+                });
+
+                if (!userMarker) {
+                    userMarker = L.marker([userLat, userLng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+                } else {
+                    userMarker.setLatLng([userLat, userLng]);
+                    userMarker.setIcon(userIcon);
+                }
+            } else if (userMarker) {
+                map.removeLayer(userMarker);
+                userMarker = null;
+            }
+
+            // Update friends markers
+            var existingIds = {};
+            if (friends && friends.length) {
+                friends.forEach(function(f) {
+                    existingIds[f.id] = true;
+                    var friendIconHtml = '<div class="snap-friend-marker" onclick="AndroidBridge.onFriendClicked(\'' + f.id + '\')">' +
+                        '<div class="snap-friend-bubble">' + f.statusEmoji + ' ' + f.displayName + '</div>' +
+                        '<div class="snap-friend-avatar" style="border-color: ' + (f.isOnline ? '#10b981' : '#64748b') + '">' +
+                        (f.avatarUrl ? '<img src="' + f.avatarUrl + '" />' : f.displayName.charAt(0)) +
+                        '</div></div>';
+
+                    var friendIcon = L.divIcon({
+                        html: friendIconHtml,
+                        className: '',
+                        iconSize: [40, 65],
+                        iconAnchor: [20, 48]
+                    });
+
+                    if (friendMarkers[f.id]) {
+                        friendMarkers[f.id].setLatLng([f.lat, f.lng]);
+                        friendMarkers[f.id].setIcon(friendIcon);
+                    } else {
+                        var marker = L.marker([f.lat, f.lng], { icon: friendIcon }).addTo(map);
+                        marker.on('click', function() {
+                            if (window.AndroidBridge) {
+                                window.AndroidBridge.onFriendClicked(f.id);
+                            }
+                        });
+                        friendMarkers[f.id] = marker;
+                    }
+                });
+            }
+
+            // Cleanup removed markers
+            Object.keys(friendMarkers).forEach(function(id) {
+                if (!existingIds[id]) {
+                    map.removeLayer(friendMarkers[id]);
+                    delete friendMarkers[id];
+                }
+            });
+        }
 
         map.on('click', function() {
             if (window.AndroidBridge) {
@@ -823,104 +1148,12 @@ private fun generateLeafletSnapMapHtml(
             }
         });
 
-        window.centerOnUser = function(lat, lng) {
-            map.flyTo([lat, lng], 15, { animate: true, duration: 1.2 });
-        };
+        function centerOnUser(lat, lng) {
+            map.flyTo([lat, lng], 16, { animate: true, duration: 1.2 });
+        }
 
-        window.centerOnFriend = function(lat, lng) {
-            map.flyTo([lat, lng], 16, { animate: true, duration: 1.0 });
-        };
-
-        window.updateMapData = function(userLat, userLng, accuracy, isGhostMode, vibeEmoji, username, userAvatar, friends, tileUrl) {
-            // Update tile layer if changed
-            if (currentTileLayer._url !== tileUrl) {
-                map.removeLayer(currentTileLayer);
-                currentTileLayer = L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
-            }
-
-            // Update user position
-            if (!isGhostMode) {
-                var userIconHtml = '<div class="snap-user-marker">' +
-                    '<div class="snap-user-bubble">' + vibeEmoji + ' ' + username + ' (Moi)</div>' +
-                    '<div class="snap-user-avatar">' +
-                    (userAvatar ? '<img src="' + userAvatar + '" />' : '<span>' + username.charAt(0).toUpperCase() + '</span>') +
-                    '</div></div>';
-
-                var userIcon = L.divIcon({
-                    html: userIconHtml,
-                    className: '',
-                    iconSize: [44, 70],
-                    iconAnchor: [22, 60]
-                });
-
-                if (!userMarker) {
-                    userMarker = L.marker([userLat, userLng], { icon: userIcon }).addTo(map);
-                } else {
-                    userMarker.setLatLng([userLat, userLng]);
-                    userMarker.setIcon(userIcon);
-                }
-
-                if (!accuracyCircle) {
-                    accuracyCircle = L.circle([userLat, userLng], {
-                        radius: Math.max(accuracy, 30),
-                        color: '#38bdf8',
-                        fillColor: '#38bdf8',
-                        fillOpacity: 0.15,
-                        weight: 1.5
-                    }).addTo(map);
-                } else {
-                    accuracyCircle.setLatLng([userLat, userLng]);
-                    accuracyCircle.setRadius(Math.max(accuracy, 30));
-                }
-            } else {
-                if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
-                if (accuracyCircle) { map.removeLayer(accuracyCircle); accuracyCircle = null; }
-            }
-
-            // Update friends markers
-            var newFriendIds = {};
-            friends.forEach(function(friend) {
-                newFriendIds[friend.id] = true;
-                var friendIconHtml = '<div class="snap-friend-marker" onclick="onFriendClick(\'' + friend.id + '\')">' +
-                    '<div class="snap-friend-bubble">' + friend.statusEmoji + ' ' + friend.username + '</div>' +
-                    '<div class="snap-friend-avatar" style="border-color:' + (friend.isOnline ? '#10b981' : '#94a3b8') + '">' +
-                    (friend.avatarUrl ? '<img src="' + friend.avatarUrl + '" />' : '<span>' + friend.displayName.charAt(0) + '</span>') +
-                    (friend.isOnline ? '<div class="snap-friend-badge"></div>' : '') +
-                    '</div></div>';
-
-                var friendIcon = L.divIcon({
-                    html: friendIconHtml,
-                    className: '',
-                    iconSize: [40, 65],
-                    iconAnchor: [20, 55]
-                });
-
-                if (!friendMarkers[friend.id]) {
-                    var m = L.marker([friend.lat, friend.lng], { icon: friendIcon }).addTo(map);
-                    m.on('click', function(e) {
-                        L.DomEvent.stopPropagation(e);
-                        onFriendClick(friend.id);
-                    });
-                    friendMarkers[friend.id] = m;
-                } else {
-                    friendMarkers[friend.id].setLatLng([friend.lat, friend.lng]);
-                    friendMarkers[friend.id].setIcon(friendIcon);
-                }
-            });
-
-            // Remove old friends
-            for (var fId in friendMarkers) {
-                if (!newFriendIds[fId]) {
-                    map.removeLayer(friendMarkers[fId]);
-                    delete friendMarkers[fId];
-                }
-            }
-        };
-
-        function onFriendClick(friendId) {
-            if (window.AndroidBridge) {
-                window.AndroidBridge.onFriendClicked(friendId);
-            }
+        function centerOnFriend(lat, lng) {
+            map.flyTo([lat, lng], 17, { animate: true, duration: 1.0 });
         }
     </script>
 </body>
@@ -933,50 +1166,51 @@ fun SelectedFriendDetailCard(
     friend: FriendLocation,
     onClose: () -> Unit,
     onWave: () -> Unit,
+    onChillWave: () -> Unit,
     onChat: () -> Unit,
     onViewProfile: () -> Unit,
     onToggleFavorite: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF0F172A).copy(alpha = 0.96f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
+        shadowElevation = 16.dp,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 14.dp)
+            .padding(horizontal = 16.dp)
     ) {
         Column(
-            modifier = Modifier.padding(18.dp)
+            modifier = Modifier.padding(16.dp)
         ) {
-            // Header: Avatar, Name, Distance, Close & Favorite
+            // Header Row: Avatar, Name, Distance & District
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(54.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .border(2.dp, if (friend.isOnline) Color(0xFF10B981) else Color(0xFF94A3B8), CircleShape),
-                    contentAlignment = Alignment.Center
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF1E293B),
+                    border = androidx.compose.foundation.BorderStroke(2.dp, if (friend.isOnline) Color(0xFF10B981) else Color(0xFF94A3B8)),
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    if (!friend.avatarUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = friend.avatarUrl,
-                            contentDescription = friend.displayName,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Text(
-                            text = friend.displayName.take(1),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                    Box(contentAlignment = Alignment.Center) {
+                        if (!friend.avatarUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = friend.avatarUrl,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text(
+                                text = friend.displayName.take(1),
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 18.sp
+                            )
+                        }
                     }
                 }
 
@@ -1021,28 +1255,39 @@ fun SelectedFriendDetailCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Status message bubble
+            // Chill status bubble
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(12.dp),
                 color = Color(0xFF1E293B),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Column(modifier = Modifier.padding(10.dp)) {
                     Text(
                         text = friend.statusMessage,
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color(0xFFE2E8F0)
                     )
+                    if (friend.currentlyPlayingMusic != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🎶", fontSize = 12.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = friend.currentlyPlayingMusic,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFA78BFA),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Stats badges: Battery, Streak, Online status
             Row(
@@ -1108,20 +1353,20 @@ fun SelectedFriendDetailCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Action Buttons: Wave 👋, Chat 💬, Profile 👤
+            // Action Buttons: Onde Chill ✨, Chat 💬, Profile 👤
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
-                    onClick = onWave,
+                    onClick = onChillWave,
                     modifier = Modifier.weight(1.2f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7), contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6), contentColor = Color.White),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("👋 Coucou", fontWeight = FontWeight.Black)
+                    Text("✨ Onde Chill", fontWeight = FontWeight.Black, fontSize = 12.sp)
                 }
 
                 Button(
@@ -1130,7 +1375,7 @@ fun SelectedFriendDetailCard(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155), contentColor = Color.White),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("💬 Chat", fontWeight = FontWeight.Bold)
+                    Text("💬 Chat", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
 
                 OutlinedButton(
@@ -1139,7 +1384,7 @@ fun SelectedFriendDetailCard(
                     shape = RoundedCornerShape(14.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF475569))
                 ) {
-                    Text("👤 Profil", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("👤 Profil", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         }
@@ -1249,7 +1494,7 @@ fun FriendsQuickCarousel(
                             onClick = { onWaveFriend(friend) },
                             modifier = Modifier.size(28.dp)
                         ) {
-                            Text("👋", fontSize = 14.sp)
+                            Text("✨", fontSize = 14.sp)
                         }
                     }
                 }
@@ -1274,7 +1519,7 @@ fun VibeStatusEditorDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("✨ Ma Vibe sur la Snap Map", fontWeight = FontWeight.Black)
+            Text("✨ Ma Vibe sur le Radar IDDET", fontWeight = FontWeight.Black)
         },
         text = {
             Column(
@@ -1351,4 +1596,3 @@ fun VibeStatusEditorDialog(
         }
     )
 }
-

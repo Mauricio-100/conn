@@ -115,10 +115,10 @@ fun SplashScreen(onTimeout: () -> Unit) {
                 .alpha(logoAlpha.value),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                painter = painterResource(id = R.drawable.ic_cat_logo),
-                contentDescription = "IDDET Logo",
-                modifier = Modifier.fillMaxSize()
+            com.example.ui.components.AppDynamicLogo(
+                size = 110.dp,
+                elevation = 8.dp,
+                showGlow = true
             )
         }
 

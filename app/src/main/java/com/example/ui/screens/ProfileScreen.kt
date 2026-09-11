@@ -330,15 +330,11 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Cat Logo
-                    Image(
-                        painter = painterResource(id = com.example.R.drawable.ic_cat_logo),
-                        contentDescription = "IDDET Cat Logo",
-                        modifier = Modifier
-                            .size(60.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .shadow(4.dp, RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Crop
+                    // Dynamic App Logo
+                    com.example.ui.components.AppDynamicLogo(
+                        size = 56.dp,
+                        elevation = 4.dp,
+                        showGlow = true
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("IDDET Support", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)

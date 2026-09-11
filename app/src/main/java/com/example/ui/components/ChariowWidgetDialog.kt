@@ -47,7 +47,7 @@ fun ChariowWidgetDialog(
     val directUrl = remember(widgetConfig) {
         val domain = widgetConfig.store_domain.ifBlank { "xnycggrc.mychariow.market" }
         val prodId = widgetConfig.product_id.ifBlank { "prd_zs6iyq84" }
-        "https://$domain/p/$prodId"
+        "https://$domain/$prodId"
     }
 
     val amountString = remember(amount, currency) {
@@ -261,6 +261,7 @@ fun ChariowWidgetDialog(
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
+                                setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
                                 settings.databaseEnabled = true
@@ -275,6 +276,7 @@ fun ChariowWidgetDialog(
                                         resultMsg: Message?
                                     ): Boolean {
                                         val newWebView = WebView(view?.context ?: return false)
+                                        newWebView.setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                                         newWebView.settings.javaScriptEnabled = true
                                         newWebView.settings.domStorageEnabled = true
                                         newWebView.webChromeClient = this
@@ -295,6 +297,19 @@ fun ChariowWidgetDialog(
                                                 } catch (e: Exception) {
                                                     false
                                                 }
+                                            }
+
+                                            override fun onRenderProcessGone(
+                                                view: WebView?,
+                                                detail: android.webkit.RenderProcessGoneDetail?
+                                            ): Boolean {
+                                                try {
+                                                    (view?.parent as? android.view.ViewGroup)?.removeView(view)
+                                                    view?.destroy()
+                                                } catch (e: Exception) {
+                                                    // ignore
+                                                }
+                                                return true
                                             }
                                         }
                                         val transport = resultMsg?.obj as? WebView.WebViewTransport
@@ -320,6 +335,19 @@ fun ChariowWidgetDialog(
                                         } catch (e: Exception) {
                                             false
                                         }
+                                    }
+
+                                    override fun onRenderProcessGone(
+                                        view: WebView?,
+                                        detail: android.webkit.RenderProcessGoneDetail?
+                                    ): Boolean {
+                                        try {
+                                            (view?.parent as? android.view.ViewGroup)?.removeView(view)
+                                            view?.destroy()
+                                        } catch (e: Exception) {
+                                            // ignore
+                                        }
+                                        return true
                                     }
                                 }
 

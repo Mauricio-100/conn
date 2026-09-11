@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -16,6 +18,10 @@ import com.example.utils.WebSocketManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.*
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
 import java.util.UUID
 
 data class ChatPartnerUiModel(
@@ -148,6 +154,20 @@ class ChatThreadViewModel(
         observeWebSocketEvents()
         connectSocketIfLoggedIn()
         markMessagesRead()
+        startPeriodicSync()
+    }
+
+    private fun startPeriodicSync() {
+        viewModelScope.launch {
+            while (isActive) {
+                delay(4000)
+                try {
+                    repository.refreshMessagesWith(partnerUserId)
+                } catch (e: Exception) {
+                    // Ignore transient network errors
+                }
+            }
+        }
     }
 
     fun onInputTextChange(newText: String) {
@@ -356,6 +376,66 @@ class ChatThreadViewModel(
             } else {
                 _optimisticMessages.value = _optimisticMessages.value.map {
                     if (it.id == tempId) it.copy(isSending = false, isFailed = false) else it
+                }
+            }
+        }
+    }
+
+    fun sendMediaMessage(mediaUri: Uri, context: Context, isVideo: Boolean) {
+        val currentUserId = repository.currentUser.value?.id ?: ""
+        val type = if (isVideo) "video" else "image"
+        val tempId = UUID.randomUUID().toString()
+
+        val optimistic = ChatMessageUiModel(
+            id = tempId,
+            senderId = currentUserId,
+            receiverId = partnerUserId,
+            content = mediaUri.toString(),
+            type = type,
+            isMine = true,
+            isRead = false,
+            createdAt = System.currentTimeMillis(),
+            isSending = true
+        )
+        _optimisticMessages.value = _optimisticMessages.value + optimistic
+
+        viewModelScope.launch(Dispatchers.IO) {
+            var uploadedUrl: String? = null
+            try {
+                val contentResolver = context.contentResolver
+                val mimeType = contentResolver.getType(mediaUri) ?: if (isVideo) "video/mp4" else "image/jpeg"
+                val extension = when {
+                    mimeType.contains("png") -> "png"
+                    mimeType.contains("video") || mimeType.contains("mp4") -> "mp4"
+                    mimeType.contains("webm") -> "webm"
+                    mimeType.contains("mov") -> "mov"
+                    else -> "jpg"
+                }
+                val prefix = if (isVideo) "chat_vid_" else "chat_img_"
+                val tempFile = File.createTempFile(prefix, ".$extension", context.cacheDir)
+                contentResolver.openInputStream(mediaUri)?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                val requestFile = tempFile.asRequestBody(mimeType.toMediaTypeOrNull())
+                val part = MultipartBody.Part.createFormData("file", tempFile.name, requestFile)
+                val token = repository.userToken?.let { "Bearer $it" }
+                val response = RetrofitClient.apiService.uploadAudio(token, part)
+                uploadedUrl = response.url
+                try { tempFile.delete() } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e("ChatThreadVM", "Failed to upload media file, falling back to uri", e)
+            }
+
+            val finalUrl = uploadedUrl ?: mediaUri.toString()
+            try {
+                repository.sendMessage(partnerUserId, finalUrl, type)
+                _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }
+            } catch (e: Exception) {
+                _optimisticMessages.value = _optimisticMessages.value.map {
+                    if (it.id == tempId) it.copy(isSending = false, isFailed = true) else it
                 }
             }
         }

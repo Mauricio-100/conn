@@ -122,8 +122,9 @@ object NotificationHelper {
                 generatePlaceholderAvatar(senderName ?: "?")
             }
 
-            // Determine small icon (silhouette for status bar)
+            // Standardized small icon: Pure monochrome, transparent-background silhouette for the status bar (WhatsApp-style standard)
             val smallIconRes = R.drawable.ic_notification
+            val brandColor = Color.parseColor("#DC2626") // Standardized brand accent
 
             // Use MessagingStyle for social interactions (likes, comments, follows, messages)
             val user = androidx.core.app.Person.Builder()
@@ -148,14 +149,14 @@ object NotificationHelper {
                 android.net.Uri.parse("android.resource://${context.packageName}/${R.raw.cat_law}")
             }
 
-            // Build beautiful custom notification
+            // Build beautiful custom notification with pure transparent background status bar icon
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(smallIconRes)
-                .setLargeIcon(appLogo) // App logo on the right as requested
+                .setLargeIcon(appLogo) // App logo badge
                 .setContentTitle(title)
                 .setContentText(text)
                 .setStyle(style)
-                .setColor(Color.parseColor("#DC2626")) // CMO Red branding color
+                .setColor(brandColor) // Dynamic branding color
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -189,12 +190,7 @@ object NotificationHelper {
     }
 
     private fun getAppLogoBitmap(context: Context): Bitmap? {
-        val drawable = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_cat_logo) ?: return null
-        val bitmap = Bitmap.createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, canvas.width, canvas.height)
-        drawable.draw(canvas)
-        return bitmap
+        return HideItProManager.getNotificationLargeIconBitmap(context)
     }
 
     private fun downloadAvatarOrPlaceholder(avatarUrl: String, senderName: String): Bitmap {

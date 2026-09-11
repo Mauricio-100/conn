@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -44,23 +46,6 @@ import com.example.utils.UrlHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-val StoryEffects = listOf(
-    StoryEffect("none", "Normal", "✨", "Aucun effet"),
-    StoryEffect("cyberpunk", "Cyberpunk", "🌆", "Néon & contrastes futuristes"),
-    StoryEffect("sketch", "Croquis", "✏️", "Dessin au fusain & esquisse"),
-    StoryEffect("vintage", "Vintage", "🎞️", "Sépia & grain analogique"),
-    StoryEffect("cartoon", "Cartoon", "🎨", "Style BD & aplats colorés"),
-    StoryEffect("vignette", "Vignette", "🌑", "Ombrage cinématographique"),
-    StoryEffect("retro_bw", "N&B Rétro", "🖤", "Noir et blanc dramatique")
-)
-
-data class StoryEffect(
-    val id: String,
-    val label: String,
-    val emoji: String,
-    val description: String
-)
-
 @Composable
 fun StoriesBar(
     viewModel: IddetViewModel,
@@ -80,258 +65,143 @@ fun StoriesBar(
             .fillMaxWidth()
             .padding(vertical = 10.dp),
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Create Story Button / My Story
+        // WhatsApp Style "Mon Statut" / Create Story item
         item {
-            CreateStoryItem(
-                userAvatar = currentUser?.avatarUrl,
-                username = currentUser?.username ?: "Moi",
-                onClick = onCreateClick
-            )
-        }
-
-        // Active Stories grouped by User
-        items(distinctUserStories, key = { it.user.id }) { story ->
-            StoryCardItem(
-                story = story,
-                onClick = { onStoryClick(story) }
-            )
-        }
-    }
-}
-
-@Composable
-fun CreateStoryItem(
-    userAvatar: String?,
-    username: String,
-    onClick: () -> Unit
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .width(70.dp)
-            .height(105.dp)
-            .testTag("create_story_card"),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Upper half avatar preview or primary gradient
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.62f)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                            )
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                if (!userAvatar.isNullOrBlank()) {
-                    AsyncImage(
-                        model = UrlHelper.fixCloudinaryUrl(userAvatar),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Icon(
-                        Icons.Outlined.CameraAlt,
-                        contentDescription = null,
-                        modifier = Modifier.size(36.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            // Circular Add Button in Center Offset
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                border = BorderStroke(3.dp, MaterialTheme.colorScheme.surface),
-                modifier = Modifier
-                    .size(34.dp)
-                    .align(Alignment.Center)
-                    .offset(y = 18.dp)
-            ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = "Créer une story",
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(4.dp)
-                )
-            }
-
-            // Bottom Label
             Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Créer une\nstory",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 13.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun StoryCardItem(
-    story: Story,
-    onClick: () -> Unit
-) {
-    val storyBorderGradient = Brush.linearGradient(
-        colors = listOf(
-            Color(0xFF8B5CF6), // Purple
-            Color(0xFFEC4899), // Pink
-            Color(0xFFF59E0B)  // Amber
-        )
-    )
-
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .width(70.dp)
-            .height(105.dp)
-            .testTag("story_card_${story.id}"),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Background media
-            if (story.mediaType == "video") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.PlayCircleFilled,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-            } else {
-                AsyncImage(
-                    model = UrlHelper.fixCloudinaryUrl(story.mediaUrl),
-                    contentDescription = "Story de ${story.user.username}",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            // Subtle dark overlay
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Black.copy(alpha = 0.35f),
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.75f)
-                            )
-                        )
-                    )
-            )
-
-            // User Avatar ring at top
-            Box(
-                modifier = Modifier
-                    .padding(8.dp)
-                    .align(Alignment.TopStart)
+                    .clickable { onCreateClick() }
+                    .testTag("create_story_card")
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(storyBorderGradient)
-                        .padding(2.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.size(58.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (!story.user.avatarUrl.isNullOrBlank()) {
+                    if (!currentUser?.avatarUrl.isNullOrBlank()) {
                         AsyncImage(
-                            model = UrlHelper.fixCloudinaryUrl(story.user.avatarUrl),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
+                            model = UrlHelper.fixCloudinaryUrl(currentUser?.avatarUrl),
+                            contentDescription = "Mon statut",
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape),
                             contentScale = ContentScale.Crop
                         )
                     } else {
-                        Text(
-                            text = story.user.username.take(1).uppercase(),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.primary
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(56.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = currentUser?.username?.take(1)?.uppercase() ?: "+",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                    }
+
+                    // Plus icon badge in bottom right (WhatsApp style)
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF25D366), // WhatsApp Green
+                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.background),
+                        modifier = Modifier
+                            .size(20.dp)
+                            .align(Alignment.BottomEnd)
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Ajouter statut",
+                            tint = Color.White,
+                            modifier = Modifier.padding(2.dp)
                         )
                     }
                 }
-                if (story.user.isVerified) {
-                    Icon(
-                        Icons.Default.Verified,
-                        contentDescription = "Verified",
-                        tint = Color(0xFF1DA1F2),
-                        modifier = Modifier
-                            .size(14.dp)
-                            .align(Alignment.BottomStart)
-                            .background(Color.White, CircleShape)
-                    )
-                }
-            }
 
-            // Effect badge if present
-            if (!story.effect.isNullOrBlank() && story.effect != "none") {
-                val effectInfo = StoryEffects.find { it.id == story.effect }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color.Black.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                ) {
-                    Text(
-                        text = effectInfo?.emoji ?: "✨",
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Mon statut",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
+        }
 
-            // User username at bottom
-            Text(
-                text = story.user.username,
-                color = Color.White,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        // WhatsApp / Instagram style Contact Stories
+        items(distinctUserStories, key = { it.user.id }) { story ->
+            val storyUser = story.user
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
-            )
+                    .clickable { onStoryClick(story) }
+                    .testTag("story_card_${story.id}")
+            ) {
+                // Status ring around avatar
+                Box(
+                    modifier = Modifier
+                        .size(58.dp)
+                        .border(
+                            width = 2.5.dp,
+                            color = Color(0xFF25D366), // WhatsApp Green ring
+                            shape = CircleShape
+                        )
+                        .padding(3.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!storyUser.avatarUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = UrlHelper.fixCloudinaryUrl(storyUser.avatarUrl),
+                            contentDescription = "Statut de ${storyUser.username}",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = storyUser.username.take(1).uppercase(),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = storyUser.username,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 64.dp),
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
     }
 }
 
+/**
+ * Clean, minimalist WhatsApp-style full-screen Story Viewer
+ */
 @Composable
 fun StoryViewerDialog(
     stories: List<Story>,
@@ -352,24 +222,12 @@ fun StoryViewerDialog(
 
     var isPaused by remember { mutableStateOf(false) }
     var replyText by remember { mutableStateOf("") }
-    var selectedAttachmentUri by remember { mutableStateOf<Uri?>(null) }
-    var isUploadingAttachment by remember { mutableStateOf(false) }
-    var showReplyInput by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            selectedAttachmentUri = uri
-            isPaused = true
-        }
-    }
 
     val isMyStory = currentUser?.id == currentStory.user.id || currentUser?.username == currentStory.user.username
 
-    // Progress timer for current story (5 seconds per story)
-    val storyDurationMs = 5000L
+    // 5 seconds standard story duration (or video length)
+    val storyDurationMs = if (currentStory.mediaType == "video") 10000L else 5000L
     val progress = remember { Animatable(0f) }
 
     LaunchedEffect(currentIndex, isPaused) {
@@ -394,6 +252,10 @@ fun StoryViewerDialog(
         }
     }
 
+    LaunchedEffect(currentStory.id) {
+        viewModel.trackStoryView(currentStory.id, currentStory.views)
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -416,7 +278,7 @@ fun StoryViewerDialog(
                         onTap = { offset ->
                             val screenWidth = size.width
                             if (offset.x < screenWidth * 0.35f) {
-                                // Tap Left: Previous story
+                                // Left tap -> Previous story
                                 if (currentIndex > 0) {
                                     coroutineScope.launch {
                                         progress.snapTo(0f)
@@ -426,7 +288,7 @@ fun StoryViewerDialog(
                                     coroutineScope.launch { progress.snapTo(0f) }
                                 }
                             } else {
-                                // Tap Right: Next story
+                                // Right tap -> Next story
                                 if (currentIndex < stories.size - 1) {
                                     coroutineScope.launch {
                                         progress.snapTo(0f)
@@ -440,27 +302,27 @@ fun StoryViewerDialog(
                     )
                 }
         ) {
-            // Media Content (Image or Video)
-            if (currentStory.mediaType == "video") {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
+            // Full-screen Media Content (Video or Image)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                if (currentStory.mediaType == "video") {
                     ActfileVideoPlayer(
                         videoUrl = UrlHelper.fixCloudinaryUrl(currentStory.mediaUrl) ?: currentStory.mediaUrl,
                         modifier = Modifier.fillMaxSize()
                     )
+                } else {
+                    AsyncImage(
+                        model = UrlHelper.fixCloudinaryUrl(currentStory.mediaUrl),
+                        contentDescription = "Statut",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
-            } else {
-                AsyncImage(
-                    model = UrlHelper.fixCloudinaryUrl(currentStory.mediaUrl),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize()
-                )
             }
 
-            // Top gradient overlay
+            // Top gradient overlay for contrast
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -472,18 +334,18 @@ fun StoryViewerDialog(
                     )
             )
 
-            // Header & Segmented Progress Bars
+            // Header & WhatsApp Style Progress Bars
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
                 // Segmented Progress Bars
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
+                        .padding(bottom = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     stories.forEachIndexed { index, _ ->
@@ -496,26 +358,44 @@ fun StoryViewerDialog(
                             progress = { segmentProgress },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(3.dp)
+                                .height(2.5.dp)
                                 .clip(RoundedCornerShape(2.dp)),
                             color = Color.White,
-                            trackColor = Color.White.copy(alpha = 0.3f),
+                            trackColor = Color.White.copy(alpha = 0.35f),
                         )
                     }
                 }
 
-                // User Info & Close Button
+                // Header: Back Arrow, Avatar, Username, Time & Actions
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Retour",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        // Avatar
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
+                                .background(Color.DarkGray),
                             contentAlignment = Alignment.Center
                         ) {
                             if (!currentStory.user.avatarUrl.isNullOrBlank()) {
@@ -529,11 +409,13 @@ fun StoryViewerDialog(
                                 Text(
                                     text = currentStory.user.username.take(1).uppercase(),
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    color = Color.White
                                 )
                             }
                         }
+
                         Spacer(modifier = Modifier.width(10.dp))
+
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -543,73 +425,41 @@ fun StoryViewerDialog(
                                     color = Color.White
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                com.example.ui.components.VerificationBadge(
+                                VerificationBadge(
                                     userName = currentStory.user.username,
                                     isVerified = currentStory.user.isVerified,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
                             }
-                            if (!currentStory.user.profession.isNullOrBlank()) {
-                                Text(
-                                    text = currentStory.user.profession!!,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.8f)
-                                )
-                            }
-                            if (!currentStory.effect.isNullOrBlank() && currentStory.effect != "none") {
-                                val effect = StoryEffects.find { it.id == currentStory.effect }
-                                Text(
-                                    text = "${effect?.emoji ?: "✨"} ${effect?.label ?: currentStory.effect}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.8f)
-                                )
-                            }
+                            Text(
+                                text = "Aujourd'hui",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.75f)
+                            )
                         }
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (isMyStory) {
-                            IconButton(
-                                onClick = {
-                                    isPaused = true
-                                    showDeleteConfirmDialog = true
-                                },
-                                modifier = Modifier.testTag("delete_story_button")
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Delete,
-                                    contentDescription = "Supprimer la story",
-                                    tint = Color.White.copy(alpha = 0.9f),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-
+                    // Delete button if my story
+                    if (isMyStory) {
                         IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.testTag("close_story_button")
+                            onClick = {
+                                isPaused = true
+                                showDeleteConfirmDialog = true
+                            },
+                            modifier = Modifier.testTag("delete_story_button")
                         ) {
                             Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Fermer",
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp)
+                                Icons.Outlined.Delete,
+                                contentDescription = "Supprimer",
+                                tint = Color.White.copy(alpha = 0.9f),
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
                 }
             }
 
-            val realtimeViews by viewModel.realtimeStoryViews.collectAsState()
-            val realtimeReactions by viewModel.realtimeStoryReactions.collectAsState()
-            val currentViews = realtimeViews[currentStory.id] ?: currentStory.views
-            val currentReactions = realtimeReactions[currentStory.id] ?: currentStory.reactions
-
-            LaunchedEffect(currentStory.id) {
-                viewModel.trackStoryView(currentStory.id, currentStory.views)
-            }
-
-            // Bottom Gradient & Interactions
+            // Bottom Gradient & WhatsApp Style Reply Input
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -621,45 +471,15 @@ fun StoryViewerDialog(
                     )
                     .navigationBarsPadding()
                     .imePadding()
-                    .padding(bottom = 60.dp, start = 16.dp, end = 16.dp, top = 16.dp)
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Views and Reactions Stats (Non-simulated, real metrics)
-                    if (currentViews > 0 || currentReactions.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (currentViews > 0) {
-                                Icon(Icons.Default.Visibility, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    if (currentViews == 1) "1 vue" else "$currentViews vues",
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            }
-                            
-                            if (currentReactions.isNotEmpty()) {
-                                if (currentViews > 0) {
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                }
-                                val topReactions = currentReactions.entries.sortedByDescending { it.value }.take(3)
-                                topReactions.forEach { (emoji, count) ->
-                                    Text("$emoji $count", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelMedium)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                }
-                            }
-                        }
-                    }
-
-                    // Quick Emoji Reactions
+                    // Quick Emoji reactions (WhatsApp style)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        listOf("❤️", "🔥", "😂", "👏", "😮", "🚀").forEach { emoji ->
+                        listOf("❤️", "😂", "😮", "😢", "🙏", "👏").forEach { emoji ->
                             Surface(
                                 shape = CircleShape,
                                 color = Color.White.copy(alpha = 0.2f),
@@ -674,7 +494,7 @@ fun StoryViewerDialog(
                                             storyAuthorUsername = currentStory.user.username,
                                             reaction = emoji
                                         ) {
-                                            Toast.makeText(context, "Réaction $emoji envoyée à la story !", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Réaction envoyée !", Toast.LENGTH_SHORT).show()
                                         }
                                     },
                                 contentColor = Color.White
@@ -686,171 +506,71 @@ fun StoryViewerDialog(
                         }
                     }
 
-                    // Attachment Preview (if selected)
-                    if (selectedAttachmentUri != null) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color.Black.copy(alpha = 0.75f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                AsyncImage(
-                                    model = selectedAttachmentUri,
-                                    contentDescription = "Aperçu de la pièce jointe",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Photo jointe au message",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                IconButton(
-                                    onClick = {
-                                        selectedAttachmentUri = null
-                                        if (replyText.isBlank()) isPaused = false
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "Supprimer la pièce jointe",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Reply Text Field with Attachment button & Send
+                    // Reply Text Field & Send Button (WhatsApp style)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        IconButton(
-                            onClick = {
-                                isPaused = true
-                                galleryLauncher.launch("image/*")
-                            },
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.2f))
-                                .testTag("story_attach_media_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AddPhotoAlternate,
-                                contentDescription = "Joindre une photo",
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
                         OutlinedTextField(
                             value = replyText,
                             onValueChange = { 
                                 replyText = it
-                                if (it.isNotEmpty()) {
-                                    isPaused = true
-                                }
+                                if (it.isNotEmpty()) isPaused = true
                             },
                             placeholder = {
                                 Text(
                                     "Répondre à ${currentStory.user.username}...",
-                                    color = Color.White.copy(alpha = 0.6f),
+                                    color = Color.White.copy(alpha = 0.65f),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             },
                             modifier = Modifier
                                 .weight(1f)
                                 .onFocusChanged { focusState ->
-                                    if (focusState.isFocused) {
-                                        isPaused = true
-                                    }
+                                    if (focusState.isFocused) isPaused = true
                                 }
                                 .testTag("story_reply_input"),
                             shape = RoundedCornerShape(24.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                focusedBorderColor = Color.White.copy(alpha = 0.7f),
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                                focusedBorderColor = Color.White.copy(alpha = 0.6f),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
                                 focusedContainerColor = Color.White.copy(alpha = 0.15f),
                                 unfocusedContainerColor = Color.White.copy(alpha = 0.1f)
                             ),
                             singleLine = true
                         )
 
-                        if (replyText.isNotBlank() || selectedAttachmentUri != null) {
+                        if (replyText.isNotBlank()) {
                             IconButton(
                                 onClick = {
                                     val textToSend = replyText.trim()
-                                    val uriToSend = selectedAttachmentUri
                                     replyText = ""
-                                    selectedAttachmentUri = null
                                     val storyUrl = UrlHelper.fixCloudinaryUrl(currentStory.mediaUrl) ?: currentStory.mediaUrl
                                     
-                                    if (uriToSend != null) {
-                                        isUploadingAttachment = true
-                                        val storyCaption = if (textToSend.isNotBlank()) {
-                                            "[Story:$storyUrl|${currentStory.user.username}] $textToSend"
-                                        } else {
-                                            "[Story:$storyUrl|${currentStory.user.username}] 📸 Photo jointe"
-                                        }
-                                        viewModel.sendImageMessage(
-                                            receiverId = currentStory.user.id,
-                                            context = context,
-                                            imageUri = uriToSend,
-                                            caption = storyCaption
-                                        ) { success ->
-                                            isUploadingAttachment = false
-                                            isPaused = false
-                                            Toast.makeText(
-                                                context,
-                                                if (success) "Photo envoyée en message direct !" else "Échec de l'envoi",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    } else {
-                                        viewModel.sendStoryReply(
-                                            receiverId = currentStory.user.id,
-                                            replyText = textToSend,
-                                            storyMediaUrl = storyUrl,
-                                            storyAuthorUsername = currentStory.user.username
-                                        ) {
-                                            isPaused = false
-                                            Toast.makeText(context, "Réponse envoyée !", Toast.LENGTH_SHORT).show()
-                                        }
+                                    viewModel.sendStoryReply(
+                                        receiverId = currentStory.user.id,
+                                        replyText = textToSend,
+                                        storyMediaUrl = storyUrl,
+                                        storyAuthorUsername = currentStory.user.username
+                                    ) {
+                                        isPaused = false
+                                        Toast.makeText(context, "Réponse envoyée !", Toast.LENGTH_SHORT).show()
                                     }
                                 },
-                                enabled = !isUploadingAttachment,
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
+                                    .background(Color(0xFF25D366)) // WhatsApp Green
                                     .testTag("send_story_reply_btn")
                             ) {
-                                if (isUploadingAttachment) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                } else {
-                                    Icon(
-                                        Icons.Default.Send,
-                                        contentDescription = "Envoyer",
-                                        tint = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                }
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Envoyer",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                     }
@@ -864,15 +584,15 @@ fun StoryViewerDialog(
                     showDeleteConfirmDialog = false
                     isPaused = false
                 },
-                title = { Text("Supprimer cette story ?") },
-                text = { Text("Votre story sera définitivement supprimée.") },
+                title = { Text("Supprimer cette mise à jour de statut ?") },
+                text = { Text("Elle sera supprimée pour tous vos contacts.") },
                 confirmButton = {
                     Button(
                         onClick = {
                             showDeleteConfirmDialog = false
                             viewModel.deleteStory(currentStory.id) { success ->
                                 if (success) {
-                                    Toast.makeText(context, "Story supprimée", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Statut supprimé", Toast.LENGTH_SHORT).show()
                                 }
                                 onDismiss()
                             }
@@ -895,6 +615,9 @@ fun StoryViewerDialog(
     }
 }
 
+/**
+ * Clean WhatsApp-style Status Creator Bottom Sheet
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StoryCreatorDialog(
@@ -903,7 +626,6 @@ fun StoryCreatorDialog(
 ) {
     val context = LocalContext.current
     var selectedMediaUri by remember { mutableStateOf<Uri?>(null) }
-    var selectedEffect by remember { mutableStateOf<String>("none") }
     val isUploading by viewModel.isUploadingStory.collectAsState()
 
     val mediaPickerLauncher = rememberLauncherForActivityResult(
@@ -933,20 +655,11 @@ fun StoryCreatorDialog(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Nouvelle Story",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                Text(
+                    text = "Ajouter à mon statut",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
 
                 IconButton(
                     onClick = { if (!isUploading) onDismiss() },
@@ -956,7 +669,7 @@ fun StoryCreatorDialog(
                 }
             }
 
-            // Media Selection & Live Preview Box
+            // Media Selection & Preview Box
             Card(
                 onClick = {
                     if (!isUploading) {
@@ -965,7 +678,7 @@ fun StoryCreatorDialog(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(160.dp)
+                    .height(200.dp)
                     .testTag("story_media_picker_card"),
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(
@@ -977,12 +690,11 @@ fun StoryCreatorDialog(
                     if (selectedMediaUri != null) {
                         AsyncImage(
                             model = selectedMediaUri,
-                            contentDescription = "Aperçu de la story",
+                            contentDescription = "Aperçu du statut",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        // Top change button
                         Surface(
                             shape = CircleShape,
                             color = Color.Black.copy(alpha = 0.6f),
@@ -1002,19 +714,19 @@ fun StoryCreatorDialog(
                     } else {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Surface(
                                 shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(56.dp)
+                                color = Color(0xFF25D366).copy(alpha = 0.15f),
+                                modifier = Modifier.size(60.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        Icons.Default.AddPhotoAlternate,
+                                        Icons.Default.CameraAlt,
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(28.dp)
+                                        tint = Color(0xFF25D366),
+                                        modifier = Modifier.size(30.dp)
                                     )
                                 }
                             }
@@ -1024,7 +736,7 @@ fun StoryCreatorDialog(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Formats acceptés : JPG, PNG, MP4",
+                                text = "Partagez un instant avec vos contacts",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1033,52 +745,21 @@ fun StoryCreatorDialog(
                 }
             }
 
-            // Effects Section
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "EFFETS VISUELS & FILTRES IA",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(StoryEffects) { effect ->
-                        val isSelected = selectedEffect == effect.id
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { selectedEffect = effect.id },
-                            label = {
-                                Text(
-                                    text = "${effect.emoji} ${effect.label}",
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                    }
-                }
-            }
-
-            // Uploading state indicator
+            // Uploading progress bar
             if (isUploading) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF25D366)
+                    )
                     Text(
-                        text = "Application de l'effet et publication...",
+                        text = "Envoi du statut...",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = Color(0xFF25D366),
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -1092,17 +773,17 @@ fun StoryCreatorDialog(
                         viewModel.createStory(
                             context = context,
                             uri = uri,
-                            effect = if (selectedEffect == "none") null else selectedEffect
+                            effect = null
                         ) { success, errorMsg ->
                             if (success) {
-                                Toast.makeText(context, "Story publiée avec succès ! 🎉", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Statut partagé !", Toast.LENGTH_SHORT).show()
                                 onDismiss()
                             } else {
-                                Toast.makeText(context, errorMsg ?: "Échec de publication", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, errorMsg ?: "Échec de l'envoi", Toast.LENGTH_SHORT).show()
                             }
                         }
                     } else {
-                        Toast.makeText(context, "Veuillez d'abord sélectionner une photo ou vidéo", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Veuillez choisir une photo ou vidéo", Toast.LENGTH_SHORT).show()
                     }
                 },
                 enabled = selectedMediaUri != null && !isUploading,
@@ -1112,14 +793,14 @@ fun StoryCreatorDialog(
                     .testTag("publish_story_btn"),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+                    containerColor = Color(0xFF25D366), // WhatsApp Green
+                    contentColor = Color.White
                 )
             ) {
-                Icon(Icons.Default.RocketLaunch, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Partager en Story",
+                    text = "Publier le statut",
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )

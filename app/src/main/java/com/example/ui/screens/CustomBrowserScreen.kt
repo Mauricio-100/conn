@@ -235,6 +235,7 @@ fun CustomBrowserScreen(
                         AndroidView(
                             factory = { ctx ->
                                 WebView(ctx).apply {
+                                    setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                                     webViewClient = object : WebViewClient() {
                                         override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                                             super.onPageStarted(view, url, favicon)
@@ -251,6 +252,7 @@ fun CustomBrowserScreen(
 
                                         override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
                                             try {
+                                                (view?.parent as? android.view.ViewGroup)?.removeView(view)
                                                 view?.destroy()
                                             } catch (e: Exception) {
                                                 // ignore

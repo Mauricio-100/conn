@@ -68,6 +68,99 @@
             </intent-filter>
         </activity>
 
+        <!-- Hide It Pro: Signature IDDET Launcher Icon Aliases -->
+        <activity-alias
+            android:name="com.example.MainActivityCyberShield"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_cyber_shield"
+            android:label="@string/app_name"
+            android:targetActivity="com.example.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="com.example.MainActivityQuantumEye"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_quantum_eye"
+            android:label="@string/app_name"
+            android:targetActivity="com.example.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="com.example.MainActivityGoldVip"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_gold_vip"
+            android:label="@string/app_name"
+            android:targetActivity="com.example.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Hide It Pro: Disguised Launcher Icon Aliases -->
+        <activity-alias
+            android:name="com.example.MainActivityCalculator"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_stealth_calc"
+            android:label="@string/stealth_app_calc"
+            android:targetActivity="com.example.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="com.example.MainActivityNotes"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_stealth_notes"
+            android:label="@string/stealth_app_notes"
+            android:targetActivity="com.example.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="com.example.MainActivityWeather"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_stealth_weather"
+            android:label="@string/stealth_app_weather"
+            android:targetActivity="com.example.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="com.example.MainActivityAudio"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_stealth_audio"
+            android:label="@string/stealth_app_audio"
+            android:targetActivity="com.example.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

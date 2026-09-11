@@ -105,13 +105,10 @@ fun AuthScreen(viewModel: IddetViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (mode == AuthMode.INITIAL) {
-                Image(
-                    painter = painterResource(id = R.drawable.ic_cat_logo),
-                    contentDescription = "App Logo",
-                    modifier = Modifier
-                        .size(100.dp)
-                        .clip(RoundedCornerShape(20.dp)),
-                    contentScale = ContentScale.Crop
+                com.example.ui.components.AppDynamicLogo(
+                    size = 96.dp,
+                    elevation = 6.dp,
+                    showGlow = true
                 )
                 Spacer(modifier = Modifier.height(32.dp))
                 Text(
