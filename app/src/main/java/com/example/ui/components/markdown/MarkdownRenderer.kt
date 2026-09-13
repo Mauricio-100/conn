@@ -87,6 +87,7 @@ fun MarkdownRenderer(
     val primaryColor = MaterialTheme.colorScheme.primary
     val textColor = androidx.compose.material3.LocalContentColor.current
     val secondaryTextColor = textColor.copy(alpha = 0.7f)
+    val communityClickHandler = LocalCommunityClickHandler.current
 
     Column(
         modifier = modifier.testTag("markdown_renderer_container"),
@@ -186,9 +187,35 @@ fun MarkdownRenderer(
         val urls = remember(displayContent) { extractUrlsFromMarkdown(displayContent) }
         val hasVideo = remember(urls) { urls.any { VideoUrlHelper.isVideoUrl(it) } }
         
-        if (!hasVideo && urls.isNotEmpty()) {
+        // Extract community slugs for rich WhatsApp / OpenGraph banner
+        val communitySlugs = remember(displayContent) { 
+            com.example.utils.CommunitySlugHelper.extractCommunitySlugs(displayContent)
+        }
+        val nonCommunityUrls = remember(urls, communitySlugs) {
+            urls.filterNot { com.example.utils.CommunitySlugHelper.isCommunityUrl(it) }
+        }
+
+        if (communitySlugs.isNotEmpty()) {
             Spacer(modifier = Modifier.height(4.dp))
-            urls.forEach { url ->
+            communitySlugs.take(2).forEach { slug ->
+                com.example.ui.components.CommunityOpenGraphCard(
+                    slug = slug,
+                    compact = compactOpenGraph,
+                    onCommunityClick = { targetSlug ->
+                        if (onLinkClick != null) {
+                            onLinkClick("https://iddet.app/c/$targetSlug")
+                        } else {
+                            communityClickHandler?.invoke(targetSlug)
+                        }
+                    },
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+        }
+
+        if (!hasVideo && nonCommunityUrls.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            nonCommunityUrls.forEach { url ->
                 OpenGraphPreview(
                     url = url,
                     compact = compactOpenGraph,
@@ -679,7 +706,13 @@ fun MarkdownRenderedText(
             annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
                 .firstOrNull()?.let { annotation ->
                     val url = annotation.item
-                    if (url.startsWith("https://iddet.app/c/") || url.startsWith("iddet://community/")) {
+                    if (com.example.utils.CommunitySlugHelper.isCommunityUrl(url)) {
+                        val slug = com.example.utils.CommunitySlugHelper.extractSlugFromUrl(url)
+                        if (!slug.isNullOrBlank()) {
+                            communityClickHandler?.invoke(slug)
+                            return@ClickableText
+                        }
+                    } else if (url.startsWith("https://iddet.app/c/") || url.startsWith("iddet://community/")) {
                         val slug = if (url.startsWith("https://iddet.app/c/")) url.substringAfter("https://iddet.app/c/").substringBefore("/") else url.substringAfter("iddet://community/").substringBefore("/")
                         if (slug.isNotBlank()) {
                             communityClickHandler?.invoke(slug)
@@ -801,13 +834,13 @@ fun rememberRichMarkdownStyles(
                     }
                 }
 
-                // 3. Community shortcut starting with c/slug (e.g. c/general, c/crypto)
-                if (text[i] == 'c' && i + 2 < text.length && text[i + 1] == '/' && isBoundary) {
-                    val cSlugRegex = Regex("^(c/([a-zA-Z0-9_-]+))")
+                // 3. Community shortcut starting with c/slug (e.g. c/general, c/crypto) or communities/slug
+                if (text[i] == 'c' && isBoundary) {
+                    val cSlugRegex = Regex("^(c/([a-zA-Z0-9_-]+)|communities/([a-zA-Z0-9_-]+))")
                     val match = cSlugRegex.find(text.substring(i))
                     if (match != null) {
                         val fullMatch = match.value
-                        val slug = fullMatch.substring(2)
+                        val slug = if (fullMatch.startsWith("c/")) fullMatch.substring(2) else fullMatch.substring(12)
                         pushStringAnnotation(tag = "COMMUNITY", annotation = slug)
                         withStyle(
                             SpanStyle(

@@ -13,6 +13,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -448,6 +450,30 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
     val radarScanRadiusKm = com.example.data.FriendsLocationService.radarScanRadiusKm
     val lastChillWaveSent = com.example.data.FriendsLocationService.lastChillWaveSent
 
+    data class TrafficJamAlert(
+        val id: String = java.util.UUID.randomUUID().toString(),
+        val message: String,
+        val latitude: Double,
+        val longitude: Double,
+        val timestamp: Long = System.currentTimeMillis()
+    )
+
+    private val _trafficJamAlerts = MutableStateFlow<List<TrafficJamAlert>>(emptyList())
+    val trafficJamAlerts: StateFlow<List<TrafficJamAlert>> = _trafficJamAlerts.asStateFlow()
+
+    fun reportTrafficJam(lat: Double, lng: Double, note: String = "Ralentissement important") {
+        val alert = TrafficJamAlert(
+            message = "🚗 $note signalé par vous",
+            latitude = lat,
+            longitude = lng
+        )
+        _trafficJamAlerts.value = listOf(alert) + _trafficJamAlerts.value.take(5)
+    }
+
+    fun dismissTrafficJam(id: String) {
+        _trafficJamAlerts.value = _trafficJamAlerts.value.filterNot { it.id == id }
+    }
+
     fun initLocationTracking(context: android.content.Context) {
         if (realLocationProvider == null) {
             val provider = com.example.data.RealLocationProvider(context.applicationContext)
@@ -455,6 +481,21 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
             viewModelScope.launch {
                 provider.locationFlow.collect { loc ->
                     _realLocation.value = loc
+                    val token = repository.userToken
+                    if (!token.isNullOrBlank() && loc.isRealGpsAcquired) {
+                        viewModelScope.launch(Dispatchers.IO) {
+                            try {
+                                com.example.data.RetrofitClient.apiService.updateLocation(
+                                    token = "Bearer $token",
+                                    request = com.example.data.LocationUpdateRequest(
+                                        latitude = loc.latitude,
+                                        longitude = loc.longitude,
+                                        is_sharing = !isGhostMode.value
+                                    )
+                                )
+                            } catch (_: Exception) {}
+                        }
+                    }
                 }
             }
             provider.startLocationUpdates()
@@ -472,6 +513,26 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
 
     fun setGhostMode(enabled: Boolean) {
         com.example.data.FriendsLocationService.setGhostMode(enabled)
+        val token = repository.userToken
+        if (!token.isNullOrBlank()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    if (enabled) {
+                        com.example.data.RetrofitClient.apiService.stopLocationSharing("Bearer $token")
+                    } else {
+                        val loc = _realLocation.value
+                        com.example.data.RetrofitClient.apiService.updateLocation(
+                            token = "Bearer $token",
+                            request = com.example.data.LocationUpdateRequest(
+                                latitude = loc.latitude,
+                                longitude = loc.longitude,
+                                is_sharing = true
+                            )
+                        )
+                    }
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     fun setRadarScanRadius(radiusKm: Double) {
@@ -610,6 +671,22 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
             repository.refreshActfiles()
             loadStories()
             loadTrendingTopics()
+            // Automatically register live session with FastMCP server on app startup
+            com.example.data.McpSessionManager.registerLiveSession(
+                username = currentUser.value?.username,
+                authToken = repository.userToken
+            )
+        }
+        viewModelScope.launch {
+            currentUser.collect { user ->
+                if (user != null) {
+                    com.example.data.McpSessionManager.registerLiveSession(
+                        username = user.username,
+                        authToken = repository.userToken
+                    )
+                    loadConnectedApps()
+                }
+            }
         }
         viewModelScope.launch {
             while (true) {
@@ -706,6 +783,17 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
                             type = "audio_error",
                             isIncoming = false
                         )
+                    }
+                    is com.example.utils.WebSocketEvent.TrafficJam -> {
+                        val alert = TrafficJamAlert(
+                            message = event.message,
+                            latitude = event.latitude,
+                            longitude = event.longitude,
+                            timestamp = event.timestamp
+                        )
+                        _trafficJamAlerts.value = listOf(alert) + _trafficJamAlerts.value.filterNot {
+                            it.latitude == event.latitude && it.longitude == event.longitude
+                        }.take(5)
                     }
                     else -> {}
                 }
@@ -1210,6 +1298,129 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
         viewModelScope.launch {
             val success = repository.updateCommunityIcon(slug, iconFile)
             onResult(success)
+        }
+    }
+
+    fun updateCommunityIconUrl(
+        slug: String,
+        iconUrl: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val success = repository.updateCommunityIconUrl(slug, iconUrl)
+            onResult(success)
+        }
+    }
+
+    val mcpSessionState = com.example.data.McpSessionManager.sessionState
+
+    fun registerNewMcpSession() {
+        viewModelScope.launch {
+            com.example.data.McpSessionManager.registerLiveSession(
+                username = currentUser.value?.username,
+                authToken = repository.userToken
+            )
+        }
+    }
+
+    fun callMcpTool(
+        toolName: String,
+        arguments: Map<String, Any?>,
+        onResult: (Result<String>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = com.example.data.McpSessionManager.callTool(
+                toolName = toolName,
+                arguments = arguments,
+                authToken = repository.userToken
+            )
+            onResult(result)
+        }
+    }
+
+    private val _connectedApps = MutableStateFlow<List<com.example.data.ConnectedAppItem>>(emptyList())
+    val connectedApps: StateFlow<List<com.example.data.ConnectedAppItem>> = _connectedApps.asStateFlow()
+
+    private val _isLoadingConnectedApps = MutableStateFlow(false)
+    val isLoadingConnectedApps: StateFlow<Boolean> = _isLoadingConnectedApps.asStateFlow()
+
+    fun loadConnectedApps() {
+        viewModelScope.launch {
+            _isLoadingConnectedApps.value = true
+            try {
+                val apps = repository.getConnectedApps()
+                _connectedApps.value = apps
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isLoadingConnectedApps.value = false
+            }
+        }
+    }
+
+    fun connectAppViaMcp(
+        clientUrl: String,
+        password: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val username = currentUser.value?.username
+            if (username.isNullOrBlank()) {
+                onResult(false, "Veuillez vous connecter à un compte")
+                return@launch
+            }
+            if (password.isBlank()) {
+                onResult(false, "Mot de passe requis pour autoriser l'application via MCP")
+                return@launch
+            }
+            val res = com.example.data.McpSessionManager.loginWithMcp(username, password, clientUrl)
+            res.fold(
+                onSuccess = {
+                    loadConnectedApps()
+                    onResult(true, "Application connectée avec succès (icône & nom OpenGraph récupérés) !")
+                },
+                onFailure = { err ->
+                    onResult(false, err.message ?: "Échec de connexion de l'application")
+                }
+            )
+        }
+    }
+
+    fun connectBatchIntegratedApps(
+        urls: List<String>,
+        password: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val username = currentUser.value?.username
+            if (username.isNullOrBlank()) {
+                onResult(false, "Veuillez vous connecter à un compte")
+                return@launch
+            }
+            if (password.isBlank()) {
+                onResult(false, "Mot de passe requis")
+                return@launch
+            }
+            val res = com.example.data.McpSessionManager.connectIntegratedApps(username, password, urls)
+            res.fold(
+                onSuccess = { count ->
+                    loadConnectedApps()
+                    onResult(true, "$count application(s) intégrée(s) enregistrée(s) avec succès !")
+                },
+                onFailure = { err ->
+                    onResult(false, err.message ?: "Erreur d'intégration")
+                }
+            )
+        }
+    }
+
+    fun disconnectApp(appId: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = repository.removeConnectedApp(appId)
+            if (ok) {
+                loadConnectedApps()
+            }
+            onResult(ok)
         }
     }
 

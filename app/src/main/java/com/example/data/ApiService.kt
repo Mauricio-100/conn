@@ -647,12 +647,63 @@ interface ApiService {
         @Body body: Map<String, @JvmSuppressWildcards Any>
     ): Map<String, @JvmSuppressWildcards Any>
 
-    @Multipart
+    @retrofit2.http.Multipart
     @retrofit2.http.PUT("/api/communities/{slug}/icon")
     suspend fun updateCommunityIcon(
         @retrofit2.http.Header("Authorization") token: String,
         @retrofit2.http.Path("slug") slug: String,
         @retrofit2.http.Part icon: okhttp3.MultipartBody.Part
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.Multipart
+    @retrofit2.http.POST("/api/communities/{slug}/icon")
+    suspend fun updateCommunityIconPost(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @retrofit2.http.Part icon: okhttp3.MultipartBody.Part
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.Multipart
+    @retrofit2.http.PUT("/api/community/{slug}/icon")
+    suspend fun updateCommunitySlugIconPut(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @retrofit2.http.Part icon: okhttp3.MultipartBody.Part
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.Multipart
+    @retrofit2.http.POST("/api/community/{slug}/icon")
+    suspend fun updateCommunitySlugIconPost(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("slug") slug: String,
+        @retrofit2.http.Part icon: okhttp3.MultipartBody.Part
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.Multipart
+    @retrofit2.http.POST("/api/community/icon")
+    suspend fun uploadCommunityIconDirectPost(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Part("slug") slug: okhttp3.RequestBody,
+        @retrofit2.http.Part icon: okhttp3.MultipartBody.Part
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.Multipart
+    @retrofit2.http.PUT("/api/community/icon")
+    suspend fun uploadCommunityIconDirectPut(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Part("slug") slug: okhttp3.RequestBody,
+        @retrofit2.http.Part icon: okhttp3.MultipartBody.Part
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.GET("/api/connected-apps")
+    suspend fun getConnectedApps(
+        @retrofit2.http.Header("Authorization") token: String
+    ): List<ConnectedAppItem>
+
+    @retrofit2.http.DELETE("/api/connected-apps/{app_id}")
+    suspend fun removeConnectedApp(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("app_id") appId: String
     ): Map<String, @JvmSuppressWildcards Any>
 
     @retrofit2.http.GET("/api/communities/{slug}/bots")
@@ -793,7 +844,49 @@ interface ApiService {
     suspend fun getCloudflareLivePlayback(
         @retrofit2.http.Path("input_id") inputId: String
     ): LivePlaybackResponse
+
+    // ── GÉOLOCALISATION & SNAP MAP & EMBOUTEILLAGES ──
+    @retrofit2.http.POST("/api/location")
+    suspend fun updateLocation(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Body request: LocationUpdateRequest
+    ): LocationUpdateResponse
+
+    @retrofit2.http.DELETE("/api/location")
+    suspend fun stopLocationSharing(
+        @retrofit2.http.Header("Authorization") token: String
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.GET("/api/friends/nearby")
+    suspend fun getNearbyFriends(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Query("limit") limit: Int = 50
+    ): List<NearbyFriendNetwork>
 }
+
+data class LocationUpdateRequest(
+    val latitude: Double,
+    val longitude: Double,
+    val is_sharing: Boolean? = true
+)
+
+data class LocationUpdateResponse(
+    val latitude: Double,
+    val longitude: Double,
+    val speed_kmh: Double = 0.0,
+    val is_sharing: Boolean = true,
+    val updated_at: String = ""
+)
+
+data class NearbyFriendNetwork(
+    val user_id: String,
+    val username: String,
+    val avatar_url: String? = null,
+    val latitude: Double,
+    val longitude: Double,
+    val distance_km: Double = 0.0,
+    val last_update: String = ""
+)
 
 data class SoundNetwork(
     val id: String = "",
@@ -857,6 +950,16 @@ data class LivePlaybackResponse(
     val live_id: String,
     val hls_url: String?,
     val dash_url: String?
+)
+
+data class ConnectedAppItem(
+    val id: String,
+    val user_id: String? = null,
+    val url: String,
+    val name: String? = null,
+    val icon_url: String? = null,
+    val first_connected_at: String? = null,
+    val last_connected_at: String? = null
 )
 
 object RetrofitClient {

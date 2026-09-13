@@ -228,6 +228,21 @@ fun OpenGraphPreview(
     hideImage: Boolean = false,
     onLinkClick: ((String) -> Unit)? = null
 ) {
+    val communitySlug = remember(url) { com.example.utils.CommunitySlugHelper.extractSlugFromUrl(url) }
+    if (communitySlug != null) {
+        CommunityOpenGraphCard(
+            slug = communitySlug,
+            modifier = modifier,
+            compact = compact,
+            onCommunityClick = { targetSlug ->
+                if (onLinkClick != null) {
+                    onLinkClick("https://iddet.app/c/$targetSlug")
+                }
+            }
+        )
+        return
+    }
+
     val uriHandler = LocalUriHandler.current
     var metadata by remember(url) { mutableStateOf(UrlMetadataResolver.getPresetMetadata(url)) }
 

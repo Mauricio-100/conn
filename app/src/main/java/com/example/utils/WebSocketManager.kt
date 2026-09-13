@@ -167,6 +167,23 @@ object WebSocketManager : ChatSocketClient {
                         coroutineScope.launch { _events.emit(WebSocketEvent.TypingStatus(senderId, isTyping)) }
                     }
                 }
+                "traffic_jam" -> {
+                    val msg = json.optString("message", "🚗 Embouteillage détecté dans votre zone.")
+                    val lat = json.optDouble("latitude", 0.0)
+                    val lng = json.optDouble("longitude", 0.0)
+                    coroutineScope.launch {
+                        _events.emit(WebSocketEvent.TrafficJam(msg, lat, lng))
+                    }
+                }
+                "new_actfile" -> {
+                    val actfileId = json.optString("actfile_id")
+                    val fromUserId = json.optString("from_user_id")
+                    val fromUsername = json.optString("from_username")
+                    val msg = json.optString("message", "")
+                    coroutineScope.launch {
+                        _events.emit(WebSocketEvent.NewActfile(actfileId, fromUserId, fromUsername, msg))
+                    }
+                }
                 "error" -> {
                     val msg = json.optString("message", "Erreur serveur")
                     coroutineScope.launch { _events.emit(WebSocketEvent.Error(msg)) }
@@ -277,6 +294,18 @@ sealed class WebSocketEvent {
     data class TypingStatus(
         val senderId: String,
         val isTyping: Boolean
+    ) : WebSocketEvent()
+    data class TrafficJam(
+        val message: String,
+        val latitude: Double,
+        val longitude: Double,
+        val timestamp: Long = System.currentTimeMillis()
+    ) : WebSocketEvent()
+    data class NewActfile(
+        val actfileId: String,
+        val fromUserId: String,
+        val fromUsername: String,
+        val message: String
     ) : WebSocketEvent()
     data class Error(val message: String) : WebSocketEvent()
 }

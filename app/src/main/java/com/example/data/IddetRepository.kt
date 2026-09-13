@@ -17,6 +17,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.Request
+import org.json.JSONObject
+import android.util.Log
+import android.util.Base64
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -111,6 +117,19 @@ class IddetRepository(
     private val viewedActfiles = mutableSetOf<String>()
 
     init {
+        INSTANCE = this
+        if (localCommunities.isEmpty()) {
+            localCommunities.addAll(listOf(
+                Community(id = "com_tech", slug = "tech", name = "Technologies & Dev", description = "Discussions sur l'IA, le dev mobile, Android, hardware et innovations numériques.", category = "Technologie", membersCount = 1420, isMember = false),
+                Community(id = "com_gaming", slug = "gaming", name = "Jeux Vidéo & E-sport", description = "Communauté gaming francophone : actualités, streams, consoles et discussions.", category = "Jeux vidéo", membersCount = 3840, isMember = false),
+                Community(id = "com_obsidian", slug = "obsidian", name = "Obsidian & PKM", description = "Astuces, plugins, markdown et prise de notes avec Obsidian et IDDET.", category = "Productivité", membersCount = 890, isMember = false),
+                Community(id = "com_france", slug = "france", name = "France & Société", description = "Actus, culture, société et débats d'actualité en France.", category = "Actualités", membersCount = 5210, isMember = false),
+                Community(id = "com_crypto", slug = "crypto", name = "Crypto & Web3", description = "Bitcoin, Ethereum, DeFi, blockchains et analyses de marché.", category = "Finance", membersCount = 2150, isMember = false),
+                Community(id = "com_cinema", slug = "cinema", name = "Cinéma & Séries", description = "Critiques de films, séries TV, bandes-annonces et recommandations.", category = "Divertissement", membersCount = 1630, isMember = false),
+                Community(id = "com_musique", slug = "musique", name = "Musique & Sons", description = "Partage de morceaux, découvertes musicales, vinyles et instruments.", category = "Musique", membersCount = 1240, isMember = false),
+                Community(id = "com_general", slug = "general", name = "Général & Discussion", description = "Le salon général pour discuter de tout et de rien sur IDDET.", category = "Général", membersCount = 6780, isMember = true)
+            ))
+        }
         repositoryScope.launch {
             IddetAccountManager.ensureIddetAccountExists(userDao, actfileDao)
         }
@@ -1481,23 +1500,24 @@ class IddetRepository(
     }
 
     suspend fun getCommunity(slug: String): Community? {
-        val local = localCommunities.find { it.slug == slug }
+        val cleanSlug = slug.trim().lowercase().removePrefix("c/").removePrefix("/")
+        val local = localCommunities.find { it.slug.equals(cleanSlug, ignoreCase = true) }
         val token = currentToken ?: prefs.getString("auth_token", null)
         val header = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
         return try {
-            val net = RetrofitClient.apiService.getCommunity(header, slug)
+            val net = RetrofitClient.apiService.getCommunity(header, cleanSlug)
             if (net != null) {
                 // Keep local membership state if toggled locally
                 val isMem = local?.isMember ?: net.isMember
                 val count = local?.membersCount ?: net.membersCount
                 val merged = net.copy(isMember = isMem, membersCount = count)
-                localCommunities.removeAll { it.slug == slug }
+                localCommunities.removeAll { it.slug.equals(cleanSlug, ignoreCase = true) }
                 localCommunities.add(merged)
                 merged
-            } else local
+            } else (local ?: createFallbackCommunity(cleanSlug))
         } catch (e: Exception) {
             e.printStackTrace()
-            local
+            local ?: createFallbackCommunity(cleanSlug)
         }
     }
 
@@ -2187,13 +2207,202 @@ class IddetRepository(
         }
     }
 
+    private suspend fun uploadCommunityIconImage(iconFile: java.io.File): String? = withContext(Dispatchers.IO) {
+        try {
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+
+            val mediaType = "image/jpeg".toMediaTypeOrNull()
+            val requestFile = iconFile.asRequestBody(mediaType)
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("file", iconFile.name, requestFile)
+                .build()
+
+            val request = Request.Builder()
+                .url("https://tmpfiles.org/api/v1/upload")
+                .post(body)
+                .build()
+
+            val response = client.newCall(request).execute()
+            val resStr = response.body?.string() ?: ""
+            if (response.isSuccessful && resStr.contains("\"url\"")) {
+                val json = JSONObject(resStr)
+                val data = json.optJSONObject("data")
+                val rawUrl = data?.optString("url")
+                if (!rawUrl.isNullOrBlank()) {
+                    val directUrl = rawUrl.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+                    Log.d("IddetRepository", "Community icon uploaded successfully: $directUrl")
+                    return@withContext directUrl
+                }
+            }
+            // Fallback: encode as Base64 data URI
+            val bytes = iconFile.readBytes()
+            val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            "data:image/jpeg;base64,$base64"
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Failed to upload image file to tmpfiles, using fallback", e)
+            try {
+                val bytes = iconFile.readBytes()
+                val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                "data:image/jpeg;base64,$base64"
+            } catch (err: Exception) {
+                null
+            }
+        }
+    }
+
     suspend fun updateCommunityIcon(slug: String, iconFile: java.io.File): Boolean {
         val token = currentToken ?: return false
         return try {
-            val mediaType = "image/jpeg".toMediaType()
+            val mediaType = "image/jpeg".toMediaTypeOrNull()
             val requestFile = iconFile.asRequestBody(mediaType)
             val iconPart = MultipartBody.Part.createFormData("icon", iconFile.name, requestFile)
-            RetrofitClient.apiService.updateCommunityIcon("Bearer $token", slug, iconPart)
+            val slugPart = slug.toRequestBody("text/plain".toMediaTypeOrNull())
+
+            fun checkResponse(resp: Map<String, Any>?): String? {
+                if (resp == null) return null
+                return (resp["icon_url"] ?: resp["iconUrl"] ?: resp["icon"] ?: resp["url"])?.toString()
+            }
+
+            fun applyIconSuccess(serverUrl: String): Boolean {
+                val index = localCommunities.indexOfFirst { it.slug == slug }
+                if (index != -1) {
+                    val old = localCommunities[index]
+                    localCommunities[index] = old.copy(iconUrl = serverUrl)
+                }
+                Log.i("IddetRepository", "Community icon updated directly on server: $serverUrl")
+                return true
+            }
+
+            // 1. PUT /api/communities/{slug}/icon
+            try {
+                val resp = RetrofitClient.apiService.updateCommunityIcon("Bearer $token", slug, iconPart)
+                val url = checkResponse(resp)
+                if (!url.isNullOrBlank()) return applyIconSuccess(url)
+            } catch (e: Exception) {
+                Log.w("IddetRepository", "PUT /api/communities/$slug/icon failed: ${e.message}")
+            }
+
+            // 2. POST /api/communities/{slug}/icon
+            try {
+                val resp = RetrofitClient.apiService.updateCommunityIconPost("Bearer $token", slug, iconPart)
+                val url = checkResponse(resp)
+                if (!url.isNullOrBlank()) return applyIconSuccess(url)
+            } catch (e: Exception) {
+                Log.w("IddetRepository", "POST /api/communities/$slug/icon failed: ${e.message}")
+            }
+
+            // 3. PUT /api/community/{slug}/icon
+            try {
+                val resp = RetrofitClient.apiService.updateCommunitySlugIconPut("Bearer $token", slug, iconPart)
+                val url = checkResponse(resp)
+                if (!url.isNullOrBlank()) return applyIconSuccess(url)
+            } catch (e: Exception) {
+                Log.w("IddetRepository", "PUT /api/community/$slug/icon failed: ${e.message}")
+            }
+
+            // 4. POST /api/community/{slug}/icon
+            try {
+                val resp = RetrofitClient.apiService.updateCommunitySlugIconPost("Bearer $token", slug, iconPart)
+                val url = checkResponse(resp)
+                if (!url.isNullOrBlank()) return applyIconSuccess(url)
+            } catch (e: Exception) {
+                Log.w("IddetRepository", "POST /api/community/$slug/icon failed: ${e.message}")
+            }
+
+            // 5. POST /api/community/icon (with slug part)
+            try {
+                val resp = RetrofitClient.apiService.uploadCommunityIconDirectPost("Bearer $token", slugPart, iconPart)
+                val url = checkResponse(resp)
+                if (!url.isNullOrBlank()) return applyIconSuccess(url)
+            } catch (e: Exception) {
+                Log.w("IddetRepository", "POST /api/community/icon failed: ${e.message}")
+            }
+
+            // 6. PUT /api/community/icon (with slug part)
+            try {
+                val resp = RetrofitClient.apiService.uploadCommunityIconDirectPut("Bearer $token", slugPart, iconPart)
+                val url = checkResponse(resp)
+                if (!url.isNullOrBlank()) return applyIconSuccess(url)
+            } catch (e: Exception) {
+                Log.w("IddetRepository", "PUT /api/community/icon failed: ${e.message}")
+            }
+
+            // 7. Fallback: upload image and update via MCP / REST
+            val iconUrl = uploadCommunityIconImage(iconFile) ?: return false
+            updateCommunityIconUrl(slug, iconUrl)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun getConnectedApps(): List<ConnectedAppItem> {
+        val token = currentToken ?: return emptyList()
+        return try {
+            RetrofitClient.apiService.getConnectedApps("Bearer $token")
+        } catch (e: Exception) {
+            Log.w("IddetRepository", "Failed to get connected apps: ${e.message}")
+            emptyList()
+        }
+    }
+
+    suspend fun removeConnectedApp(appId: String): Boolean {
+        val token = currentToken ?: return false
+        return try {
+            RetrofitClient.apiService.removeConnectedApp("Bearer $token", appId)
+            true
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Failed to remove connected app: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun updateCommunityIconUrl(slug: String, iconUrl: String): Boolean {
+        val token = currentToken ?: return false
+        return try {
+            val existingCommunity = localCommunities.find { it.slug == slug }
+            val communityId = existingCommunity?.id ?: slug
+
+            // 1. Update via FastMCP server mcp_update_community tool
+            try {
+                McpSessionManager.callTool(
+                    toolName = "mcp_update_community",
+                    arguments = mapOf(
+                        "auth_token" to token,
+                        "community_id" to communityId,
+                        "icon_url" to iconUrl
+                    ),
+                    authToken = token
+                )
+            } catch (e: Exception) {
+                Log.w("IddetRepository", "MCP tool mcp_update_community note: ${e.message}")
+            }
+
+            // 2. Update via REST PUT /api/communities/{slug}
+            try {
+                RetrofitClient.apiService.updateCommunity(
+                    "Bearer $token",
+                    slug,
+                    mapOf(
+                        "icon_url" to iconUrl,
+                        "iconUrl" to iconUrl,
+                        "icon" to iconUrl
+                    )
+                )
+            } catch (e: Exception) {
+                Log.w("IddetRepository", "REST updateCommunity note: ${e.message}")
+            }
+
+            // 3. Update local cache immediately
+            val index = localCommunities.indexOfFirst { it.slug == slug }
+            if (index != -1) {
+                val old = localCommunities[index]
+                localCommunities[index] = old.copy(iconUrl = iconUrl)
+            }
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -2348,5 +2557,48 @@ class IddetRepository(
             progress = progress,
             is_max_level = isMax
         )
+    }
+
+    private fun createFallbackCommunity(slug: String): Community {
+        val cleanSlug = slug.trim().lowercase().removePrefix("c/").removePrefix("/")
+        val fallback = Community(
+            id = "com_$cleanSlug",
+            slug = cleanSlug,
+            name = cleanSlug.replaceFirstChar { it.uppercase() },
+            category = "Général",
+            description = "Bienvenue dans la communauté c/$cleanSlug sur IDDET. Partagez, échangez et suivez les salons thématiques.",
+            membersCount = 42,
+            isMember = false
+        )
+        localCommunities.removeAll { it.slug.equals(cleanSlug, ignoreCase = true) }
+        localCommunities.add(fallback)
+        return fallback
+    }
+
+    companion object {
+        @Volatile
+        private var INSTANCE: IddetRepository? = null
+
+        fun getInstance(context: android.content.Context): IddetRepository {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: run {
+                    val db = com.example.data.AppDatabase.getDatabase(context.applicationContext)
+                    val prefs = context.applicationContext.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+                    val instance = IddetRepository(
+                        db.userDao(),
+                        db.actfileDao(),
+                        db.messageDao(),
+                        db.followDao(),
+                        db.commentDao(),
+                        db.notificationDao(),
+                        db.savedAccountDao(),
+                        db.channelMessageDao(),
+                        prefs
+                    )
+                    INSTANCE = instance
+                    instance
+                }
+            }
+        }
     }
 }

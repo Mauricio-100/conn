@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,14 +36,27 @@ fun CommunityDashboardHeader(
     onRulesClick: () -> Unit,
     onShareClick: (() -> Unit)? = null,
     onNewPostClick: (() -> Unit)? = null,
+    onEditIconClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var isExpandedDescription by remember { mutableStateOf(false) }
-    // Simulated online members proportion for realistic Reddit feel (5-15% of members or at least 12)
-    val onlineCount = remember(community.membersCount) {
-        val base = (community.membersCount * 0.12).toInt()
-        if (base > 0) base else 14
+    
+    // Coherent, realistic online count calculation (never exceeding membersCount)
+    val onlineCount = remember(community.membersCount, community.slug, community.onlineCount) {
+        community.getComputedOnlineCount()
     }
+
+    // Animated pulsing indicator for live online presence
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse_header")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
 
     Column(
         modifier = modifier
@@ -103,7 +117,10 @@ fun CommunityDashboardHeader(
                         .background(MaterialTheme.colorScheme.surface)
                         .padding(3.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .then(
+                            if (onEditIconClick != null) Modifier.clickable { onEditIconClick() } else Modifier
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     val iconModel = if (!community.iconUrl.isNullOrBlank()) {
@@ -117,6 +134,22 @@ fun CommunityDashboardHeader(
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
+
+                    if (onEditIconClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.3f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.CameraAlt,
+                                contentDescription = "Changer l'icône",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                 }
 
                 // Action Buttons
@@ -284,20 +317,20 @@ fun CommunityDashboardHeader(
                         )
                     }
 
-                    // Online active members with green pulse dot
+                    // Online active members with animated green pulse dot
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF4CAF50))
+                                .background(Color(0xFF22C55E).copy(alpha = pulseAlpha))
                         )
-                        Spacer(modifier = Modifier.width(5.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "$onlineCount en ligne",
+                            text = "${FormatUtils.formatCount(onlineCount)} en ligne",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
+                            color = Color(0xFF16A34A),
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }

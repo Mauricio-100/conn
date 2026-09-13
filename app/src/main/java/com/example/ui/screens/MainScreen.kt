@@ -544,6 +544,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                         Triple("Iddet Plus VIP ✨", "iddet_plus", Icons.Outlined.Star),
                         Triple("Hide It Pro Studio 🐱", "hide_it_pro", Icons.Outlined.VisibilityOff),
                         Triple("Radar des Potes 🗺️", "friends_map", Icons.Outlined.Place),
+                        Triple("Serveur MCP & Outils 🔌", "mcp_protocol", Icons.Outlined.Build),
                         Triple("Rechercher", "search", Icons.Outlined.Search),
                         Triple("Discussions", "messages", Icons.Outlined.Message),
                         Triple("Communautés", "communities", Icons.Outlined.Group),
@@ -746,6 +747,15 @@ fun MainScreen(viewModel: IddetViewModel) {
                 composable("marketplace") { MarketplaceScreen(navController) }
                 composable("iddet_plus") { IddetPlusScreen(viewModel, navController) }
                 composable("hide_it_pro") { HideItProScreen(navController) }
+                composable(
+                    "mcp_protocol",
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) }
+                ) {
+                    com.example.ui.screens.McpProtocolScreen(viewModel, navController)
+                }
                 composable(
                     "google_news",
                     enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },

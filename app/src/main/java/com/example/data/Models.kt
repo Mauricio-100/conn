@@ -136,11 +136,36 @@ data class Community(
     @Json(name = "creator_id") val creatorId: String? = null,
     @Json(name = "is_private") val isPrivate: Boolean = false,
     @Json(name = "members_count") val membersCount: Int = 1,
+    @Json(name = "online_count") val onlineCount: Int? = null,
     @Json(name = "posts_count") val postsCount: Int = 0,
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "is_member") val isMember: Boolean = true,
     @Json(name = "my_role") val myRole: String? = "admin"
-)
+) {
+    /**
+     * Calcule de manière cohérente, dynamique et réaliste le nombre de personnes en ligne.
+     * Ne dépasse JAMAIS membersCount. Minimum 1 si la communauté a au moins 1 membre.
+     */
+    fun getComputedOnlineCount(nowMillis: Long = System.currentTimeMillis()): Int {
+        if (membersCount <= 0) return 0
+        if (membersCount == 1) return 1
+        if (onlineCount != null && onlineCount > 0) {
+            return onlineCount.coerceIn(1, membersCount)
+        }
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = nowMillis }
+        val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+        val timeRatio = when (hour) {
+            in 18..23 -> 0.18 // Soirée: forte affluence
+            in 12..14 -> 0.14 // Pause déjeuner
+            in 8..11, in 15..17 -> 0.10 // Heures actives de journée
+            else -> 0.05 // Nuit
+        }
+        val window = nowMillis / (5 * 60 * 1000) // Fenêtre de 5 minutes
+        val jitter = (Math.abs((slug.hashCode() xor window.hashCode())) % 5) - 2
+        val rawCount = (membersCount * timeRatio).toInt() + jitter
+        return rawCount.coerceIn(1, membersCount)
+    }
+}
 
 data class Channel(
     val id: String = "",

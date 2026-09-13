@@ -425,7 +425,11 @@ private fun EmbeddedWebVideoView(videoInfo: VideoUrlHelper.VideoInfo) {
             }
         },
         update = { webView ->
-            webView.loadDataWithBaseURL("https://www.youtube.com", htmlContent, "text/html", "UTF-8", null)
+            val currentTag = webView.tag as? String
+            if (currentTag != htmlContent) {
+                webView.tag = htmlContent
+                webView.loadDataWithBaseURL("https://www.youtube.com", htmlContent, "text/html", "UTF-8", null)
+            }
         }
     )
 }

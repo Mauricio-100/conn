@@ -476,17 +476,42 @@ fun CommunityShareDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text("Lien de partage direct", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                        Text("https://iddet.app/c/${community.slug}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("Lien Web & Aperçu OpenGraph", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                        Text("https://hoosthubs-g.onrender.com/c/${community.slug}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                     FilledTonalButton(
                                         onClick = {
-                                            clipboardManager.setText(AnnotatedString("https://iddet.app/c/${community.slug}"))
-                                            Toast.makeText(context, "Lien direct copié !", Toast.LENGTH_SHORT).show()
+                                            clipboardManager.setText(AnnotatedString("https://hoosthubs-g.onrender.com/c/${community.slug}"))
+                                            Toast.makeText(context, "Lien web copié !", Toast.LENGTH_SHORT).show()
                                         },
                                         shape = RoundedCornerShape(10.dp)
                                     ) {
                                         Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Copier")
+                                    }
+                                }
+
+                                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                                // Deep Link Scheme
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Lien Application Direct (Deep Link)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                        Text("iddet://community/${community.slug}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    FilledTonalButton(
+                                        onClick = {
+                                            clipboardManager.setText(AnnotatedString("iddet://community/${community.slug}"))
+                                            Toast.makeText(context, "Lien iddet:// copié !", Toast.LENGTH_SHORT).show()
+                                        },
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text("Copier")
                                     }

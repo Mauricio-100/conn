@@ -94,6 +94,7 @@ fun FriendsMapScreen(
     val lastWavedFriend by viewModel.lastWavedFriend.collectAsStateWithLifecycle()
     val radarScanRadiusKm by viewModel.radarScanRadiusKm.collectAsStateWithLifecycle()
     val lastChillWaveSent by viewModel.lastChillWaveSent.collectAsStateWithLifecycle()
+    val trafficJamAlerts by viewModel.trafficJamAlerts.collectAsStateWithLifecycle()
 
     var radarViewMode by remember { mutableStateOf(RadarViewMode.MAP_VIEW) }
     var selectedFilter by remember { mutableStateOf(FriendActivityFilter.ALL) }
@@ -102,6 +103,8 @@ fun FriendsMapScreen(
     var showVibeEditorDialog by remember { mutableStateOf(false) }
     var showWaveCelebration by remember { mutableStateOf(false) }
     var wavedFriendName by remember { mutableStateOf("") }
+    var showReportTrafficDialog by remember { mutableStateOf(false) }
+    var trafficReportNote by remember { mutableStateOf("Embouteillage important") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var isMapLoaded by remember { mutableStateOf(false) }
 
@@ -170,7 +173,7 @@ fun FriendsMapScreen(
     }
 
     // Push updated coordinates or theme to Leaflet map
-    LaunchedEffect(realLocation, filteredFriends, isGhostMode, currentMapTheme, isMapLoaded) {
+    LaunchedEffect(realLocation, filteredFriends, isGhostMode, currentMapTheme, isMapLoaded, trafficJamAlerts) {
         if (isMapLoaded && webViewRef != null) {
             val friendsJson = JSONArray().apply {
                 filteredFriends.forEach { f ->
@@ -192,6 +195,17 @@ fun FriendsMapScreen(
                 }
             }.toString()
 
+            val trafficJamsJson = JSONArray().apply {
+                trafficJamAlerts.forEach { jam ->
+                    put(JSONObject().apply {
+                        put("id", jam.id)
+                        put("lat", jam.latitude)
+                        put("lng", jam.longitude)
+                        put("message", jam.message)
+                    })
+                }
+            }.toString()
+
             val userAvatar = currentUser?.avatarUrl ?: ""
             val username = currentUser?.username ?: "Moi"
             val jsCall = """
@@ -207,6 +221,9 @@ fun FriendsMapScreen(
                         $friendsJson,
                         '${currentMapTheme.url}'
                     );
+                }
+                if (window.updateTrafficJams) {
+                    window.updateTrafficJams($trafficJamsJson);
                 }
             """.trimIndent()
             webViewRef?.evaluateJavascript(jsCall, null)
@@ -430,6 +447,16 @@ fun FriendsMapScreen(
                                     }
 
                                     @JavascriptInterface
+                                    fun onTrafficJamClicked(jamId: String) {
+                                        scope.launch {
+                                            val jam = trafficJamAlerts.find { it.id == jamId }
+                                            if (jam != null) {
+                                                Toast.makeText(context, "🚗 " + jam.message, Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+
+                                    @JavascriptInterface
                                     fun onMapClicked() {
                                         scope.launch {
                                             selectedFriend = null
@@ -513,13 +540,64 @@ fun FriendsMapScreen(
                         }
                     }
 
-                    // Top Filter Chips (Snap Categories)
+                    // Top Filter Chips & Traffic Jam Banner
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopCenter)
                             .padding(top = if (!hasLocationPermission) 80.dp else 12.dp)
                     ) {
+                        // Traffic Jam Alert Notification Banner
+                        if (trafficJamAlerts.isNotEmpty()) {
+                            val activeJam = trafficJamAlerts.first()
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFFDC2626),
+                                shadowElevation = 6.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("🚗", fontSize = 20.sp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Radar Trafic : Ralentissement",
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
+                                        Text(
+                                            activeJam.message,
+                                            color = Color.White.copy(alpha = 0.95f),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            webViewRef?.evaluateJavascript(
+                                                "if(window.centerOnFriend){ window.centerOnFriend(${activeJam.latitude}, ${activeJam.longitude}); }",
+                                                null
+                                            )
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Place, contentDescription = "Localiser", tint = Color.White, modifier = Modifier.size(18.dp))
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.dismissTrafficJam(activeJam.id) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Fermer", tint = Color.White, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
                         LazyRow(
                             modifier = Modifier.fillMaxWidth(),
                             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -617,6 +695,19 @@ fun FriendsMapScreen(
                             modifier = Modifier.size(46.dp)
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = "Actualiser", modifier = Modifier.size(22.dp))
+                        }
+
+                        // Report Traffic Jam FAB
+                        FloatingActionButton(
+                            onClick = {
+                                showReportTrafficDialog = true
+                            },
+                            containerColor = Color(0xFFDC2626),
+                            contentColor = Color.White,
+                            shape = CircleShape,
+                            modifier = Modifier.size(46.dp)
+                        ) {
+                            Icon(Icons.Default.Warning, contentDescription = "Signaler trafic", modifier = Modifier.size(20.dp))
                         }
                     }
 
@@ -934,6 +1025,77 @@ fun FriendsMapScreen(
             }
         )
     }
+
+    // Dialog: Signaler un embouteillage / accident
+    if (showReportTrafficDialog) {
+        AlertDialog(
+            onDismissRequest = { showReportTrafficDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🚗", fontSize = 22.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Signaler un Ralentissement")
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Partagez un incident ou un bouchon à vos amis et aux usagers proches sur le radar IDDET :",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    val quickTypes = listOf(
+                        "🚗 Ralentissement dense (< 8 km/h)",
+                        "🚧 Travaux / Voie bloquée",
+                        "⚠️ Accident / Danger",
+                        "🛑 Circulation à l'arrêt"
+                    )
+
+                    quickTypes.forEach { typeOption ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (trafficReportNote == typeOption) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (trafficReportNote == typeOption) MaterialTheme.colorScheme.primary else Color.Transparent
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { trafficReportNote = typeOption }
+                        ) {
+                            Text(
+                                text = typeOption,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = if (trafficReportNote == typeOption) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showReportTrafficDialog = false
+                        viewModel.reportTrafficJam(
+                            lat = realLocation.latitude,
+                            lng = realLocation.longitude,
+                            note = trafficReportNote
+                        )
+                        Toast.makeText(context, "Alerte trafic diffusée sur le radar ! 🚗", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Diffuser l'alerte")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReportTrafficDialog = false }) {
+                    Text("Annuler")
+                }
+            }
+        )
+    }
 }
 
 // Generate high-performance Leaflet HTML for real Snap Map
@@ -1043,6 +1205,47 @@ private fun generateLeafletSnapMapHtml(
             object-fit: cover;
         }
 
+        .snap-traffic-marker {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+            animation: traffic-bounce 2s infinite ease-in-out;
+        }
+        .snap-traffic-bubble {
+            background: #dc2626;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 12px;
+            border: 1.5px solid #ffffff;
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.6);
+            white-space: nowrap;
+            margin-bottom: 3px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .snap-traffic-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 2.5px solid #ffffff;
+            background: #ef4444;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.9);
+        }
+        @keyframes traffic-bounce {
+            0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+            50% { transform: translate(-50%, -50%) translateY(-5px); }
+        }
+
         @keyframes pulse-ring {
             0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
             70% { box-shadow: 0 0 0 15px rgba(56, 189, 248, 0); }
@@ -1139,6 +1342,46 @@ private fun generateLeafletSnapMapHtml(
                     map.removeLayer(friendMarkers[id]);
                     delete friendMarkers[id];
                 }
+            });
+        }
+
+        var trafficMarkers = [];
+        var trafficCircles = [];
+
+        function updateTrafficJams(jams) {
+            trafficMarkers.forEach(function(m) { map.removeLayer(m); });
+            trafficCircles.forEach(function(c) { map.removeLayer(c); });
+            trafficMarkers = [];
+            trafficCircles = [];
+
+            if (!jams || !jams.length) return;
+
+            jams.forEach(function(j) {
+                var iconHtml = '<div class="snap-traffic-marker" onclick="if(window.AndroidBridge) window.AndroidBridge.onTrafficJamClicked(\'' + j.id + '\')">' +
+                    '<div class="snap-traffic-bubble">🚗 Ralentissement</div>' +
+                    '<div class="snap-traffic-avatar">⚠️</div></div>';
+
+                var icon = L.divIcon({
+                    html: iconHtml,
+                    className: '',
+                    iconSize: [40, 65],
+                    iconAnchor: [20, 48]
+                });
+
+                var marker = L.marker([j.lat, j.lng], { icon: icon, zIndexOffset: 900 }).addTo(map);
+                marker.on('click', function() {
+                    if (window.AndroidBridge) window.AndroidBridge.onTrafficJamClicked(j.id);
+                });
+                trafficMarkers.push(marker);
+
+                var circle = L.circle([j.lat, j.lng], {
+                    color: '#ef4444',
+                    fillColor: '#ef4444',
+                    fillOpacity: 0.22,
+                    radius: 300,
+                    weight: 2
+                }).addTo(map);
+                trafficCircles.push(circle);
             });
         }
 

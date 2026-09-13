@@ -310,6 +310,7 @@ fun MessageBubble(
 
                         // Standard text message
                         else -> {
+                            val communityClickHandler = LocalCommunityClickHandler.current
                             ClickableUrlText(
                                 text = message.content,
                                 contentColor = contentColor,
@@ -319,8 +320,29 @@ fun MessageBubble(
                                     } catch (e: Exception) {
                                         // fallback
                                     }
+                                },
+                                onCommunityClick = { slug ->
+                                    communityClickHandler?.invoke(slug)
                                 }
                             )
+
+                            // WhatsApp / OpenGraph rich banner preview when community slugs are shared
+                            val communitySlugs = remember(message.content) {
+                                com.example.utils.CommunitySlugHelper.extractCommunitySlugs(message.content)
+                            }
+                            if (communitySlugs.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                communitySlugs.take(2).forEach { slug ->
+                                    CommunityOpenGraphCard(
+                                        slug = slug,
+                                        compact = true,
+                                        onCommunityClick = { targetSlug ->
+                                            communityClickHandler?.invoke(targetSlug)
+                                        },
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -443,20 +465,22 @@ fun MessageBubble(
 private fun ClickableUrlText(
     text: String,
     contentColor: Color,
-    onUrlClick: (String) -> Unit
+    onUrlClick: (String) -> Unit,
+    onCommunityClick: ((String) -> Unit)? = null
 ) {
-    val urlPattern = Pattern.compile("(https?://[\\w-]+(\\.[\\w-]+)+(/[\\w-.,/?%&=]*)?)")
-    val matcher = remember(text) { urlPattern.matcher(text) }
+    val communityPattern = java.util.regex.Pattern.compile("(?i)(?:^|\\s|[(\\[{<])(/?c/([a-zA-Z0-9_-]{2,})|/?communities/([a-zA-Z0-9_-]{2,}))")
+    val urlPattern = java.util.regex.Pattern.compile("(https?://[\\w-]+(\\.[\\w-]+)+(/[\\w-.,/?%&=]*)?)")
 
     val annotatedString = remember(text, contentColor) {
         buildAnnotatedString {
             append(text)
-            var lastIndex = 0
-            val localMatcher = urlPattern.matcher(text)
-            while (localMatcher.find()) {
-                val start = localMatcher.start()
-                val end = localMatcher.end()
-                val url = localMatcher.group()
+
+            // 1. Highlight standard URLs
+            val urlMatcher = urlPattern.matcher(text)
+            while (urlMatcher.find()) {
+                val start = urlMatcher.start()
+                val end = urlMatcher.end()
+                val url = urlMatcher.group()
 
                 addStyle(
                     style = SpanStyle(
@@ -474,6 +498,30 @@ private fun ClickableUrlText(
                     end = end
                 )
             }
+
+            // 2. Highlight Community Slugs (c/slug, /c/slug, /communities/slug)
+            val commMatcher = communityPattern.matcher(text)
+            while (commMatcher.find()) {
+                val slug = commMatcher.group(2) ?: commMatcher.group(3) ?: continue
+                val start = commMatcher.start(1)
+                val end = commMatcher.end(1)
+
+                addStyle(
+                    style = SpanStyle(
+                        color = Color(0xFFA78BFA), // Distinctive vibrant purple
+                        textDecoration = TextDecoration.Underline,
+                        fontWeight = FontWeight.ExtraBold
+                    ),
+                    start = start,
+                    end = end
+                )
+                addStringAnnotation(
+                    tag = "COMMUNITY",
+                    annotation = slug.lowercase(),
+                    start = start,
+                    end = end
+                )
+            }
         }
     }
 
@@ -484,9 +532,24 @@ private fun ClickableUrlText(
             lineHeight = 22.sp
         ),
         onClick = { offset ->
+            annotatedString.getStringAnnotations(tag = "COMMUNITY", start = offset, end = offset)
+                .firstOrNull()?.let { annotation ->
+                    onCommunityClick?.invoke(annotation.item)
+                    return@ClickableText
+                }
+
             annotatedString.getStringAnnotations(tag = "URL", start = offset, end = offset)
                 .firstOrNull()?.let { annotation ->
-                    onUrlClick(annotation.item)
+                    val url = annotation.item
+                    if (com.example.utils.CommunitySlugHelper.isCommunityUrl(url)) {
+                        val slug = com.example.utils.CommunitySlugHelper.extractSlugFromUrl(url)
+                        if (!slug.isNullOrBlank()) {
+                            onCommunityClick?.invoke(slug)
+                            return@ClickableText
+                        }
+                    }
+                    onUrlClick(url)
+                    return@ClickableText
                 }
         }
     )

@@ -362,6 +362,32 @@ fun ActfileCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             // Body content & Markdown
+            if (!showOriginal && translatedContent != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .padding(bottom = 6.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                        .clickable { showOriginal = true }
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Translate,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = "Traduit en $targetLanguageName • Voir original",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
             MarkdownContent(
                 content = (if (showOriginal) actfile.content else translatedContent) ?: actfile.content,
                 modifier = Modifier
@@ -524,10 +550,16 @@ fun ActfileCard(
                                         isTranslating = true
                                         coroutineScope.launch {
                                             try {
-                                                translatedContent = com.example.utils.TranslationHelper.translateText(actfile.content, targetLanguageName)
-                                                showOriginal = false
+                                                val res = com.example.utils.TranslationHelper.translateText(actfile.content, targetLanguageName)
+                                                if (res.isNotBlank()) {
+                                                    translatedContent = res
+                                                    showOriginal = false
+                                                    android.widget.Toast.makeText(context, "Traduit en $targetLanguageName", android.widget.Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    android.widget.Toast.makeText(context, "Texte original conservé", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
                                             } catch (e: Exception) {
-                                                android.widget.Toast.makeText(context, "Erreur", android.widget.Toast.LENGTH_SHORT).show()
+                                                android.widget.Toast.makeText(context, "Traduction temporairement indisponible", android.widget.Toast.LENGTH_SHORT).show()
                                             } finally {
                                                 isTranslating = false
                                             }

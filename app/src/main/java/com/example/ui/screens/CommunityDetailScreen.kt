@@ -5,7 +5,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -215,7 +217,8 @@ fun CommunityDetailScreen(
                         },
                         onRulesClick = { showRulesDialog = true },
                         onShareClick = { showShareDialog = true },
-                        onNewPostClick = { showComposerDialog = true }
+                        onNewPostClick = { showComposerDialog = true },
+                        onEditIconClick = if (isAdmin) { { showEditDialog = true } } else null
                     )
                 }
 
@@ -765,8 +768,9 @@ fun CommunityDetailScreen(
                         }
                     )
                 },
-                onUploadIcon = { file ->
+                onUploadIcon = { file, onComplete ->
                     viewModel.updateCommunityIcon(community.slug, file) { success ->
+                        onComplete(success)
                         if (success) {
                             refreshTrigger++
                             coroutineScope.launch {
@@ -1659,16 +1663,28 @@ fun EditCommunityDialog(
     categories: List<String>,
     onDismiss: () -> Unit,
     onSave: (String, String, String, Boolean, String?) -> Unit,
-    onUploadIcon: (java.io.File) -> Unit
+    onUploadIcon: (java.io.File, (Boolean) -> Unit) -> Unit
 ) {
     var name by remember { mutableStateOf(community.name) }
     var description by remember { mutableStateOf(community.description ?: "") }
     var selectedCategory by remember { mutableStateOf(community.category) }
     var isPrivate by remember { mutableStateOf(community.isPrivate) }
     var customIconUrl by remember { mutableStateOf(community.iconUrl ?: "") }
+    var isUploading by remember { mutableStateOf(false) }
     
     var categoryExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    val presetIcons = remember {
+        listOf(
+            "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200",
+            "https://images.unsplash.com/photo-1518770660439-4636190af475?w=200",
+            "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200",
+            "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200",
+            "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=200",
+            "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=200"
+        )
+    }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -1676,7 +1692,10 @@ fun EditCommunityDialog(
         uri?.let {
             val file = uriToTempFile(context, it)
             if (file != null) {
-                onUploadIcon(file)
+                isUploading = true
+                onUploadIcon(file) { success ->
+                    isUploading = false
+                }
             }
         }
     }
@@ -1713,7 +1732,7 @@ fun EditCommunityDialog(
                 // Community Profile Picture (Icon) Section
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Photo de profil",
+                        text = "Icône / Photo de profil",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1738,21 +1757,86 @@ fun EditCommunityDialog(
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
+                            if (isUploading) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.5f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                            }
                         }
                         
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Button(
                                 onClick = { imagePickerLauncher.launch("image/*") },
+                                enabled = !isUploading,
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                 shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Importer de la galerie", style = MaterialTheme.typography.labelMedium)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(if (isUploading) "Téléchargement..." else "Importer une photo", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
+
+                    // Preset Avatars Selection
+                    Text(
+                        text = "Ou choisir un avatar thématique :",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                    ) {
+                        presetIcons.forEach { iconUrl ->
+                            val isSelected = customIconUrl == iconUrl
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .border(
+                                        width = if (isSelected) 2.5.dp else 1.dp,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                        shape = CircleShape
+                                    )
+                                    .clickable {
+                                        customIconUrl = iconUrl
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = iconUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                        }
+                    }
+
+                    // Direct Image URL Field
+                    OutlinedTextField(
+                        value = customIconUrl,
+                        onValueChange = { customIconUrl = it },
+                        label = { Text("Lien direct de l'icône (URL)", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("https://...", style = MaterialTheme.typography.bodySmall) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
                 }
 
                 // Community Name

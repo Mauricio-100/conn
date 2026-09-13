@@ -41,6 +41,13 @@ class MainActivity : ComponentActivity() {
         } else {
             val uri = intent.data
             if (uri != null) {
+                // Check if URI points to a community (iddet://community/slug, https://hoosthubs-g.onrender.com/c/slug, etc.)
+                val communitySlug = com.example.utils.CommunitySlugHelper.extractSlugFromUrl(uri.toString())
+                if (!communitySlug.isNullOrBlank()) {
+                    com.example.utils.NotificationRouter.pendingRoute.value = "community/$communitySlug"
+                    return
+                }
+
                 val pathSegments = uri.pathSegments
                 if (pathSegments != null && pathSegments.size >= 3 && pathSegments[0] == "s" && pathSegments[1] == "actfile") {
                     val actfileId = pathSegments[2]
