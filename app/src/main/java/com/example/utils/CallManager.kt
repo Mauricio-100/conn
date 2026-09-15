@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -149,12 +150,16 @@ object CallManager {
      */
     fun startCall(calleeId: String, calleeUsername: String, calleeAvatar: String?, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         val repo = repository ?: run {
-            onResult(false, "Service d'appel non initialisé")
+            CoroutineScope(Dispatchers.Main).launch {
+                onResult(false, "Service d'appel non initialisé")
+            }
             return
         }
 
         if (_callState.value !is CallState.Idle) {
-            onResult(false, "Un appel est déjà en cours")
+            CoroutineScope(Dispatchers.Main).launch {
+                onResult(false, "Un appel est déjà en cours")
+            }
             return
         }
 
@@ -175,17 +180,22 @@ object CallManager {
                     if (current is CallState.OutgoingRinging) {
                         _callState.value = current.copy(callId = response.call_id)
                     }
-                    onResult(true, null)
+                    withContext(Dispatchers.Main) {
+                        onResult(true, null)
+                    }
                 },
                 onFailure = { error ->
                     Log.e(TAG, "Failed to start call", error)
                     stopRingTone()
+                    val reason = error.message ?: "Impossible de joindre @$calleeUsername"
                     _callState.value = CallState.Ended(
                         callId = "",
                         peerUsername = calleeUsername,
-                        reason = error.message ?: "Impossible de joindre @$calleeUsername"
+                        reason = reason
                     )
-                    onResult(false, error.message)
+                    withContext(Dispatchers.Main) {
+                        onResult(false, reason)
+                    }
                     autoResetToIdleAfterDelay()
                 }
             )

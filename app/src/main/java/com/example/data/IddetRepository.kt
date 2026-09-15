@@ -1145,6 +1145,31 @@ class IddetRepository(
         return messageDao.getMessageById(id)
     }
 
+    private fun extractCallErrorMessage(e: Throwable, fallback: String): String {
+        if (e is retrofit2.HttpException) {
+            val code = e.code()
+            try {
+                val errorBody = e.response()?.errorBody()?.string()
+                if (!errorBody.isNullOrBlank()) {
+                    val json = org.json.JSONObject(errorBody)
+                    val detail = json.optString("detail", json.optString("message", json.optString("error", "")))
+                    if (detail.isNotBlank()) return detail
+                }
+            } catch (_: Exception) {}
+
+            return when (code) {
+                400 -> "Demande d'appel invalide"
+                401 -> "Session expirée, veuillez vous reconnecter"
+                403 -> "Accès refusé pour cet appel"
+                404 -> "Utilisateur ou appel introuvable"
+                409 -> "Le correspondant est déjà en ligne ou indisponible"
+                500, 502, 503 -> "Erreur serveur temporaire"
+                else -> fallback
+            }
+        }
+        return e.message ?: fallback
+    }
+
     suspend fun startCall(receiverId: String): Result<CallStartResponse> {
         return try {
             val header = currentToken?.let { "Bearer $it" } ?: return Result.failure(Exception("Non authentifié"))
@@ -1152,7 +1177,8 @@ class IddetRepository(
             Result.success(response)
         } catch (e: Exception) {
             android.util.Log.e("IddetRepository", "Error starting call: ${e.message}", e)
-            Result.failure(e)
+            val friendlyMsg = extractCallErrorMessage(e, "Impossible de joindre le correspondant")
+            Result.failure(Exception(friendlyMsg, e))
         }
     }
 
@@ -1163,7 +1189,8 @@ class IddetRepository(
             Result.success(response)
         } catch (e: Exception) {
             android.util.Log.e("IddetRepository", "Error accepting call: ${e.message}", e)
-            Result.failure(e)
+            val friendlyMsg = extractCallErrorMessage(e, "Impossible d'accepter l'appel")
+            Result.failure(Exception(friendlyMsg, e))
         }
     }
 
@@ -1174,7 +1201,8 @@ class IddetRepository(
             Result.success(response)
         } catch (e: Exception) {
             android.util.Log.e("IddetRepository", "Error declining call: ${e.message}", e)
-            Result.failure(e)
+            val friendlyMsg = extractCallErrorMessage(e, "Impossible de refuser l'appel")
+            Result.failure(Exception(friendlyMsg, e))
         }
     }
 
@@ -1185,7 +1213,8 @@ class IddetRepository(
             Result.success(response)
         } catch (e: Exception) {
             android.util.Log.e("IddetRepository", "Error ending call: ${e.message}", e)
-            Result.failure(e)
+            val friendlyMsg = extractCallErrorMessage(e, "Impossible de terminer l'appel")
+            Result.failure(Exception(friendlyMsg, e))
         }
     }
 
