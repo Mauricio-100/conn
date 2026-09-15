@@ -18,6 +18,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <application
         android:allowBackup="false"
@@ -195,6 +196,10 @@
         <service 
             android:name="com.example.worker.MessageSyncService"
             android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <receiver
+            android:name="com.example.receiver.CallActionReceiver"
             android:exported="false" />
     </application>
 

@@ -99,11 +99,13 @@ object CallManager {
 
     private var repository: IddetRepository? = null
     private var currentUserId: String? = null
+    private var appContext: Context? = null
     private var audioManager: AudioManager? = null
     private var vibrator: Vibrator? = null
     private var listenerJob: Job? = null
 
     fun initialize(context: Context, repo: IddetRepository) {
+        this.appContext = context.applicationContext
         this.repository = repo
         this.audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         this.vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -322,7 +324,53 @@ object CallManager {
             callerUsername = callerUsername,
             callerAvatar = callerAvatar
         )
-        startIncomingRinging()
+        
+        appContext?.let { ctx ->
+            CallRingtonePlayer.startRinging(ctx)
+            scope.launch {
+                NotificationHelper.showIncomingCallNotification(
+                    context = ctx,
+                    callId = callId,
+                    callerId = callerId,
+                    callerUsername = callerUsername,
+                    callerAvatar = callerAvatar
+                )
+            }
+        }
+    }
+
+    /**
+     * Decline incoming call with an automated Quick Reply message (WhatsApp style)
+     */
+    fun declineWithQuickReply(
+        context: Context?,
+        callId: String,
+        callerId: String,
+        quickMessage: String,
+        callerUsername: String = "Contact"
+    ) {
+        stopRingTone()
+        stopAudioStream()
+        val ctx = context ?: appContext
+        ctx?.let { NotificationHelper.cancelIncomingCallNotification(it) }
+
+        _callState.value = CallState.Ended(
+            callId = callId,
+            peerUsername = callerUsername,
+            reason = "Message envoyé : \"$quickMessage\""
+        )
+
+        scope.launch {
+            try {
+                repository?.declineCall(callId)
+            } catch (_: Exception) {}
+            try {
+                repository?.sendMessage(callerId, quickMessage, "text")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to send quick reply message: ${e.message}")
+            }
+        }
+        autoResetToIdleAfterDelay()
     }
 
     private fun handleCallAccepted(callId: String, calleeId: String) {
@@ -576,6 +624,8 @@ object CallManager {
     }
 
     private fun stopRingTone() {
+        CallRingtonePlayer.stopRinging()
+        appContext?.let { NotificationHelper.cancelIncomingCallNotification(it) }
         vibrationJob?.cancel()
         vibrationJob = null
         vibrator?.cancel()

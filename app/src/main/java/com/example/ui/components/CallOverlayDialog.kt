@@ -60,9 +60,20 @@ import coil.compose.AsyncImage
 import com.example.utils.CallManager
 import com.example.utils.CallState
 
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+
 @Composable
 fun CallOverlayHost() {
     val callState by CallManager.callState.collectAsState()
+    val context = LocalContext.current
 
     AnimatedVisibility(
         visible = callState !is CallState.Idle,
@@ -75,7 +86,16 @@ fun CallOverlayHost() {
                     callerUsername = state.callerUsername,
                     callerAvatar = state.callerAvatar,
                     onAccept = { CallManager.acceptCall(state.callId) },
-                    onDecline = { CallManager.declineCall(state.callId) }
+                    onDecline = { CallManager.declineCall(state.callId) },
+                    onQuickReply = { message ->
+                        CallManager.declineWithQuickReply(
+                            context = context,
+                            callId = state.callId,
+                            callerId = state.callerId,
+                            quickMessage = message,
+                            callerUsername = state.callerUsername
+                        )
+                    }
                 )
             }
             is CallState.OutgoingRinging -> {
@@ -133,8 +153,12 @@ private fun IncomingCallDialog(
     callerUsername: String,
     callerAvatar: String?,
     onAccept: () -> Unit,
-    onDecline: () -> Unit
+    onDecline: () -> Unit,
+    onQuickReply: (String) -> Unit
 ) {
+    var showQuickReplyModal by remember { mutableStateOf(false) }
+    var customQuickMessage by remember { mutableStateOf("") }
+
     Dialog(
         onDismissRequest = onDecline,
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false, usePlatformDefaultWidth = false)
@@ -156,8 +180,8 @@ private fun IncomingCallDialog(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFF0F172A).copy(alpha = 0.95f),
-                            Color(0xFF020617).copy(alpha = 0.98f)
+                            Color(0xFF0F172A).copy(alpha = 0.96f),
+                            Color(0xFF020617).copy(alpha = 0.99f)
                         )
                     )
                 )
@@ -235,9 +259,9 @@ private fun IncomingCallDialog(
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(48.dp))
+                Spacer(modifier = Modifier.height(40.dp))
 
-                // Action buttons: Decline (Red) and Accept (Green)
+                // Action buttons: Decline (Red), Quick Reply (Message) and Accept (Green)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -268,6 +292,31 @@ private fun IncomingCallDialog(
                         Text(text = "Refuser", color = Color(0xFF94A3B8), style = MaterialTheme.typography.labelSmall)
                     }
 
+                    // WhatsApp-style Quick Reply button
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF334155),
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .clickable { showQuickReplyModal = true }
+                                .testTag("quick_reply_call_button"),
+                            shadowElevation = 6.dp
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Sms,
+                                    contentDescription = "Message rapide",
+                                    tint = Color(0xFF38BDF8),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "Message", color = Color(0xFF38BDF8), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall)
+                    }
+
                     // Accept button
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Surface(
@@ -291,6 +340,136 @@ private fun IncomingCallDialog(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(text = "Décrocher", color = Color(0xFF22C55E), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+
+            // Quick Reply Dialog Overlay (WhatsApp style)
+            if (showQuickReplyModal) {
+                Dialog(
+                    onDismissRequest = { showQuickReplyModal = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color(0xFF1E293B),
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(16.dp),
+                        shadowElevation = 16.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "Répondre par message",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Fermer",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color(0xFF94A3B8),
+                                    modifier = Modifier
+                                        .clickable { showQuickReplyModal = false }
+                                        .padding(4.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            val quickPresets = listOf(
+                                "Rappelle-moi plus tard",
+                                "Rappelle-moi dans quelques minutes",
+                                "Je suis en réunion, je te rappelle",
+                                "Je ne peux pas parler pour le moment"
+                            )
+
+                            quickPresets.forEach { preset ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF334155),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clickable {
+                                            showQuickReplyModal = false
+                                            onQuickReply(preset)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Sms,
+                                            contentDescription = null,
+                                            tint = Color(0xFF38BDF8),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = preset,
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Custom reply field
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                OutlinedTextField(
+                                    value = customQuickMessage,
+                                    onValueChange = { customQuickMessage = it },
+                                    placeholder = { Text("Écrire un message personnalisé...", color = Color(0xFF94A3B8), fontSize = 13.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = Color(0xFF38BDF8),
+                                        unfocusedBorderColor = Color(0xFF475569),
+                                        focusedContainerColor = Color(0xFF0F172A),
+                                        unfocusedContainerColor = Color(0xFF0F172A)
+                                    )
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                IconButton(
+                                    onClick = {
+                                        val msg = customQuickMessage.trim()
+                                        if (msg.isNotEmpty()) {
+                                            showQuickReplyModal = false
+                                            onQuickReply(msg)
+                                        }
+                                    },
+                                    enabled = customQuickMessage.isNotBlank(),
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(if (customQuickMessage.isNotBlank()) Color(0xFF38BDF8) else Color(0xFF475569))
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Send,
+                                        contentDescription = "Envoyer",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

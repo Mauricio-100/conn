@@ -26,6 +26,11 @@ object NotificationHelper {
     private const val CHANNEL_NAME = "Activités CMO"
     private const val CHANNEL_DESC = "Notifications CMO (Likes, Commentaires, Messages, Abonnements)"
 
+    const val CALL_CHANNEL_ID = "iddet_incoming_calls_channel"
+    private const val CALL_CHANNEL_NAME = "Appels vocaux IDDET"
+    private const val CALL_CHANNEL_DESC = "Alertes d'appels entrants WhatsApp-style avec sonnerie"
+    const val INCOMING_CALL_NOTIF_ID = 998877
+
     fun initChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -68,6 +73,173 @@ object NotificationHelper {
                 }
                 manager.createNotificationChannel(channel)
             }
+
+            // Dedicated High Priority Incoming Call Channel (WhatsApp Style)
+            val existingCallChannel = manager.getNotificationChannel(CALL_CHANNEL_ID)
+            if (existingCallChannel == null) {
+                val callSoundUri = android.media.RingtoneManager.getActualDefaultRingtoneUri(context, android.media.RingtoneManager.TYPE_RINGTONE)
+                    ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+
+                val callAudioAttributes = android.media.AudioAttributes.Builder()
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .build()
+
+                val callChannel = NotificationChannel(
+                    CALL_CHANNEL_ID,
+                    CALL_CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = CALL_CHANNEL_DESC
+                    enableLights(true)
+                    lightColor = Color.GREEN
+                    enableVibration(true)
+                    vibrationPattern = longArrayOf(0, 1000, 1000, 1000, 1000)
+                    setSound(callSoundUri, callAudioAttributes)
+                    setShowBadge(true)
+                    lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+                }
+                manager.createNotificationChannel(callChannel)
+            }
+        }
+    }
+
+    /**
+     * Show WhatsApp-style Incoming Call Notification with heads-up display,
+     * Answer / Decline actions and Quick Reply presets ("Rappelle-moi plus tard", etc.)
+     */
+    suspend fun showIncomingCallNotification(
+        context: Context,
+        callId: String,
+        callerId: String,
+        callerUsername: String,
+        callerAvatar: String?
+    ) {
+        withContext(Dispatchers.IO) {
+            initChannels(context)
+
+            val pFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val mutFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+
+            // FullScreen / Content Intent: open app and show call overlay
+            val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("route", "call_active")
+                putExtra("incoming_call_id", callId)
+                putExtra("incoming_caller_id", callerId)
+                putExtra("incoming_caller_username", callerUsername)
+                putExtra("incoming_caller_avatar", callerAvatar)
+            }
+            val contentPendingIntent = PendingIntent.getActivity(context, 101, openAppIntent, pFlags)
+
+            // 1. Answer Action Intent
+            val answerIntent = Intent(context, com.example.receiver.CallActionReceiver::class.java).apply {
+                action = com.example.receiver.CallActionReceiver.ACTION_ANSWER_CALL
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALL_ID, callId)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALLER_ID, callerId)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALLER_USERNAME, callerUsername)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALLER_AVATAR, callerAvatar)
+            }
+            val answerPendingIntent = PendingIntent.getBroadcast(context, 102, answerIntent, pFlags)
+
+            // 2. Decline Action Intent
+            val declineIntent = Intent(context, com.example.receiver.CallActionReceiver::class.java).apply {
+                action = com.example.receiver.CallActionReceiver.ACTION_DECLINE_CALL
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALL_ID, callId)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALLER_ID, callerId)
+            }
+            val declinePendingIntent = PendingIntent.getBroadcast(context, 103, declineIntent, pFlags)
+
+            // 3. Quick Reply 1: "Rappelle-moi plus tard"
+            val quickReply1Intent = Intent(context, com.example.receiver.CallActionReceiver::class.java).apply {
+                action = com.example.receiver.CallActionReceiver.ACTION_QUICK_REPLY
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALL_ID, callId)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALLER_ID, callerId)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALLER_USERNAME, callerUsername)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_MESSAGE, "Rappelle-moi plus tard")
+            }
+            val quickReply1PendingIntent = PendingIntent.getBroadcast(context, 104, quickReply1Intent, pFlags)
+
+            // 4. Quick Reply 2: "Rappelle-moi dans quelques minutes"
+            val quickReply2Intent = Intent(context, com.example.receiver.CallActionReceiver::class.java).apply {
+                action = com.example.receiver.CallActionReceiver.ACTION_QUICK_REPLY
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALL_ID, callId)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALLER_ID, callerId)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALLER_USERNAME, callerUsername)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_MESSAGE, "Rappelle-moi dans quelques minutes")
+            }
+            val quickReply2PendingIntent = PendingIntent.getBroadcast(context, 105, quickReply2Intent, pFlags)
+
+            // 5. Custom Inline RemoteInput Quick Reply (Allows user to type anything from notification)
+            val remoteInput = androidx.core.app.RemoteInput.Builder(com.example.receiver.CallActionReceiver.EXTRA_REMOTE_INPUT_TEXT)
+                .setLabel("Message rapide...")
+                .build()
+
+            val customReplyIntent = Intent(context, com.example.receiver.CallActionReceiver::class.java).apply {
+                action = com.example.receiver.CallActionReceiver.ACTION_QUICK_REPLY
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALL_ID, callId)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALLER_ID, callerId)
+                putExtra(com.example.receiver.CallActionReceiver.EXTRA_CALLER_USERNAME, callerUsername)
+            }
+            val customReplyPendingIntent = PendingIntent.getBroadcast(context, 106, customReplyIntent, mutFlags)
+
+            val customReplyAction = NotificationCompat.Action.Builder(
+                R.drawable.ic_notification,
+                "💬 Message",
+                customReplyPendingIntent
+            ).addRemoteInput(remoteInput).build()
+
+            // Avatar Bitmap
+            val avatarBitmap = if (!callerAvatar.isNullOrEmpty()) {
+                downloadAvatarOrPlaceholder(com.example.utils.UrlHelper.fixCloudinaryUrl(callerAvatar) ?: callerAvatar, callerUsername)
+            } else {
+                generatePlaceholderAvatar(callerUsername)
+            }
+
+            val callSoundUri = android.media.RingtoneManager.getActualDefaultRingtoneUri(context, android.media.RingtoneManager.TYPE_RINGTONE)
+                ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+
+            val notification = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setLargeIcon(avatarBitmap)
+                .setContentTitle("📞 Appel entrant de @$callerUsername")
+                .setContentText("Appel vocal IDDET en cours...")
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setOngoing(true)
+                .setAutoCancel(false)
+                .setColor(Color.parseColor("#22C55E")) // Green
+                .setContentIntent(contentPendingIntent)
+                .setFullScreenIntent(contentPendingIntent, true)
+                .setSound(callSoundUri)
+                .setVibrate(longArrayOf(0, 1000, 1000, 1000, 1000))
+                // Action Buttons
+                .addAction(R.drawable.ic_notification, "📞 Décrocher", answerPendingIntent)
+                .addAction(R.drawable.ic_notification, "❌ Refuser", declinePendingIntent)
+                .addAction(R.drawable.ic_notification, "💬 Plus tard", quickReply1PendingIntent)
+                .addAction(customReplyAction)
+                .build()
+
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(INCOMING_CALL_NOTIF_ID, notification)
+        }
+    }
+
+    fun cancelIncomingCallNotification(context: Context) {
+        try {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(INCOMING_CALL_NOTIF_ID)
+        } catch (e: Exception) {
+            android.util.Log.e("NotificationHelper", "Failed to cancel incoming call notification", e)
         }
     }
 
