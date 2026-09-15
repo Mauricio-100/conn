@@ -1,5 +1,11 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.content.Intent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,18 +16,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Message
-import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.PersonRemove
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,14 +35,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.ui.IddetViewModel
-import com.example.ui.components.ActfileCard
-import com.example.ui.components.CopyableUserId
-import com.example.ui.components.MarkdownActfile
-import com.example.ui.components.VerificationBadge
+import com.example.ui.components.*
+import com.example.utils.CallManager
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,23 +65,42 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
     var userLevel by remember { mutableStateOf<com.example.data.UserLevelResponse?>(null) }
     var showLadderDialog by remember { mutableStateOf(false) }
     val levelsTable by viewModel.levelsTable.collectAsStateWithLifecycle()
+    var selectedTab by remember { mutableIntStateOf(0) }
 
-    val micCallLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    // Helper to extract first image URL from actfile content
+    fun extractFirstMediaUrl(content: String): String? {
+        val regex = Regex("""!\[.*?\]\((https?://[^\s)]+)\)|(https?://[^\s)]+\.(?:jpg|jpeg|png|webp|gif))""", RegexOption.IGNORE_CASE)
+        val match = regex.find(content) ?: return null
+        val g1 = match.groupValues.getOrNull(1)
+        val g2 = match.groupValues.getOrNull(2)
+        return when {
+            !g1.isNullOrBlank() -> g1
+            !g2.isNullOrBlank() -> g2
+            else -> null
+        }
+    }
+
+    // Media posts for Instagram 3x3 grid
+    val mediaActfiles = remember(userActfiles) {
+        userActfiles.filter { extractFirstMediaUrl(it.content) != null }
+    }
+
+    val micCallLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             val pUser = user ?: return@rememberLauncherForActivityResult
-            com.example.utils.CallManager.startCall(
+            CallManager.startCall(
                 calleeId = pUser.id,
                 calleeUsername = pUser.username,
                 calleeAvatar = pUser.avatarUrl
             ) { success, msg ->
                 if (!success && msg != null) {
-                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
             }
         } else {
-            android.widget.Toast.makeText(context, "Permission microphone requise pour les appels", android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Permission microphone requise pour les appels", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -119,24 +133,17 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = profileUser.username,
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            VerificationBadge(
-                                userName = profileUser.username,
-                                isVerified = profileUser.isVerified,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "${userActfiles.size} publication${if (userActfiles.size > 1) "s" else ""}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            text = profileUser.username,
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        VerificationBadge(
+                            userName = profileUser.username,
+                            isVerified = profileUser.isVerified,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 },
@@ -154,16 +161,15 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                 actions = {
                     IconButton(
                         onClick = {
-                            val sendIntent = android.content.Intent().apply {
-                                action = android.content.Intent.ACTION_SEND
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
                                 putExtra(
-                                    android.content.Intent.EXTRA_TEXT,
-                                    "Découvrez le profil de @${profileUser.username} sur bit :\n👉 https://bit.gopu.inc/s/u/${profileUser.username}"
+                                    Intent.EXTRA_TEXT,
+                                    "Découvrez le profil de @${profileUser.username} sur IDDET : https://iddet.app/u/${profileUser.username}"
                                 )
                                 type = "text/plain"
                             }
-                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Partager le profil")
-                            context.startActivity(shareIntent)
+                            context.startActivity(Intent.createChooser(sendIntent, "Partager le profil"))
                         }
                     ) {
                         Icon(Icons.Outlined.Share, contentDescription = "Partager")
@@ -177,35 +183,35 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
             )
         }
     ) { padding ->
-        // Single unified LazyColumn so scrolling moves the entire header and posts smoothly together
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .testTag("other_profile_scrollable_feed"),
-            contentPadding = PaddingValues(bottom = 24.dp),
+            contentPadding = PaddingValues(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Header: Banner + Avatar + Profile Details + Stats + Actions
+            // Header Item: Cover + Avatar + Actions + Identity + Metrics + Tabs
             item(key = "profile_header") {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // Decorative Banner
+                    // Modern Gradient Cover Banner
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(110.dp)
+                            .height(130.dp)
                             .background(
                                 Brush.horizontalGradient(
                                     colors = listOf(
                                         MaterialTheme.colorScheme.primaryContainer,
-                                        MaterialTheme.colorScheme.tertiaryContainer,
-                                        MaterialTheme.colorScheme.secondaryContainer
+                                        Color(0xFF6366F1),
+                                        Color(0xFF0EA5E9),
+                                        MaterialTheme.colorScheme.tertiaryContainer
                                     )
                                 )
                             )
                     )
 
-                    // Avatar overlapping the banner + Level badge
+                    // Avatar + Primary Action Buttons Row
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -214,11 +220,22 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                         // Floating Avatar
                         Box(
                             modifier = Modifier
-                                .offset(y = (-44).dp)
-                                .size(88.dp)
+                                .offset(y = (-46).dp)
+                                .size(92.dp)
                                 .clip(CircleShape)
-                                .border(3.5.dp, MaterialTheme.colorScheme.background, CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .background(
+                                    Brush.sweepGradient(
+                                        listOf(
+                                            MaterialTheme.colorScheme.primary,
+                                            MaterialTheme.colorScheme.tertiary,
+                                            MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                )
+                                .padding(3.dp)
+                                .clip(CircleShape)
+                                .border(3.dp, MaterialTheme.colorScheme.background, CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
                                 .clickable {
                                     if (!profileUser.avatarUrl.isNullOrBlank()) {
                                         showFullScreenAvatar = true
@@ -237,14 +254,14 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                             } else {
                                 Text(
                                     text = profileUser.username.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.headlineMedium,
                                     fontWeight = FontWeight.ExtraBold
                                 )
                             }
                         }
 
-                        // Action Buttons aligned right below the banner
+                        // Right Action Buttons
                         Row(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
@@ -257,14 +274,14 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                     onClick = { navController.navigate("profile") },
                                     shape = RoundedCornerShape(20.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
                                     ),
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)
                                 ) {
-                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Modifier", fontWeight = FontWeight.Bold)
+                                    Text("Mon profil", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
                             } else {
                                 // Follow / Unfollow Button
@@ -281,18 +298,19 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                         containerColor = if (isFollowing) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
                                         contentColor = if (isFollowing) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
                                     ),
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
                                     modifier = Modifier.testTag("profile_follow_button")
                                 ) {
                                     Icon(
-                                        imageVector = if (isFollowing) Icons.Default.PersonRemove else Icons.Default.PersonAdd,
+                                        imageVector = if (isFollowing) Icons.Outlined.PersonRemove else Icons.Outlined.PersonAdd,
                                         contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(15.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = if (isFollowing) "Abonné(e)" else "Suivre",
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
                                     )
                                 }
 
@@ -300,40 +318,36 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                 FilledTonalButton(
                                     onClick = { navController.navigate("chat/${profileUser.id}") },
                                     shape = RoundedCornerShape(20.dp),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
                                     modifier = Modifier.testTag("profile_message_button")
                                 ) {
-                                    Icon(Icons.Default.Message, contentDescription = "Message", modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Message", fontWeight = FontWeight.Bold)
+                                    Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "Message", modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Message", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                                 }
 
-                                Spacer(modifier = Modifier.width(6.dp))
-
-                                // Voice Call Button
+                                // Audio Call Button
                                 FilledTonalButton(
                                     onClick = {
-                                        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                            com.example.utils.CallManager.startCall(
+                                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                            CallManager.startCall(
                                                 calleeId = profileUser.id,
                                                 calleeUsername = profileUser.username,
                                                 calleeAvatar = profileUser.avatarUrl
                                             ) { success, msg ->
                                                 if (!success && msg != null) {
-                                                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         } else {
-                                            micCallLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                            micCallLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                         }
                                     },
                                     shape = RoundedCornerShape(20.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
                                     modifier = Modifier.testTag("profile_call_button")
                                 ) {
-                                    Icon(Icons.Default.Call, contentDescription = "Appeler", modifier = Modifier.size(16.dp), tint = Color(0xFF22C55E))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Appeler", fontWeight = FontWeight.Bold)
+                                    Icon(Icons.Outlined.Call, contentDescription = "Appeler", modifier = Modifier.size(15.dp), tint = Color(0xFF10B981))
                                 }
                             }
                         }
@@ -346,7 +360,7 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                             .padding(horizontal = 16.dp)
                             .offset(y = (-24).dp)
                     ) {
-                        // Display Name + Verified Badge
+                        // Display Name + Verified Badge + Level Badge
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
@@ -359,30 +373,36 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             VerificationBadge(
-                                modifier = Modifier.size(22.dp),
+                                modifier = Modifier.size(20.dp),
                                 userName = profileUser.username,
                                 isVerified = profileUser.isVerified
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            com.example.ui.components.UserLevelBadge(
+                            UserLevelBadge(
                                 level = userLevel,
                                 onClick = { showLadderDialog = true }
                             )
                         }
 
-                        Text(
-                            text = "@${profileUser.username}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        CopyableUserId(
-                            id = profileUser.id,
-                            isBot = profileUser.username.contains("bot", ignoreCase = true),
-                            fontSize = 11.sp,
-                            iconSize = 12.dp
-                        )
+                        // Username tag & Copyable ID
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 2.dp)
+                        ) {
+                            Text(
+                                text = "@${profileUser.username}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            CopyableUserId(
+                                id = profileUser.id,
+                                isBot = profileUser.username.contains("bot", ignoreCase = true),
+                                fontSize = 11.sp,
+                                iconSize = 12.dp
+                            )
+                        }
 
                         // Bio
                         if (profileUser.bio.isNotBlank()) {
@@ -397,28 +417,47 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Glassmorphic / Tonal Stats Grid Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                            )
+                        // Metric Stats Row (Instagram / Twitter style)
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 12.dp, horizontal = 6.dp),
+                                    .padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceEvenly,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Followers
+                                // Posts Count
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { selectedTab = 0 }
+                                ) {
+                                    Text(
+                                        text = userActfiles.size.toString(),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Publications",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                VerticalDivider(
+                                    modifier = Modifier.height(28.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
+
+                                // Followers Count
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier
@@ -428,34 +467,25 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                             showFollowListSheet = true
                                         }
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.People,
-                                        contentDescription = "Abonnés",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = com.example.utils.FormatUtils.formatCount(profileUser.followersCount),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         text = "Abonnés",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
 
-                                Box(
-                                    modifier = Modifier
-                                        .width(1.dp)
-                                        .height(30.dp)
-                                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                VerticalDivider(
+                                    modifier = Modifier.height(28.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                                 )
 
-                                // Following
+                                // Following Count
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier
@@ -465,112 +495,55 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                             showFollowListSheet = true
                                         }
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Person,
-                                        contentDescription = "Abonnements",
-                                        tint = MaterialTheme.colorScheme.secondary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = com.example.utils.FormatUtils.formatCount(profileUser.followingCount),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         text = "Abonnements",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
 
-                                Box(
-                                    modifier = Modifier
-                                        .width(1.dp)
-                                        .height(30.dp)
-                                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                VerticalDivider(
+                                    modifier = Modifier.height(28.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                                 )
 
-                                // Likes
+                                // Total Likes
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Favorite,
-                                        contentDescription = "Likes",
-                                        tint = Color(0xFFFF2D55),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
                                         text = com.example.utils.FormatUtils.formatCount(totalLikes),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFFEF4444)
                                     )
                                     Text(
                                         text = "J'aime",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                                    )
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .width(1.dp)
-                                        .height(30.dp)
-                                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                                )
-
-                                // Views
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Visibility,
-                                        contentDescription = "Vues",
-                                        tint = MaterialTheme.colorScheme.tertiary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = com.example.utils.FormatUtils.formatCount(totalViews),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "Vues",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // User Level & Progression Card
-                        com.example.ui.components.UserLevelCard(
-                            level = userLevel,
-                            onOpenLadder = { showLadderDialog = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            subtitle = "Score calculé sur ses likes et commentaires"
-                        )
-
-                        val friendOnMap = friendsLocations.find { 
-                            it.id == profileUser.id || it.username.equals(profileUser.username, ignoreCase = true) 
+                        // Live Radar Card if friend is on map
+                        val friendOnMap = friendsLocations.find {
+                            it.id == profileUser.id || it.username.equals(profileUser.username, ignoreCase = true)
                         }
 
                         if (friendOnMap != null && !isMe) {
                             Spacer(modifier = Modifier.height(14.dp))
-                            Card(
+                            Surface(
                                 shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.4f)),
+                                color = Color(0xFF0F172A),
+                                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.4f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(14.dp)) {
@@ -582,7 +555,7 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(10.dp)
+                                                    .size(9.dp)
                                                     .clip(CircleShape)
                                                     .background(if (friendOnMap.isOnline) Color(0xFF10B981) else Color(0xFF94A3B8))
                                             )
@@ -599,7 +572,7 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                             color = Color(0xFF0284C7).copy(alpha = 0.3f)
                                         ) {
                                             Text(
-                                                text = "📍 ${friendOnMap.distanceKm} km",
+                                                text = "${friendOnMap.distanceKm} km",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF38BDF8),
@@ -608,10 +581,8 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(friendOnMap.statusEmoji, fontSize = 20.sp)
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                    if (friendOnMap.statusMessage.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(8.dp))
                                         Text(
                                             text = friendOnMap.statusMessage,
                                             style = MaterialTheme.typography.bodyMedium,
@@ -628,10 +599,10 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                             onClick = {
                                                 viewModel.sendWaveToFriend(friendOnMap)
                                                 waveSentRecently = true
-                                                android.widget.Toast.makeText(
+                                                Toast.makeText(
                                                     context,
-                                                    "Coucou 👋 envoyé à ${friendOnMap.displayName} !",
-                                                    android.widget.Toast.LENGTH_SHORT
+                                                    "Salutation envoyée à ${friendOnMap.displayName}",
+                                                    Toast.LENGTH_SHORT
                                                 ).show()
                                             },
                                             shape = RoundedCornerShape(12.dp),
@@ -641,94 +612,67 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                             ),
                                             modifier = Modifier.weight(1f)
                                         ) {
-                                            Text(if (waveSentRecently) "Coucou envoyé ! ✨" else "👋 Faire un coucou", fontWeight = FontWeight.Bold)
+                                            Icon(Icons.Outlined.WavingHand, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(if (waveSentRecently) "Envoyé !" else "Saluer", fontWeight = FontWeight.Bold)
                                         }
 
                                         OutlinedButton(
                                             onClick = { navController.navigate("friends_map") },
                                             shape = RoundedCornerShape(12.dp),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8)),
+                                            border = BorderStroke(1.dp, Color(0xFF38BDF8)),
                                             modifier = Modifier.weight(1f)
                                         ) {
-                                            Text("Carte 🗺️", color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold)
+                                            Icon(Icons.Outlined.Map, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Carte", color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Badges preview row
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
-                            modifier = Modifier.fillMaxWidth()
+                        // Tab Selector
+                        Spacer(modifier = Modifier.height(18.dp))
+                        SecondaryTabRow(
+                            selectedTabIndex = selectedTab,
+                            containerColor = MaterialTheme.colorScheme.background,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            divider = {}
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("🏆", fontSize = 16.sp)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Badges obtenus", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    listOf("🌟", "✍️", "🔥", "🤝").forEach { emoji ->
-                                        Text(emoji, fontSize = 16.sp)
-                                    }
-                                }
-                            }
+                            Tab(
+                                selected = selectedTab == 0,
+                                onClick = { selectedTab = 0 },
+                                text = { Text("Publications", fontWeight = FontWeight.Bold) },
+                                icon = { Icon(Icons.Outlined.Feed, contentDescription = "Publications", modifier = Modifier.size(18.dp)) }
+                            )
+                            Tab(
+                                selected = selectedTab == 1,
+                                onClick = { selectedTab = 1 },
+                                text = { Text("Médias", fontWeight = FontWeight.Bold) },
+                                icon = { Icon(Icons.Outlined.GridOn, contentDescription = "Médias", modifier = Modifier.size(18.dp)) }
+                            )
+                            Tab(
+                                selected = selectedTab == 2,
+                                onClick = { selectedTab = 2 },
+                                text = { Text("Niveau", fontWeight = FontWeight.Bold) },
+                                icon = { Icon(Icons.Outlined.MilitaryTech, contentDescription = "Niveau", modifier = Modifier.size(18.dp)) }
+                            )
                         }
                     }
                 }
             }
 
-            // Section Divider / Header
-            item(key = "section_header") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Publications",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                    ) {
-                        Text(
-                            text = "${userActfiles.size}",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                        )
-                    }
-                }
-            }
-
-            // Privacy restriction or Posts list
+            // Private Account Restriction
             if (profileUser.privacySetting == "Private" && !isFollowing && !isMe) {
                 item(key = "private_account_notice") {
-                    Card(
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                        )
+                            .padding(horizontal = 16.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                     ) {
                         Column(
                             modifier = Modifier
@@ -759,44 +703,155 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                     }
                 }
             } else {
-                if (userActfiles.isEmpty()) {
-                    item(key = "empty_actfiles") {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Aucune publication pour le moment.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
+                // Tab 0: Publications Feed
+                if (selectedTab == 0) {
+                    if (userActfiles.isEmpty()) {
+                        item(key = "empty_actfiles") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "Aucune publication pour le moment.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                    } else {
+                        items(userActfiles, key = { it.id }) { actfile ->
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                ActfileCard(
+                                    actfile = actfile,
+                                    onLike = { viewModel.likeActfile(it) },
+                                    onView = { viewModel.incrementView(it) },
+                                    targetLanguageName = targetLanguage,
+                                    isAiReady = aiState == com.example.utils.AiModelState.READY,
+                                    onLinkClick = { url ->
+                                        val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                        navController.navigate("browser/$encodedUrl")
+                                    },
+                                    onUserClick = {},
+                                    onComment = { navController.navigate("discussion/$it") },
+                                    onMentionClick = { username ->
+                                        scope.launch {
+                                            val u = viewModel.getUserByUsername(username)
+                                            if (u != null) {
+                                                navController.navigate("profile/${u.id}")
+                                            }
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
-                } else {
-                    items(userActfiles, key = { it.id }) { actfile ->
-                        Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                            ActfileCard(
-                                actfile = actfile,
-                                onLike = { viewModel.likeActfile(it) },
-                                onView = { viewModel.incrementView(it) },
-                                targetLanguageName = targetLanguage,
-                                isAiReady = aiState == com.example.utils.AiModelState.READY,
-                                onLinkClick = { url ->
-                                    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
-                                    navController.navigate("browser/$encodedUrl")
-                                },
-                                onUserClick = {},
-                                onComment = { navController.navigate("discussion/$it") },
-                                onMentionClick = { username ->
-                                    scope.launch {
-                                        val u = viewModel.getUserByUsername(username)
-                                        if (u != null) {
-                                            navController.navigate("profile/${u.id}")
+                }
+
+                // Tab 1: Instagram 3x3 Media Grid
+                if (selectedTab == 1) {
+                    if (mediaActfiles.isEmpty()) {
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "Aucune photo ou vidéo disponible.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                    } else {
+                        item {
+                            val rows = mediaActfiles.chunked(3)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                rows.forEach { rowItems ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        rowItems.forEach { actfile ->
+                                            val imgUrl = extractFirstMediaUrl(actfile.content)
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .aspectRatio(1f)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                                    .clickable {
+                                                        navController.navigate("discussion/${actfile.id}")
+                                                    }
+                                            ) {
+                                                if (!imgUrl.isNullOrBlank()) {
+                                                    AsyncImage(
+                                                        model = com.example.utils.UrlHelper.fixCloudinaryUrl(imgUrl),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        contentScale = ContentScale.Crop
+                                                    )
+                                                }
+                                                Surface(
+                                                    color = Color.Black.copy(alpha = 0.5f),
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomEnd)
+                                                        .padding(4.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Filled.Favorite,
+                                                            contentDescription = null,
+                                                            tint = Color(0xFFEF4444),
+                                                            modifier = Modifier.size(10.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(2.dp))
+                                                        Text(
+                                                            text = actfile.likesCount.toString(),
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        repeat(3 - rowItems.size) {
+                                            Spacer(modifier = Modifier.weight(1f))
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // Tab 2: Gamified Level & Badges
+                if (selectedTab == 2) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            UserLevelCard(
+                                level = userLevel,
+                                onOpenLadder = { showLadderDialog = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                subtitle = "Score calculé sur ses likes et commentaires"
                             )
                         }
                     }
@@ -845,7 +900,7 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
     }
 
     if (showFollowListSheet) {
-        com.example.ui.components.FollowListBottomSheet(
+        FollowListBottomSheet(
             viewModel = viewModel,
             navController = navController,
             userId = profileUser.id,
@@ -855,7 +910,7 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
     }
 
     if (showLadderDialog) {
-        com.example.ui.components.LevelsLadderDialog(
+        LevelsLadderDialog(
             currentLevel = userLevel,
             table = levelsTable,
             onDismiss = { showLadderDialog = false }

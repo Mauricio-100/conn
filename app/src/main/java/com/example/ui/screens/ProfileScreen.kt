@@ -1,100 +1,112 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Warning
-import androidx.compose.material.icons.outlined.SupportAgent
-import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.PhotoCamera
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.SupportAgent
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.material.icons.filled.SupportAgent
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import com.example.ui.IddetViewModel
-import androidx.compose.ui.platform.LocalContext
-import android.widget.Toast
 import coil.compose.AsyncImage
-import com.example.ui.components.VerificationBadge
-import com.example.ui.components.CopyableUserId
-import com.example.ui.components.ActfileCard
-import com.example.ui.components.MarkdownEditor
-import com.example.ui.components.OpenGraphPreview
 import com.example.data.UserProfileNetwork
-import com.example.data.UpdateProfileRequest
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.core.content.FileProvider
+import com.example.ui.IddetViewModel
+import com.example.ui.components.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
-import android.net.Uri
-import android.Manifest
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.AccountCircle
+import java.io.FileOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    
-    // Safe check
-    if (currentUser == null) return
-    val user = currentUser!!
     val scope = rememberCoroutineScope()
-    
+
+    if (currentUser == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        }
+        return
+    }
+    val user = currentUser!!
+
     val userActfiles by viewModel.getUserActfiles(user.id).collectAsStateWithLifecycle(initialValue = emptyList())
     val friends by viewModel.friendsLocations.collectAsStateWithLifecycle()
-    val isGhostMode by viewModel.isGhostMode.collectAsStateWithLifecycle()
     val currentUserVibe by viewModel.currentUserVibe.collectAsStateWithLifecycle()
     val myLevel by viewModel.myLevel.collectAsStateWithLifecycle()
     val levelsTable by viewModel.levelsTable.collectAsStateWithLifecycle()
     val iddetPlusStatus by viewModel.myIddetPlusStatus.collectAsStateWithLifecycle()
-    
+    val notifications by viewModel.notifications.collectAsStateWithLifecycle()
+    val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
+    val aiState by viewModel.aiState.collectAsStateWithLifecycle()
+
+    val unreadNotifsCount = notifications.count { !it.isRead }
+    val totalLikes = userActfiles.sumOf { it.likesCount }
+    val totalViews = userActfiles.sumOf { it.viewsCount }
+
+    // Helper to extract first image URL from actfile content
+    fun extractFirstMediaUrl(content: String): String? {
+        val regex = Regex("""!\[.*?\]\((https?://[^\s)]+)\)|(https?://[^\s)]+\.(?:jpg|jpeg|png|webp|gif))""", RegexOption.IGNORE_CASE)
+        val match = regex.find(content) ?: return null
+        val g1 = match.groupValues.getOrNull(1)
+        val g2 = match.groupValues.getOrNull(2)
+        return when {
+            !g1.isNullOrBlank() -> g1
+            !g2.isNullOrBlank() -> g2
+            else -> null
+        }
+    }
+
+    // Media posts (with images) for 3x3 Instagram grid
+    val mediaActfiles = remember(userActfiles) {
+        userActfiles.filter { extractFirstMediaUrl(it.content) != null }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.refreshProfile()
         viewModel.refreshActfiles()
@@ -102,7 +114,8 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
         viewModel.loadLevelsTable()
         viewModel.loadIddetPlusData()
     }
-    
+
+    var selectedTab by remember { mutableIntStateOf(0) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showVerificationDialog by remember { mutableStateOf(false) }
     var showImageOptions by remember { mutableStateOf(false) }
@@ -112,72 +125,54 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     var showLevelsLadderDialog by remember { mutableStateOf(false) }
     var showFollowListSheet by remember { mutableStateOf(false) }
     var followListInitialTab by remember { mutableIntStateOf(0) }
+    var showCategorySelectorDialog by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
-    
-    var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
     var isUploading by remember { mutableStateOf(false) }
     var localPreviewUri by remember { mutableStateOf<Uri?>(null) }
+    var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
 
-    fun compressAndResizeImage(context: android.content.Context, uri: Uri): File? {
+    fun compressAndResizeImage(context: Context, uri: Uri): File? {
         return try {
             val maxDimension = 800
-            
-            // 1. Measure dimensions without full decode to avoid memory pressure
-            val boundsOptions = android.graphics.BitmapFactory.Options().apply {
-                inJustDecodeBounds = true
-            }
+            val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             context.contentResolver.openInputStream(uri)?.use { stream ->
-                android.graphics.BitmapFactory.decodeStream(stream, null, boundsOptions)
+                BitmapFactory.decodeStream(stream, null, boundsOptions)
             }
-            
             val originalWidth = boundsOptions.outWidth
             val originalHeight = boundsOptions.outHeight
             if (originalWidth <= 0 || originalHeight <= 0) return null
 
-            // Calculate optimal inSampleSize
             var inSampleSize = 1
             while (originalWidth / (inSampleSize * 2) >= maxDimension || originalHeight / (inSampleSize * 2) >= maxDimension) {
                 inSampleSize *= 2
             }
 
-            // 2. Decode downsampled bitmap
-            val decodeOptions = android.graphics.BitmapFactory.Options().apply {
+            val decodeOptions = BitmapFactory.Options().apply {
                 this.inSampleSize = inSampleSize
                 inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
             }
             val bitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
-                android.graphics.BitmapFactory.decodeStream(stream, null, decodeOptions)
+                BitmapFactory.decodeStream(stream, null, decodeOptions)
             } ?: return null
 
             val width = bitmap.width
             val height = bitmap.height
             val (newWidth, newHeight) = if (width > height) {
                 val ratio = width.toFloat() / height.toFloat()
-                if (width > maxDimension) {
-                    Pair(maxDimension, (maxDimension / ratio).toInt())
-                } else {
-                    Pair(width, height)
-                }
+                if (width > maxDimension) Pair(maxDimension, (maxDimension / ratio).toInt()) else Pair(width, height)
             } else {
                 val ratio = height.toFloat() / width.toFloat()
-                if (height > maxDimension) {
-                    Pair((maxDimension / ratio).toInt(), maxDimension)
-                } else {
-                    Pair(width, height)
-                }
+                if (height > maxDimension) Pair((maxDimension / ratio).toInt(), maxDimension) else Pair(width, height)
             }
 
             val scaledBitmap = if (newWidth != width || newHeight != height) {
                 android.graphics.Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true).also {
                     if (it != bitmap) bitmap.recycle()
                 }
-            } else {
-                bitmap
-            }
+            } else bitmap
 
-            val cacheDir = context.cacheDir
-            val file = File(cacheDir, "compressed_avatar_${System.currentTimeMillis()}.jpg")
-            java.io.FileOutputStream(file).use { outStream ->
+            val file = File(context.cacheDir, "compressed_avatar_${System.currentTimeMillis()}.jpg")
+            FileOutputStream(file).use { outStream ->
                 scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, outStream)
                 outStream.flush()
             }
@@ -201,7 +196,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                     localPreviewUri = null
                     return@launch
                 }
-                
+
                 viewModel.updateProfileWithImage(
                     avatarFile = compressedFile,
                     bio = user.bio,
@@ -227,28 +222,19 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri ->
-            if (uri != null) {
-                onImageSelected(uri)
-            }
-        }
-    )
-
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture(),
-        onResult = { success ->
-            if (success && capturedImageUri != null) {
-                onImageSelected(capturedImageUri!!)
-            }
-        }
+        onResult = { uri -> if (uri != null) onImageSelected(uri) }
     )
 
     fun createImageUri(): Uri {
-        val directory = File(context.cacheDir, "images")
-        directory.mkdirs()
+        val directory = File(context.cacheDir, "images").apply { mkdirs() }
         val file = File.createTempFile("profile_", ".jpg", directory)
         return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture(),
+        onResult = { success -> if (success && capturedImageUri != null) onImageSelected(capturedImageUri!!) }
+    )
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -259,60 +245,95 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                 try {
                     cameraLauncher.launch(uri)
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Aucune application caméra disponible", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Caméra non disponible", Toast.LENGTH_SHORT).show()
                 }
             } else {
                 Toast.makeText(context, "Permission caméra refusée", Toast.LENGTH_SHORT).show()
             }
         }
     )
-    
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
+
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                title = { Text("Profile", fontWeight = FontWeight.Bold) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = user.username,
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        VerificationBadge(
+                            userName = user.username,
+                            isVerified = user.isVerified,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                },
                 actions = {
-                    val notifications by viewModel.notifications.collectAsStateWithLifecycle()
-                    val unreadCount = notifications.count { !it.isRead }
-                    
+                    // Notifications
                     IconButton(onClick = { navController.navigate("notifications") }) {
                         BadgedBox(
                             badge = {
-                                if (unreadCount > 0) {
-                                    Badge { Text(unreadCount.toString()) }
+                                if (unreadNotifsCount > 0) {
+                                    Badge { Text(unreadNotifsCount.toString()) }
                                 }
                             }
                         ) {
                             Icon(Icons.Outlined.Notifications, contentDescription = "Notifications")
                         }
                     }
+
+                    // Share Profile
                     IconButton(
-                        onClick = { 
+                        onClick = {
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(
+                                    Intent.EXTRA_TEXT,
+                                    "Découvrez mon profil @${user.username} sur IDDET : https://iddet.app/u/${user.username}"
+                                )
+                                type = "text/plain"
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, "Partager mon profil"))
+                        }
+                    ) {
+                        Icon(Icons.Outlined.Share, contentDescription = "Partager")
+                    }
+
+                    // Refresh
+                    IconButton(
+                        onClick = {
                             scope.launch {
                                 isRefreshing = true
                                 viewModel.refreshProfile()
-                                delay(500)
+                                viewModel.refreshActfiles()
+                                delay(400)
                                 isRefreshing = false
-                                Toast.makeText(context, "Profil actualisé !", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Profil actualisé", Toast.LENGTH_SHORT).show()
                             }
                         },
                         enabled = !isRefreshing
                     ) {
                         if (isRefreshing) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Outlined.Refresh, contentDescription = "Refresh Profile")
+                            Icon(Icons.Outlined.Refresh, contentDescription = "Actualiser")
                         }
                     }
-                    IconButton(onClick = { viewModel.logout() }) {
-                        Icon(Icons.AutoMirrored.Outlined.ExitToApp, contentDescription = "Logout")
+
+                    // Settings / Logout
+                    IconButton(onClick = { navController.navigate("settings") }) {
+                        Icon(Icons.Outlined.Settings, contentDescription = "Paramètres")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface
                 ),
                 scrollBehavior = scrollBehavior
             )
@@ -321,752 +342,945 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(bottom = 100.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(padding)
+                .testTag("profile_scrollable_feed"),
+            contentPadding = PaddingValues(bottom = 90.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // Dynamic App Logo
-                    com.example.ui.components.AppDynamicLogo(
-                        size = 56.dp,
-                        elevation = 4.dp,
-                        showGlow = true
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("IDDET Support", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold)
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Header Item: Banner + Floating Avatar + Identity + Actions + Highlights + Tabs
+            item(key = "profile_header_container") {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Modern Multi-Color Gradient Cover Banner (Twitter / Facebook style)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(130.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        Color(0xFF4F46E5), // Indigo
+                                        Color(0xFF06B6D4), // Cyan
+                                        MaterialTheme.colorScheme.tertiaryContainer
+                                    )
+                                )
+                            )
                     ) {
-                        SupportButton(
-                            name = "Crislem",
-                            color = Color(0xFFFACC15),
-                            modifier = Modifier.weight(1f),
-                            onClick = { 
-                                // Mock ID for support
-                                navController.navigate("chat/crislem")
+                        // Status badge on the cover
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.Black.copy(alpha = 0.45f),
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF22C55E))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (iddetPlusStatus?.is_iddet_plus == true) "VIP ELITE" else "CONNECTÉ",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
                             }
-                        )
-                        SupportButton(
-                            name = "Doffranel",
-                            color = Color(0xFF06B6D4),
-                            modifier = Modifier.weight(1f),
-                            onClick = { navController.navigate("chat/doffranel") }
-                        )
-                        SupportButton(
-                            name = "C.M.O",
-                            color = Color(0xFF8B5CF6),
-                            modifier = Modifier.weight(1f),
-                            onClick = { navController.navigate("chat/c.m.o") }
-                        )
+                        }
                     }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Button(
-                        onClick = { 
-                            // Open a default support chat
-                            navController.navigate("chat/support")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
+
+                    // Overlapping Avatar & Primary Action Buttons Row
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
                     ) {
-                        Icon(Icons.Default.SupportAgent, contentDescription = "Support")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Contacter Support Client (!)")
+                        // Glowing VIP / Story Avatar
+                        val isVip = iddetPlusStatus?.is_iddet_plus == true
+                        val ringBrush = if (isVip) {
+                            Brush.sweepGradient(
+                                listOf(
+                                    Color(0xFFF59E0B),
+                                    Color(0xFFEC4899),
+                                    Color(0xFF8B5CF6),
+                                    Color(0xFF06B6D4),
+                                    Color(0xFFF59E0B)
+                                )
+                            )
+                        } else {
+                            Brush.sweepGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primary,
+                                    MaterialTheme.colorScheme.tertiary,
+                                    MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .offset(y = (-46).dp)
+                                .size(92.dp)
+                                .clip(CircleShape)
+                                .background(ringBrush)
+                                .padding(3.dp)
+                                .clip(CircleShape)
+                                .border(3.dp, MaterialTheme.colorScheme.background, CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable { showImageOptions = true }
+                                .testTag("profile_avatar"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val imageModel = localPreviewUri ?: user.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) }
+                            if (imageModel != null && (imageModel is Uri || (imageModel is String && imageModel.isNotBlank()))) {
+                                AsyncImage(
+                                    model = imageModel,
+                                    contentDescription = "Photo de profil",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Text(
+                                    text = user.username.firstOrNull()?.toString()?.uppercase() ?: "?",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+
+                            if (isUploading) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.5f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(32.dp),
+                                        strokeWidth = 3.dp
+                                    )
+                                }
+                            } else {
+                                // Camera icon badge
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.BottomCenter
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.PhotoCamera,
+                                        contentDescription = "Modifier photo",
+                                        tint = Color.White,
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .padding(bottom = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Right Action Buttons
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = { showEditDialog = true },
+                                shape = RoundedCornerShape(20.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+                                modifier = Modifier.testTag("edit_profile_button")
+                            ) {
+                                Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Modifier", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    val sendIntent = Intent().apply {
+                                        action = Intent.ACTION_SEND
+                                        putExtra(
+                                            Intent.EXTRA_TEXT,
+                                            "Profil de @${user.username} sur IDDET : https://iddet.app/u/${user.username}"
+                                        )
+                                        type = "text/plain"
+                                    }
+                                    context.startActivity(Intent.createChooser(sendIntent, "Partager"))
+                                },
+                                shape = RoundedCornerShape(20.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
+                            ) {
+                                Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Partager", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            }
+                        }
+                    }
+
+                    // User Identity & Information
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .offset(y = (-24).dp)
+                    ) {
+                        // Display Name + Verified Badge + Level Badge
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = user.username,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            VerificationBadge(
+                                userName = user.username,
+                                isVerified = user.isVerified,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            UserLevelBadge(
+                                level = myLevel,
+                                onClick = { showLevelsLadderDialog = true }
+                            )
+                        }
+
+                        // Username tag & Copyable ID
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 2.dp)
+                        ) {
+                            Text(
+                                text = "@${user.username}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            CopyableUserId(
+                                id = user.id,
+                                isBot = false,
+                                fontSize = 11.sp,
+                                iconSize = 12.dp
+                            )
+                        }
+
+                        // Viber / Instagram Style Status Bubble
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            onClick = { showVibeEditorDialog = true },
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.TagFaces,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = currentUserVibe.text.ifBlank { "Définir un statut ou une humeur..." },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Icon(
+                                    Icons.Outlined.Edit,
+                                    contentDescription = "Modifier statut",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+
+                        // Bio
+                        if (user.bio.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            MarkdownActfile(
+                                content = user.bio,
+                                modifier = Modifier.fillMaxWidth(),
+                                onLinkClick = { url ->
+                                    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                    navController.navigate("browser/$encodedUrl")
+                                }
+                            )
+                        }
+
+                        // Verification Prompt if unverified
+                        if (!user.isVerified) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                onClick = { showVerificationDialog = true },
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFDC2626).copy(alpha = 0.1f),
+                                border = BorderStroke(1.dp, Color(0xFFDC2626).copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.VerifiedUser,
+                                        contentDescription = null,
+                                        tint = Color(0xFFDC2626),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Demander la certification officielle IDDET",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFDC2626),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(
+                                        Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        tint = Color(0xFFDC2626),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Metric Stats Row (Instagram / Twitter style)
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Posts Count
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { selectedTab = 0 }
+                                ) {
+                                    Text(
+                                        text = userActfiles.size.toString(),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Publications",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                VerticalDivider(
+                                    modifier = Modifier.height(28.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
+
+                                // Followers Count
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            followListInitialTab = 1
+                                            showFollowListSheet = true
+                                        }
+                                ) {
+                                    Text(
+                                        text = com.example.utils.FormatUtils.formatCount(user.followersCount),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Abonnés",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                VerticalDivider(
+                                    modifier = Modifier.height(28.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
+
+                                // Following Count
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            followListInitialTab = 0
+                                            showFollowListSheet = true
+                                        }
+                                ) {
+                                    Text(
+                                        text = com.example.utils.FormatUtils.formatCount(user.followingCount),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Abonnements",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                VerticalDivider(
+                                    modifier = Modifier.height(28.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
+
+                                // Total Likes
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = com.example.utils.FormatUtils.formatCount(totalLikes),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFFEF4444)
+                                    )
+                                    Text(
+                                        text = "J'aime",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        // Instagram-Style Story Highlights Bar
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Highlight 1: VIP Club
+                            HighlightCircleItem(
+                                icon = Icons.Outlined.WorkspacePremium,
+                                label = "VIP Club",
+                                color = Color(0xFFF59E0B),
+                                onClick = { navController.navigate("iddet_plus") }
+                            )
+
+                            // Highlight 2: Trophies & Badges
+                            HighlightCircleItem(
+                                icon = Icons.Outlined.EmojiEvents,
+                                label = "Trophées",
+                                color = Color(0xFF8B5CF6),
+                                onClick = { showBadgesDialog = true }
+                            )
+
+                            // Highlight 3: Friends Radar Map
+                            HighlightCircleItem(
+                                icon = Icons.Outlined.Radar,
+                                label = "Radar Potes",
+                                color = Color(0xFF06B6D4),
+                                badgeText = "${friends.count { it.isOnline }}",
+                                onClick = { navController.navigate("friends_map") }
+                            )
+
+                            // Highlight 4: Level & XP
+                            HighlightCircleItem(
+                                icon = Icons.Outlined.Leaderboard,
+                                label = "Niveau XP",
+                                color = Color(0xFF10B981),
+                                onClick = { showLevelsLadderDialog = true }
+                            )
+
+                            // Highlight 5: IDDET Support
+                            HighlightCircleItem(
+                                icon = Icons.Outlined.SupportAgent,
+                                label = "Support",
+                                color = Color(0xFFEC4899),
+                                onClick = { navController.navigate("chat/support") }
+                            )
+                        }
+
+                        // Multi-Tab Selector (Publications, Médias, Niveau & Badges, À propos)
+                        Spacer(modifier = Modifier.height(18.dp))
+                        SecondaryTabRow(
+                            selectedTabIndex = selectedTab,
+                            containerColor = MaterialTheme.colorScheme.background,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            divider = {}
+                        ) {
+                            Tab(
+                                selected = selectedTab == 0,
+                                onClick = { selectedTab = 0 },
+                                text = { Text("Publications", fontWeight = FontWeight.Bold) },
+                                icon = { Icon(Icons.Outlined.Feed, contentDescription = "Publications", modifier = Modifier.size(18.dp)) }
+                            )
+                            Tab(
+                                selected = selectedTab == 1,
+                                onClick = { selectedTab = 1 },
+                                text = { Text("Médias", fontWeight = FontWeight.Bold) },
+                                icon = { Icon(Icons.Outlined.GridOn, contentDescription = "Médias", modifier = Modifier.size(18.dp)) }
+                            )
+                            Tab(
+                                selected = selectedTab == 2,
+                                onClick = { selectedTab = 2 },
+                                text = { Text("Niveau", fontWeight = FontWeight.Bold) },
+                                icon = { Icon(Icons.Outlined.MilitaryTech, contentDescription = "Niveau", modifier = Modifier.size(18.dp)) }
+                            )
+                            Tab(
+                                selected = selectedTab == 3,
+                                onClick = { selectedTab = 3 },
+                                text = { Text("Infos", fontWeight = FontWeight.Bold) },
+                                icon = { Icon(Icons.Outlined.Info, contentDescription = "Infos", modifier = Modifier.size(18.dp)) }
+                            )
+                        }
                     }
                 }
             }
-            
-            item {
-            // Profile Card
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                            .clickable { showImageOptions = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val imageModel = localPreviewUri ?: user.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) }
-                        if (imageModel != null && (imageModel is Uri || (imageModel is String && imageModel.isNotBlank()))) {
-                            AsyncImage(
-                                model = imageModel,
-                                contentDescription = "Profile Picture",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
-                                error = coil.compose.rememberAsyncImagePainter(model = null)
-                            )
-                        } else {
-                            Text(
-                                text = user.username.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.displaySmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        
-                        if (isUploading) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.Black.copy(alpha = 0.4f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(36.dp)
-                                )
-                            }
-                        } else {
-                            // Edit overlay
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.Black.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.BottomCenter
-                            ) {
-                                Icon(
-                                    Icons.Default.PhotoCamera,
-                                    contentDescription = "Change Photo",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp).padding(bottom = 4.dp)
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "@${user.username}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        VerificationBadge(modifier = Modifier.size(24.dp), userName = user.username, isVerified = user.isVerified)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        com.example.ui.components.UserLevelBadge(
-                            level = myLevel,
-                            onClick = { showLevelsLadderDialog = true }
-                        )
-                    }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-                    CopyableUserId(
-                        id = user.id,
-                        isBot = false,
-                        fontSize = 11.sp,
-                        iconSize = 12.dp
-                    )
-                    
-                    if (user.bio.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        com.example.ui.components.MarkdownActfile(
-                            content = user.bio,
-                            modifier = Modifier.fillMaxWidth(),
-                            onLinkClick = { url ->
-                                val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
-                                navController.navigate("browser/$encodedUrl")
-                            }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // 1. Live Status / Vibe Banner
-                    Surface(
-                        onClick = { showVibeEditorDialog = true },
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+            // Tab Content 0: Vertical Feed of Publications (Actfiles)
+            if (selectedTab == 0) {
+                if (userActfiles.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp, horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(currentUserVibe.emoji, fontSize = 22.sp)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Statut & Vibe du jour", 
-                                    style = MaterialTheme.typography.labelSmall, 
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    currentUserVibe.text, 
-                                    style = MaterialTheme.typography.bodyMedium, 
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
                             Icon(
-                                Icons.Outlined.Edit, 
-                                contentDescription = "Modifier statut", 
-                                modifier = Modifier.size(16.dp), 
-                                tint = MaterialTheme.colorScheme.primary
+                                Icons.Outlined.PostAdd,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Aucune publication pour le moment",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Partagez vos pensées et actfiles avec la communauté !",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // 2. Live Friends Radar Map Hero Card
-                    Surface(
-                        onClick = { navController.navigate("friends_map") },
-                        shape = RoundedCornerShape(20.dp),
-                        color = Color(0xFF0F172A),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.4f)),
-                        shadowElevation = 6.dp,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF0284C7).copy(alpha = 0.25f))
-                                    .border(1.5.dp, Color(0xFF38BDF8), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("🗺️", fontSize = 22.sp)
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        "Radar des Potes en direct",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .size(7.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFF10B981))
-                                    )
-                                }
-                                val onlineCount = friends.count { it.isOnline }
-                                Text(
-                                    text = "$onlineCount potes actifs à proximité !",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF94A3B8)
-                                )
-                            }
-                            Button(
-                                onClick = { navController.navigate("friends_map") },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7), contentColor = Color.White),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text("Carte 📍", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // 2.5. Iddet Plus VIP Promotional Banner
-                    com.example.ui.components.IddetPlusPromoBanner(
-                        onClick = { navController.navigate("iddet_plus") },
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                        isPremium = iddetPlusStatus?.is_iddet_plus == true
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // 3. Gamified Level & Daily Streak Card
-                    com.example.ui.components.UserLevelCard(
-                        level = myLevel,
-                        onOpenLadder = { showLevelsLadderDialog = true },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                        subtitle = "Score calculé sur les likes et commentaires"
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // 4. Badges & Trophies Showcase
-                    Surface(
-                        onClick = { showBadgesDialog = true },
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("🏆", fontSize = 20.sp)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text("Badges & Succès Débloqués", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                    Text("5 trophées actifs", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                listOf("🌟", "✍️", "🔥", "🤝", "⚡").forEach { emoji ->
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(emoji, fontSize = 14.sp)
+                } else {
+                    items(userActfiles, key = { it.id }) { actfile ->
+                        Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            ActfileCard(
+                                actfile = actfile,
+                                onLike = { viewModel.likeActfile(it) },
+                                onView = { viewModel.incrementView(it) },
+                                targetLanguageName = targetLanguage,
+                                isAiReady = aiState == com.example.utils.AiModelState.READY,
+                                onLinkClick = { url ->
+                                    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                    navController.navigate("browser/$encodedUrl")
+                                },
+                                onUserClick = {},
+                                onComment = { navController.navigate("discussion/$it") },
+                                onDelete = { viewModel.deleteActfile(it) },
+                                onMentionClick = { username ->
+                                    scope.launch {
+                                        val u = viewModel.getUserByUsername(username)
+                                        if (u != null) {
+                                            navController.navigate("profile/${u.id}")
                                         }
                                     }
                                 }
-                            }
+                            )
                         }
                     }
+                }
+            }
 
-                    // Display complete contact info
-                    if (!user.email.isNullOrBlank() || !user.phoneNumber.isNullOrBlank() || !user.birthDate.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (!user.email.isNullOrBlank()) {
-                                    Text(
-                                        text = "📧 Email : ${user.email}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                if (!user.phoneNumber.isNullOrBlank()) {
-                                    Text(
-                                        text = "📞 Téléphone : ${user.phoneNumber}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                if (!user.birthDate.isNullOrBlank()) {
-                                    Text(
-                                        text = "📅 Naissance : ${user.birthDate}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    val totalLikes = userActfiles.sumOf { it.likesCount }
-                    val totalViews = userActfiles.sumOf { it.viewsCount }
-
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-                        )
-                    ) {
-                        Row(
+            // Tab Content 1: Instagram-Style 3x3 Media Grid
+            if (selectedTab == 1) {
+                if (mediaActfiles.isEmpty()) {
+                    item {
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 12.dp, horizontal = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(vertical = 48.dp, horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        followListInitialTab = 1
-                                        showFollowListSheet = true
-                                    }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.People,
-                                    contentDescription = "Abonnés",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "${com.example.utils.FormatUtils.formatCount(user.followersCount)}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Abonnés",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                )
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(32.dp)
-                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
-                            )
-
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        followListInitialTab = 0
-                                        showFollowListSheet = true
-                                    }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = "Abonnements",
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "${com.example.utils.FormatUtils.formatCount(user.followingCount)}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Abonnements",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                )
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(32.dp)
-                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
-                            )
-
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Favorite,
-                                    contentDescription = "Likes",
-                                    tint = Color(0xFFEF4444),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "${com.example.utils.FormatUtils.formatCount(totalLikes)}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "J'aime",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                )
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(32.dp)
-                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
-                            )
-
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Visibility,
-                                    contentDescription = "Vues",
-                                    tint = MaterialTheme.colorScheme.tertiary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "${com.example.utils.FormatUtils.formatCount(totalViews)}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Vues",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedButton(
-                            onClick = { showEditDialog = true },
-                            shape = RoundedCornerShape(20.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Modifier le profil")
-                        }
-
-                        if (!user.isVerified) {
-                            Button(
-                                onClick = { showVerificationDialog = true },
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFDC2626)
-                                ),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                            ) {
-                                Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Vérifier mon compte")
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    var showCategorySelectorDialog by remember { mutableStateOf(false) }
-                    val currentPrefCategory = user.preferredCategory ?: "@(fun)"
-                    val categoryInfo = com.example.ui.components.getCategoryById(currentPrefCategory)
-                    
-                    Surface(
-                        onClick = { showCategorySelectorDialog = true },
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp, 
-                            (categoryInfo?.color ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.3f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background((categoryInfo?.color ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(categoryInfo?.emoji ?: "🎭", fontSize = 20.sp)
-                            }
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Catégorie de pertinence", 
-                                    style = MaterialTheme.typography.bodySmall, 
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "${categoryInfo?.name ?: "Fun"} (${currentPrefCategory})",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = categoryInfo?.color ?: MaterialTheme.colorScheme.primary
-                                )
-                            }
                             Icon(
-                                imageVector = androidx.compose.material.icons.Icons.Default.Edit,
-                                contentDescription = "Modifier",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
+                                Icons.Outlined.PhotoCamera,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Aucune photo ou vidéo",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Vos publications avec images ou vidéos apparaîtront dans cette galerie.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
-
-                    if (showCategorySelectorDialog) {
-                        val categories = com.example.ui.components.APP_CATEGORIES
-                        AlertDialog(
-                            onDismissRequest = { showCategorySelectorDialog = false },
-                            title = {
-                                Text(
-                                    text = "🎯 Choisir ma catégorie",
-                                    fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.titleLarge
-                                )
-                            },
-                            text = {
-                                Column(modifier = Modifier.fillMaxHeight(0.7f)) {
-                                    Text(
-                                        text = "Sélectionnez votre centre d'intérêt principal pour personnaliser votre fil d'actualité.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(bottom = 12.dp)
-                                    )
-                                    HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp))
-                                    LazyColumn(
-                                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        items(categories) { cat ->
-                                            val isSelected = cat.id.equals(currentPrefCategory, ignoreCase = true)
-                                            Row(
+                } else {
+                    item {
+                        // Chunk into rows of 3 items
+                        val rows = mediaActfiles.chunked(3)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            rows.forEach { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    rowItems.forEach { actfile ->
+                                        val imgUrl = extractFirstMediaUrl(actfile.content)
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .aspectRatio(1f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                                .clickable {
+                                                    navController.navigate("discussion/${actfile.id}")
+                                                }
+                                        ) {
+                                            if (!imgUrl.isNullOrBlank()) {
+                                                AsyncImage(
+                                                    model = com.example.utils.UrlHelper.fixCloudinaryUrl(imgUrl),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            }
+                                            // Likes overlay in bottom corner
+                                            Surface(
+                                                color = Color.Black.copy(alpha = 0.5f),
+                                                shape = RoundedCornerShape(6.dp),
                                                 modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .background(
-                                                        if (isSelected) cat.color.copy(alpha = 0.15f) 
-                                                        else Color.Transparent
-                                                    )
-                                                    .clickable {
-                                                        viewModel.updateProfile(
-                                                            bio = user.bio,
-                                                            privacySetting = user.privacySetting,
-                                                            preferredCategory = cat.id
-                                                        )
-                                                        showCategorySelectorDialog = false
-                                                        Toast.makeText(context, "Catégorie préférée mise à jour : ${cat.name}", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically
+                                                    .align(Alignment.BottomEnd)
+                                                    .padding(4.dp)
                                             ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(36.dp)
-                                                        .clip(CircleShape)
-                                                        .background(cat.color.copy(alpha = 0.2f)),
-                                                    contentAlignment = Alignment.Center
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Text(cat.emoji, fontSize = 18.sp)
-                                                }
-                                                Spacer(modifier = Modifier.width(12.dp))
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = "${cat.name} (${cat.id})",
-                                                        style = MaterialTheme.typography.bodyLarge,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (isSelected) cat.color else MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Text(
-                                                        text = cat.description,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        maxLines = 1
-                                                    )
-                                                }
-                                                if (isSelected) {
                                                     Icon(
-                                                        imageVector = androidx.compose.material.icons.Icons.Default.Check,
-                                                        contentDescription = "Sélectionné",
-                                                        tint = cat.color,
-                                                        modifier = Modifier.size(20.dp)
+                                                        Icons.Filled.Favorite,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFFEF4444),
+                                                        modifier = Modifier.size(10.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(2.dp))
+                                                    Text(
+                                                        text = actfile.likesCount.toString(),
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.White
                                                     )
                                                 }
                                             }
                                         }
                                     }
-                                }
-                            },
-                            confirmButton = {
-                                TextButton(onClick = { showCategorySelectorDialog = false }) {
-                                    Text("Fermer")
+                                    // Fill empty slots in row
+                                    repeat(3 - rowItems.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // Tab Content 2: Gamified Level, Streak & Trophies Showcase
+            if (selectedTab == 2) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Level Progress Card
+                        UserLevelCard(
+                            level = myLevel,
+                            onOpenLadder = { showLevelsLadderDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Badges & Trophies Showcase Card
+                        Surface(
+                            onClick = { showBadgesDialog = true },
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Outlined.EmojiEvents,
+                                            contentDescription = null,
+                                            tint = Color(0xFFF59E0B),
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = "Trophées & Succès",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "6 badges débloqués",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    Icon(
+                                        Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    TrophyMiniItem(Icons.Outlined.Star, "Pionnier", Color(0xFFF59E0B))
+                                    TrophyMiniItem(Icons.Outlined.EditNote, "Rédacteur", Color(0xFF3B82F6))
+                                    TrophyMiniItem(Icons.Outlined.LocalFireDepartment, "Streak", Color(0xFFEF4444))
+                                    TrophyMiniItem(Icons.Outlined.Groups, "Connecté", Color(0xFF10B981))
+                                    TrophyMiniItem(Icons.Outlined.Bolt, "Super Dev", Color(0xFF8B5CF6))
+                                }
+                            }
+                        }
+
+                        // Iddet Plus VIP Status Card
+                        IddetPlusPromoBanner(
+                            onClick = { navController.navigate("iddet_plus") },
+                            modifier = Modifier.fillMaxWidth(),
+                            isPremium = iddetPlusStatus?.is_iddet_plus == true
                         )
                     }
                 }
             }
-            }
-            
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Text(
-                    text = "My Actfiles",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            
-            items(userActfiles, key = { it.id }) { actfile ->
-                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
-                    val aiState by viewModel.aiState.collectAsStateWithLifecycle()
-                    ActfileCard(
-                        actfile = actfile,
-                        onLike = { viewModel.likeActfile(it) },
-                        onView = { viewModel.incrementView(it) },
-                        targetLanguageName = targetLanguage,
-                        isAiReady = aiState == com.example.utils.AiModelState.READY,
-                        onLinkClick = { url ->
-                            val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
-                            navController.navigate("browser/$encodedUrl")
-                        },
-                        onUserClick = {}, // It's me
-                        onComment = { navController.navigate("discussion/$it") },
-                        onDelete = { viewModel.deleteActfile(it) },
-                        onMentionClick = { username ->
-                            scope.launch {
-                                val u = viewModel.getUserByUsername(username)
-                                if (u != null) {
-                                    navController.navigate("profile/${u.id}")
+
+            // Tab Content 3: About & Contact Details Card (Facebook / Viber Info style)
+            if (selectedTab == 3) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Category of Interest Card
+                        val currentPrefCategory = user.preferredCategory ?: "@(fun)"
+                        val categoryInfo = getCategoryById(currentPrefCategory)
+
+                        Surface(
+                            onClick = { showCategorySelectorDialog = true },
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, (categoryInfo?.color ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.3f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background((categoryInfo?.color ?: MaterialTheme.colorScheme.primary).copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.Category,
+                                        contentDescription = null,
+                                        tint = categoryInfo?.color ?: MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Catégorie Principale",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "${categoryInfo?.name ?: "Fun"} ($currentPrefCategory)",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = categoryInfo?.color ?: MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Icon(
+                                    Icons.Outlined.Edit,
+                                    contentDescription = "Modifier",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        // Personal Contact Info Card
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                Text(
+                                    text = "Informations Personnelles",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                InfoRowItem(
+                                    icon = Icons.Outlined.Email,
+                                    label = "Adresse Email",
+                                    value = user.email.ifNullOrBlank("Non renseignée")
+                                )
+
+                                InfoRowItem(
+                                    icon = Icons.Outlined.Phone,
+                                    label = "Téléphone",
+                                    value = user.phoneNumber.ifNullOrBlank("Non renseigné")
+                                )
+
+                                InfoRowItem(
+                                    icon = Icons.Outlined.Cake,
+                                    label = "Date de Naissance",
+                                    value = user.birthDate.ifNullOrBlank("Non renseignée")
+                                )
+
+                                if (!user.zodiacSign.isNullOrBlank()) {
+                                    InfoRowItem(
+                                        icon = Icons.Outlined.AutoAwesome,
+                                        label = "Signe Astrologique",
+                                        value = user.zodiacSign!!
+                                    )
+                                }
+
+                                InfoRowItem(
+                                    icon = if (user.privacySetting == "Private") Icons.Outlined.Lock else Icons.Outlined.Public,
+                                    label = "Visibilité du Profil",
+                                    value = if (user.privacySetting == "Private") "Profil Privé" else "Profil Public"
+                                )
+                            }
+                        }
+
+                        // IDDET Support Concierge Card
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Support & Assistance Directe",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    SupportButton(
+                                        name = "Crislem",
+                                        color = Color(0xFFFACC15),
+                                        modifier = Modifier.weight(1f),
+                                        onClick = { navController.navigate("chat/crislem") }
+                                    )
+                                    SupportButton(
+                                        name = "Doffranel",
+                                        color = Color(0xFF06B6D4),
+                                        modifier = Modifier.weight(1f),
+                                        onClick = { navController.navigate("chat/doffranel") }
+                                    )
+                                    SupportButton(
+                                        name = "C.M.O",
+                                        color = Color(0xFF8B5CF6),
+                                        modifier = Modifier.weight(1f),
+                                        onClick = { navController.navigate("chat/c.m.o") }
+                                    )
                                 }
                             }
                         }
-                    )
-                }
-            }
-            
-            if (userActfiles.isEmpty()) {
-                item {
-                    Text(
-                        text = "You haven't posted any actfiles yet.",
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(16.dp)
-                    )
+                    }
                 }
             }
         }
     }
 
+    // --- Dialogs & BottomSheets ---
+
+    // 1. Edit Profile Dialog
     if (showEditDialog) {
         var editedUsername by remember { mutableStateOf(user.username) }
         var editedBio by remember { mutableStateOf(user.bio) }
@@ -1078,64 +1292,88 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
 
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
-            title = { Text("Modifier le Profil") },
+            title = {
+                Text(
+                    text = "Modifier le Profil",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 440.dp)
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     OutlinedTextField(
                         value = editedUsername,
                         onValueChange = { editedUsername = it },
                         label = { Text("Nom d'utilisateur") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = editedAvatarUrl,
-                        onValueChange = { editedAvatarUrl = it },
-                        label = { Text("URL de l'avatar") },
-                        placeholder = { Text("https://example.com/image.png") },
-                        modifier = Modifier.fillMaxWidth()
+                        leadingIcon = { Icon(Icons.Outlined.Person, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = editedBio,
                         onValueChange = { editedBio = it },
                         label = { Text("Bio") },
-                        modifier = Modifier.fillMaxWidth()
+                        leadingIcon = { Icon(Icons.Outlined.Description, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = editedEmail,
                         onValueChange = { editedEmail = it },
                         label = { Text("Adresse Email") },
-                        modifier = Modifier.fillMaxWidth()
+                        leadingIcon = { Icon(Icons.Outlined.Email, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = editedPhone,
                         onValueChange = { editedPhone = it },
-                        label = { Text("Numéro de Téléphone") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("Téléphone") },
+                        leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = editedBirthDate,
                         onValueChange = { editedBirthDate = it },
-                        label = { Text("Anniversaire (JJ/MM/AAAA)") },
-                        placeholder = { Text("Ex: 15/08/1995") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("Date de naissance (JJ/MM/AAAA)") },
+                        leadingIcon = { Icon(Icons.Outlined.Cake, contentDescription = null) },
+                        placeholder = { Text("15/08/1998") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
-                    
-                    Text("Paramètres de Confidentialité", style = MaterialTheme.typography.titleSmall)
+
+                    Text(
+                        text = "Visibilité du compte",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { editedPrivacy = "Public" }) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { editedPrivacy = "Public" }
+                        ) {
                             RadioButton(
                                 selected = editedPrivacy == "Public",
                                 onClick = { editedPrivacy = "Public" }
                             )
                             Text("Public")
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { editedPrivacy = "Private" }) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { editedPrivacy = "Private" }
+                        ) {
                             RadioButton(
                                 selected = editedPrivacy == "Private",
                                 onClick = { editedPrivacy = "Private" }
@@ -1146,32 +1384,35 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    var calculatedZodiac: String? = null
-                    try {
-                        val parts = editedBirthDate.split("/")
-                        if (parts.size == 3) {
-                            val day = parts[0].trim().toIntOrNull()
-                            val month = parts[1].trim().toIntOrNull()
-                            if (day != null && month != null && day in 1..31 && month in 1..12) {
-                                calculatedZodiac = getZodiacSign(day, month)
+                Button(
+                    onClick = {
+                        var calculatedZodiac: String? = null
+                        try {
+                            val parts = editedBirthDate.split("/")
+                            if (parts.size == 3) {
+                                val day = parts[0].trim().toIntOrNull()
+                                val month = parts[1].trim().toIntOrNull()
+                                if (day != null && month != null && day in 1..31 && month in 1..12) {
+                                    calculatedZodiac = getZodiacSign(day, month)
+                                }
                             }
-                        }
-                    } catch (e: Exception) {}
+                        } catch (e: Exception) {}
 
-                    viewModel.updateProfile(
-                        username = editedUsername,
-                        avatarUrl = editedAvatarUrl,
-                        bio = editedBio,
-                        privacySetting = editedPrivacy,
-                        email = editedEmail,
-                        phoneNumber = editedPhone,
-                        birthDate = editedBirthDate,
-                        zodiacSign = calculatedZodiac
-                    )
-                    Toast.makeText(context, "Profil mis à jour !", Toast.LENGTH_SHORT).show()
-                    showEditDialog = false
-                }) {
+                        viewModel.updateProfile(
+                            username = editedUsername,
+                            avatarUrl = editedAvatarUrl,
+                            bio = editedBio,
+                            privacySetting = editedPrivacy,
+                            email = editedEmail,
+                            phoneNumber = editedPhone,
+                            birthDate = editedBirthDate,
+                            zodiacSign = calculatedZodiac
+                        )
+                        Toast.makeText(context, "Profil mis à jour", Toast.LENGTH_SHORT).show()
+                        showEditDialog = false
+                    },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
                     Text("Enregistrer")
                 }
             },
@@ -1179,14 +1420,15 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                 TextButton(onClick = { showEditDialog = false }) {
                     Text("Annuler")
                 }
-            }
+            },
+            shape = RoundedCornerShape(20.dp)
         )
     }
 
+    // 2. Official Verification Dialog
     if (showVerificationDialog) {
         var isVerifying by remember { mutableStateOf(false) }
         var verificationSuccess by remember { mutableStateOf(false) }
-        val scope = rememberCoroutineScope()
 
         val isLevelMet = user.level >= 2
         val isBioMet = user.bio.isNotBlank()
@@ -1196,7 +1438,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
             onDismissRequest = { if (!isVerifying) showVerificationDialog = false },
             title = {
                 Text(
-                    text = "Vérification Connect",
+                    text = "Vérification Officielle IDDET",
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleLarge
                 )
@@ -1205,11 +1447,11 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     if (!verificationSuccess) {
                         Text(
-                            text = "Obtenez le badge d'authenticité rouge Iddet pour prouver votre identité et votre activité.",
+                            text = "Obtenez le badge d'authenticité rouge officiel IDDET pour prouver votre identité.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         // Criterion 1: Level 2+
                         Row(
@@ -1220,26 +1462,26 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                 imageVector = if (isLevelMet) Icons.Default.CheckCircle else Icons.Default.Warning,
                                 contentDescription = null,
                                 tint = if (isLevelMet) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = "Être Actif sur la plateforme (Niveau 2+)",
+                                    text = "Niveau d'activité (Niveau 2+)",
                                     fontWeight = FontWeight.Medium,
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
-                                    text = "Votre niveau actuel : ${user.level} (Requis : 2)",
+                                    text = "Votre niveau : ${user.level} (Requis : 2)",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (isLevelMet) Color(0xFF10B981) else MaterialTheme.colorScheme.error
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                        // Criterion 2: Bio not empty
+                        // Criterion 2: Bio completed
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
@@ -1248,63 +1490,50 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                 imageVector = if (isBioMet) Icons.Default.CheckCircle else Icons.Default.Warning,
                                 contentDescription = null,
                                 tint = if (isBioMet) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = "Profil Complété (Bio remplie)",
+                                    text = "Bio de profil complétée",
                                     fontWeight = FontWeight.Medium,
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
-                                    text = if (isBioMet) "Votre bio est configurée !" else "Veuillez remplir votre bio de profil.",
+                                    text = if (isBioMet) "Votre bio est renseignée" else "Veuillez renseigner votre bio",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (isBioMet) Color(0xFF10B981) else MaterialTheme.colorScheme.error
                                 )
                             }
                         }
-
-                        if (!allCriteriaMet) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "💡 Astuce : Publiez des actfiles ou recevez des likes pour gagner de l'XP et passer au niveau 2 !",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
-                                    .padding(8.dp)
-                            )
-                        }
                     } else {
-                        // Success screen
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(64.dp)
+                                    .size(60.dp)
                                     .background(Color(0xFFDC2626).copy(alpha = 0.15f), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Check,
+                                    Icons.Default.Check,
                                     contentDescription = null,
                                     tint = Color(0xFFDC2626),
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(32.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
                             Text(
                                 text = "Félicitations !",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleLarge,
                                 color = Color(0xFFDC2626)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Votre compte a été vérifié avec succès. Le badge Connect rouge est maintenant affiché sur votre profil !",
+                                text = "Votre profil est maintenant vérifié avec le badge officiel IDDET.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 textAlign = TextAlign.Center,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1319,52 +1548,43 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                         onClick = {
                             isVerifying = true
                             scope.launch {
-                                kotlinx.coroutines.delay(1500)
+                                delay(1200)
                                 viewModel.verifyCurrentUser()
                                 isVerifying = false
                                 verificationSuccess = true
                             }
                         },
                         enabled = allCriteriaMet && !isVerifying,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFDC2626)
-                        )
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         if (isVerifying) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
                         } else {
-                            Text("Vérifier maintenant")
+                            Text("Activer la vérification")
                         }
                     }
                 } else {
                     Button(
-                        onClick = {
-                            showVerificationDialog = false
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
+                        onClick = { showVerificationDialog = false },
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Terminer")
+                        Text("Terminé")
                     }
                 }
             },
             dismissButton = {
                 if (!verificationSuccess && !isVerifying) {
                     TextButton(onClick = { showVerificationDialog = false }) {
-                        Text("Annuler")
+                        Text("Fermer")
                     }
                 }
             },
-            shape = RoundedCornerShape(28.dp),
-            containerColor = MaterialTheme.colorScheme.surface
+            shape = RoundedCornerShape(20.dp)
         )
     }
 
+    // 3. Photo Options Bottom Sheet
     if (showImageOptions) {
         ModalBottomSheet(
             onDismissRequest = { showImageOptions = false },
@@ -1373,63 +1593,60 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
-                    .padding(bottom = 32.dp)
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .padding(bottom = 28.dp)
             ) {
                 Text(
-                    "Changer la photo de profil",
+                    text = "Photo de profil",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
-                
+
                 ListItem(
-                    headlineContent = { Text("Prendre une photo") },
-                    leadingContent = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
+                    headlineContent = { Text("Prendre une photo", fontWeight = FontWeight.SemiBold) },
+                    leadingContent = { Icon(Icons.Outlined.PhotoCamera, contentDescription = null) },
                     modifier = Modifier.clickable {
                         showImageOptions = false
-                        if (androidx.core.content.ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.CAMERA
-                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                        ) {
+                        if (androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                             val uri = createImageUri()
                             capturedImageUri = uri
                             try {
                                 cameraLauncher.launch(uri)
                             } catch (e: Exception) {
-                                Toast.makeText(context, "Aucune application caméra disponible", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Caméra non disponible", Toast.LENGTH_SHORT).show()
                             }
                         } else {
                             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                         }
                     }
                 )
+
                 ListItem(
-                    headlineContent = { Text("Choisir depuis la galerie") },
-                    leadingContent = { Icon(Icons.Default.PhotoLibrary, contentDescription = null) },
+                    headlineContent = { Text("Choisir depuis la galerie", fontWeight = FontWeight.SemiBold) },
+                    leadingContent = { Icon(Icons.Outlined.PhotoLibrary, contentDescription = null) },
                     modifier = Modifier.clickable {
                         try {
                             photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         } catch (e: Exception) {
-                            Toast.makeText(context, "Aucune application de galerie disponible", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Galerie non disponible", Toast.LENGTH_SHORT).show()
                         }
                         showImageOptions = false
                     }
                 )
-                
+
                 if (!user.avatarUrl.isNullOrBlank()) {
                     ListItem(
-                        headlineContent = { Text("Voir la photo") },
-                        leadingContent = { Icon(Icons.Default.AccountCircle, contentDescription = null) },
+                        headlineContent = { Text("Voir en grand format", fontWeight = FontWeight.SemiBold) },
+                        leadingContent = { Icon(Icons.Outlined.Visibility, contentDescription = null) },
                         modifier = Modifier.clickable {
                             showFullScreenAvatar = true
                             showImageOptions = false
                         }
                     )
                     ListItem(
-                        headlineContent = { Text("Supprimer la photo", color = MaterialTheme.colorScheme.error) },
-                        leadingContent = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                        headlineContent = { Text("Supprimer la photo", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold) },
+                        leadingContent = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                         modifier = Modifier.clickable {
                             viewModel.updateProfile(avatarUrl = "", bio = user.bio, privacySetting = user.privacySetting)
                             showImageOptions = false
@@ -1440,14 +1657,11 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
         }
     }
 
+    // 4. Full Screen Avatar Dialog
     if (showFullScreenAvatar && !user.avatarUrl.isNullOrBlank()) {
-        androidx.compose.ui.window.Dialog(
+        Dialog(
             onDismissRequest = { showFullScreenAvatar = false },
-            properties = androidx.compose.ui.window.DialogProperties(
-                usePlatformDefaultWidth = false,
-                dismissOnBackPress = true,
-                dismissOnClickOutside = true
-            )
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Box(
                 modifier = Modifier
@@ -1458,7 +1672,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
             ) {
                 AsyncImage(
                     model = user.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
-                    contentDescription = "Profile Picture",
+                    contentDescription = "Photo de profil agrandie",
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f),
                     contentScale = ContentScale.Fit
                 )
@@ -1466,32 +1680,174 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
         }
     }
 
-    if (showVibeEditorDialog) {
-        VibeStatusEditorDialog(
-            currentVibe = currentUserVibe,
-            onDismiss = { showVibeEditorDialog = false },
-            onSave = { emoji, text, type ->
-                viewModel.updateUserVibe(emoji, text, type)
-                showVibeEditorDialog = false
-                Toast.makeText(context, "Statut du jour mis à jour ! $emoji", Toast.LENGTH_SHORT).show()
-            }
+    // 5. Category Selector Dialog
+    if (showCategorySelectorDialog) {
+        val categories = APP_CATEGORIES
+        val currentPrefCategory = user.preferredCategory ?: "@(fun)"
+
+        AlertDialog(
+            onDismissRequest = { showCategorySelectorDialog = false },
+            title = {
+                Text(
+                    text = "Choisir ma catégorie d'intérêt",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxHeight(0.65f)) {
+                    Text(
+                        text = "Sélectionnez votre centre d'intérêt principal pour adapter votre fil d'actualité.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp))
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(categories) { cat ->
+                            val isSelected = cat.id.equals(currentPrefCategory, ignoreCase = true)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) cat.color.copy(alpha = 0.15f) else Color.Transparent,
+                                border = if (isSelected) BorderStroke(1.5.dp, cat.color) else null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.updateProfile(
+                                            bio = user.bio,
+                                            privacySetting = user.privacySetting,
+                                            preferredCategory = cat.id
+                                        )
+                                        showCategorySelectorDialog = false
+                                        Toast.makeText(context, "Catégorie mise à jour : ${cat.name}", Toast.LENGTH_SHORT).show()
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(cat.color.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Category,
+                                            contentDescription = null,
+                                            tint = cat.color,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${cat.name} (${cat.id})",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) cat.color else MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = cat.description,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = "Sélectionné",
+                                            tint = cat.color,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCategorySelectorDialog = false }) {
+                    Text("Fermer")
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
         )
     }
 
+    // 6. Vibe Status Editor Dialog
+    if (showVibeEditorDialog) {
+        var vibeText by remember { mutableStateOf(currentUserVibe.text) }
+        AlertDialog(
+            onDismissRequest = { showVibeEditorDialog = false },
+            title = {
+                Text(
+                    text = "Définir mon statut",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Exprimez votre humeur du moment ou ce que vous faites.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = vibeText,
+                        onValueChange = { vibeText = it },
+                        label = { Text("Mon statut") },
+                        placeholder = { Text("Ex: Disponible, En train de coder...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.updateUserVibe("", vibeText, currentUserVibe.activityType)
+                        showVibeEditorDialog = false
+                        Toast.makeText(context, "Statut mis à jour", Toast.LENGTH_SHORT).show()
+                    },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Enregistrer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVibeEditorDialog = false }) {
+                    Text("Annuler")
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // 7. Badges & Trophies Dialog
     if (showBadgesDialog) {
         FriendlyBadgesDialog(onDismiss = { showBadgesDialog = false })
     }
 
+    // 8. Levels Ladder Dialog
     if (showLevelsLadderDialog) {
-        com.example.ui.components.LevelsLadderDialog(
+        LevelsLadderDialog(
             currentLevel = myLevel,
             table = levelsTable,
             onDismiss = { showLevelsLadderDialog = false }
         )
     }
 
+    // 9. Follow List Bottom Sheet
     if (showFollowListSheet) {
-        com.example.ui.components.FollowListBottomSheet(
+        FollowListBottomSheet(
             viewModel = viewModel,
             navController = navController,
             userId = user.id,
@@ -1501,34 +1857,176 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     }
 }
 
+// --- High Quality Profile UI Components ---
+
+@Composable
+fun HighlightCircleItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    color: Color,
+    badgeText: String? = null,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(54.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            color.copy(alpha = 0.25f),
+                            color.copy(alpha = 0.08f)
+                        )
+                    )
+                )
+                .border(1.5.dp, color.copy(alpha = 0.6f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = color,
+                modifier = Modifier.size(24.dp)
+            )
+            if (badgeText != null) {
+                Surface(
+                    color = Color(0xFF10B981),
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(2.dp)
+                ) {
+                    Text(
+                        text = badgeText,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+fun TrophyMiniItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    color: Color
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = color.copy(alpha = 0.15f),
+            border = BorderStroke(1.dp, color.copy(alpha = 0.35f)),
+            modifier = Modifier.size(40.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = color,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+fun InfoRowItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
 @Composable
 fun FriendlyBadgesDialog(onDismiss: () -> Unit) {
     val badgesList = listOf(
-        Triple("🌟", "Pionnier Markdown", "Parmi les premiers explorateurs de la plateforme IDDET."),
-        Triple("✍️", "Rédacteur Pro", "A rédigé plus de 10 publications et actfiles de qualité."),
-        Triple("🔥", "Streak Master", "Connexion quotidienne continue pendant plus de 5 jours."),
-        Triple("🤝", "Ami Connecté", "Actif sur la carte des potes et toujours prêt à faire un coucou."),
-        Triple("⚡", "Super Développeur", "Expert en code Markdown, balises enrichies et tech."),
-        Triple("💬", "Roi du Débat", "Auteur de commentaires pertinents et constructifs.")
+        Pair("Pionnier IDDET", "Parmi les premiers explorateurs de la plateforme IDDET."),
+        Pair("Rédacteur Pro", "A rédigé plus de 10 publications et actfiles de haute qualité."),
+        Pair("Streak Master", "Connexion quotidienne continue pendant plus de 5 jours consécutifs."),
+        Pair("Ami Connecté", "Actif sur la carte des potes et disponible en direct."),
+        Pair("Super Développeur", "Expert en code Markdown, balises enrichies et tech."),
+        Pair("Maître du Débat", "Auteur de commentaires pertinents et constructifs.")
     )
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🏆 Trophées & Badges Débloqués", fontWeight = FontWeight.Black)
+                Icon(
+                    Icons.Outlined.EmojiEvents,
+                    contentDescription = null,
+                    tint = Color(0xFFF59E0B),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Trophées & Badges", fontWeight = FontWeight.Bold)
             }
         },
         text = {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 380.dp)
             ) {
-                items(badgesList) { (emoji, title, desc) ->
+                items(badgesList) { (title, desc) ->
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -1538,10 +2036,15 @@ fun FriendlyBadgesDialog(onDismiss: () -> Unit) {
                             Surface(
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(40.dp)
+                                modifier = Modifier.size(38.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Text(emoji, fontSize = 20.sp)
+                                    Icon(
+                                        Icons.Outlined.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
                             Spacer(modifier = Modifier.width(12.dp))
@@ -1556,9 +2059,10 @@ fun FriendlyBadgesDialog(onDismiss: () -> Unit) {
         },
         confirmButton = {
             Button(onClick = onDismiss, shape = RoundedCornerShape(12.dp)) {
-                Text("Super !")
+                Text("Fermer")
             }
-        }
+        },
+        shape = RoundedCornerShape(20.dp)
     )
 }
 
@@ -1585,16 +2089,16 @@ fun SupportButton(name: String, color: Color, modifier: Modifier = Modifier, onC
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = color.copy(alpha = 0.15f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.3f)),
+        color = color.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.35f)),
         modifier = modifier
     ) {
         Column(
-            modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Default.SupportAgent, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+            Icon(Icons.Outlined.SupportAgent, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = name,
@@ -1604,4 +2108,8 @@ fun SupportButton(name: String, color: Color, modifier: Modifier = Modifier, onC
             )
         }
     }
+}
+
+private fun String?.ifNullOrBlank(default: String): String {
+    return if (this.isNullOrBlank()) default else this
 }

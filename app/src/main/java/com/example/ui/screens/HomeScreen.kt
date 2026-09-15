@@ -57,6 +57,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import coil.compose.AsyncImage
 import com.example.data.getCategoryDefaultIcon
 import com.example.data.getCategoryDefaultBanner
+import androidx.compose.material.icons.outlined.VideoLibrary
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -200,6 +202,24 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { navController.navigate("reels") },
+                        modifier = Modifier.testTag("reels_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.VideoLibrary,
+                            contentDescription = "Reels & Vidéos"
+                        )
+                    }
+                    IconButton(
+                        onClick = { navController.navigate("music") },
+                        modifier = Modifier.testTag("music_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.MusicNote,
+                            contentDescription = "Studio Musique"
+                        )
+                    }
                     IconButton(
                         onClick = {
                             discoverySeed = (1..100000).random()

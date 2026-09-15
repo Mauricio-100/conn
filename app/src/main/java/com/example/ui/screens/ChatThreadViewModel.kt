@@ -332,6 +332,39 @@ class ChatThreadViewModel(
         }
     }
 
+    fun sendCustomTextMessage(customText: String) {
+        if (customText.isBlank()) return
+        _inputText.value = ""
+        val currentUserId = repository.currentUser.value?.id ?: ""
+        val tempId = UUID.randomUUID().toString()
+
+        val optimistic = ChatMessageUiModel(
+            id = tempId,
+            senderId = currentUserId,
+            receiverId = partnerUserId,
+            content = customText,
+            type = "text",
+            isMine = true,
+            isRead = false,
+            createdAt = System.currentTimeMillis(),
+            isSending = true
+        )
+
+        _optimisticMessages.value = _optimisticMessages.value + optimistic
+
+        viewModelScope.launch {
+            try {
+                repository.sendMessage(partnerUserId, customText, "text")
+                _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }
+            } catch (e: Exception) {
+                Log.e("ChatThreadVM", "Failed to send custom message", e)
+                _optimisticMessages.value = _optimisticMessages.value.map {
+                    if (it.id == tempId) it.copy(isSending = false, isFailed = true) else it
+                }
+            }
+        }
+    }
+
     fun sendVoiceMessage(audioB64: String) {
         val currentUserId = repository.currentUser.value?.id ?: ""
         val myUsername = repository.currentUser.value?.username ?: "Moi"

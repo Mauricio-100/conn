@@ -3,18 +3,22 @@ package com.example.ui.components
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
@@ -26,7 +30,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -37,13 +43,36 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.utils.ChatThemeManager
+import com.example.utils.ChatThemePreset
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.regex.Pattern
+
+data class QuotedMessageSnippet(
+    val senderName: String,
+    val text: String,
+    val remainingContent: String
+)
+
+fun parseQuotedMessage(content: String): QuotedMessageSnippet? {
+    if (content.startsWith("[quote:") && content.contains("]")) {
+        val closeBracket = content.indexOf("]")
+        val header = content.substring(7, closeBracket)
+        val parts = header.split("|", limit = 2)
+        val sender = parts.getOrNull(0) ?: "Message"
+        val quoteText = parts.getOrNull(1) ?: ""
+        val actualContent = content.substring(closeBracket + 1).trimStart('\n', ' ')
+        return QuotedMessageSnippet(sender, quoteText, actualContent)
+    }
+    return null
+}
 
 data class ReactionUiGroup(
     val emoji: String,
@@ -82,11 +111,17 @@ fun MessageBubble(
     onReactionClick: (String) -> Unit,
     onImageClick: (String) -> Unit,
     onVideoClick: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSwipeToReply: ((ChatMessageUiModel) -> Unit)? = null
 ) {
     val isMine = message.isMine
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val coroutineScope = rememberCoroutineScope()
+    val currentTheme by ChatThemeManager.currentTheme.collectAsState()
+
+    val offsetX = remember { Animatable(0f) }
+    val replyTriggerThreshold = 55f
 
     val bubbleShape = if (isMine) {
         RoundedCornerShape(
@@ -105,350 +140,455 @@ fun MessageBubble(
     }
 
     val bubbleColor = if (isMine) {
-        MaterialTheme.colorScheme.primary
+        currentTheme.myBubbleColor
     } else {
-        MaterialTheme.colorScheme.surfaceVariant
+        currentTheme.partnerBubbleColor
     }
 
     val contentColor = if (isMine) {
-        MaterialTheme.colorScheme.onPrimary
+        currentTheme.myBubbleTextColor
     } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
+        currentTheme.partnerBubbleTextColor
     }
 
     val timeString = remember(message.createdAt) {
         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.createdAt))
     }
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(
                 top = if (message.isFirstInGroup) 6.dp else 2.dp,
                 bottom = if (message.isLastInGroup) 6.dp else 2.dp,
-                start = 12.dp,
-                end = 12.dp
+                start = 8.dp,
+                end = 8.dp
             )
-            .testTag("message_row_${message.id}"),
-        horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Bottom
+            .testTag("message_row_${message.id}")
     ) {
-        // Partner Avatar (displayed only on receiver's side, on the last message of consecutive series)
-        if (!isMine) {
-            if (message.showAvatar) {
-                val fixedPartnerAvatar = remember(partnerAvatar) {
-                    partnerAvatar?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) } ?: partnerAvatar
-                }
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.secondaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val initial = partnerUsername.firstOrNull()?.uppercase() ?: "?"
-                    Text(
-                        text = initial,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    if (!fixedPartnerAvatar.isNullOrBlank()) {
-                        AsyncImage(
-                            model = fixedPartnerAvatar,
-                            contentDescription = "Avatar de $partnerUsername",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                }
-            } else {
-                Spacer(modifier = Modifier.width(32.dp))
+        // WhatsApp style swipe-to-reply icon indicator that reveals on pull
+        val dragFraction = (kotlin.math.abs(offsetX.value) / replyTriggerThreshold).coerceIn(0f, 1f)
+        if (dragFraction > 0.1f) {
+            Box(
+                modifier = Modifier
+                    .align(if (isMine) Alignment.CenterEnd else Alignment.CenterStart)
+                    .padding(horizontal = 8.dp)
+                    .size(36.dp)
+                    .scale(dragFraction)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Reply,
+                    contentDescription = "Répondre",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
             }
-            Spacer(modifier = Modifier.width(8.dp))
         }
 
-        // Bubble + Reactions + Meta container
-        Column(
-            horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
-            modifier = Modifier.widthIn(max = 290.dp)
-        ) {
-            // Main Bubble
-            Surface(
-                shape = bubbleShape,
-                color = bubbleColor,
-                tonalElevation = if (isMine) 0.dp else 1.dp,
-                shadowElevation = 1.dp,
-                modifier = Modifier
-                    .clip(bubbleShape)
-                    .combinedClickable(
-                        onClick = {
-                            when (message.type) {
-                                "image" -> onImageClick(message.content)
-                                "video" -> onVideoClick(message.content)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(offsetX.value.toInt(), 0) }
+                .pointerInput(message.id) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (kotlin.math.abs(offsetX.value) >= replyTriggerThreshold) {
+                                onSwipeToReply?.invoke(message)
+                            }
+                            coroutineScope.launch {
+                                offsetX.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 400f))
                             }
                         },
-                        onLongClick = onLongClick
+                        onDragCancel = {
+                            coroutineScope.launch {
+                                offsetX.animateTo(0f, spring())
+                            }
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            coroutineScope.launch {
+                                val newOffset = (offsetX.value + dragAmount * 0.65f).coerceIn(-120f, 120f)
+                                offsetX.snapTo(newOffset)
+                            }
+                        }
                     )
-                    .testTag("message_bubble_${message.id}")
-            ) {
-                Box(modifier = Modifier.padding(10.dp)) {
-                    when {
-                        // Voice message
-                        message.type == "voice" || message.type == "audio" || isVoiceMessage(message.content) -> {
-                            VoiceMessagePlayer(
-                                content = message.content,
-                                isMine = isMine,
-                                modifier = Modifier.widthIn(min = 200.dp)
+                },
+            horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            // Partner Avatar (displayed only on receiver's side, on the last message of consecutive series)
+            if (!isMine) {
+                if (message.showAvatar) {
+                    val fixedPartnerAvatar = remember(partnerAvatar) {
+                        partnerAvatar?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) } ?: partnerAvatar
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.secondaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val initial = partnerUsername.firstOrNull()?.uppercase() ?: "?"
+                        Text(
+                            text = initial,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        if (!fixedPartnerAvatar.isNullOrBlank()) {
+                            AsyncImage(
+                                model = fixedPartnerAvatar,
+                                contentDescription = "Avatar de $partnerUsername",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
                             )
                         }
+                    }
+                } else {
+                    Spacer(modifier = Modifier.width(32.dp))
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+            }
 
-                        // Image message
-                        message.type == "image" || isImageUrl(message.content) -> {
-                            Column {
-                                AsyncImage(
-                                    model = message.content,
-                                    contentDescription = "Image envoyée",
+            // Bubble + Reactions + Meta container
+            Column(
+                horizontalAlignment = if (isMine) Alignment.End else Alignment.Start,
+                modifier = Modifier.widthIn(max = 300.dp)
+            ) {
+                // Main Bubble
+                Surface(
+                    shape = bubbleShape,
+                    color = bubbleColor,
+                    tonalElevation = if (isMine) 0.dp else 1.dp,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier
+                        .clip(bubbleShape)
+                        .combinedClickable(
+                            onClick = {
+                                when (message.type) {
+                                    "image" -> onImageClick(message.content)
+                                    "video" -> onVideoClick(message.content)
+                                }
+                            },
+                            onDoubleClick = {
+                                onReactionClick("❤️")
+                            },
+                            onLongClick = onLongClick
+                        )
+                        .testTag("message_bubble_${message.id}")
+                ) {
+                    Box(modifier = Modifier.padding(10.dp)) {
+                        val quotedSnippet = remember(message.content) { parseQuotedMessage(message.content) }
+
+                        Column {
+                            // If this message quotes another message, display the WhatsApp quote box
+                            if (quotedSnippet != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isMine) Color.Black.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.35f),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(max = 240.dp)
-                                        .clip(RoundedCornerShape(12.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-                            }
-                        }
-
-                        // Video message
-                        message.type == "video" || isVideoUrl(message.content) -> {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(180.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.Black.copy(alpha = 0.8f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayCircleFilled,
-                                    contentDescription = "Lire la vidéo",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(54.dp)
-                                )
-                            }
-                        }
-
-                        // Sending/Failed audio placeholder
-                        message.type == "audio_sending" -> {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = contentColor
-                                )
-                                Text(
-                                    text = "Envoi du vocal en cours…",
-                                    color = contentColor,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                        }
-
-                        message.type == "audio_error" -> {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Error,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = "Échec de l'envoi vocal",
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                        }
-
-                        // Story reply (WhatsApp-style compact quoted thumbnail + user's reply)
-                        isStoryReplyMessage(message.content, message.type) -> {
-                            val storyReply = remember(message.content) { parseStoryReply(message.content) }
-                            if (storyReply != null) {
-                                StoryReplyBubbleContent(
-                                    storyReply = storyReply,
-                                    partnerUsername = partnerUsername,
-                                    isMine = isMine,
-                                    contentColor = contentColor,
-                                    onImageClick = onImageClick,
-                                    onUrlClick = { url ->
-                                        try {
-                                            uriHandler.openUri(url)
-                                        } catch (e: Exception) {
-                                            // fallback
+                                        .padding(bottom = 6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(start = 2.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(3.5.dp)
+                                                .height(34.dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(currentTheme.accentColor)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column(
+                                            modifier = Modifier
+                                                .padding(vertical = 4.dp, horizontal = 4.dp)
+                                                .weight(1f)
+                                        ) {
+                                            Text(
+                                                text = quotedSnippet.senderName,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = currentTheme.accentColor,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = quotedSnippet.text,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = contentColor.copy(alpha = 0.85f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
                                     }
-                                )
-                            } else {
-                                ClickableUrlText(
-                                    text = message.content,
-                                    contentColor = contentColor,
-                                    onUrlClick = { url ->
-                                        try {
-                                            uriHandler.openUri(url)
-                                        } catch (e: Exception) {
-                                            // fallback
-                                        }
-                                    }
-                                )
-                            }
-                        }
-
-                        // Standard text message
-                        else -> {
-                            val communityClickHandler = LocalCommunityClickHandler.current
-                            ClickableUrlText(
-                                text = message.content,
-                                contentColor = contentColor,
-                                onUrlClick = { url ->
-                                    try {
-                                        uriHandler.openUri(url)
-                                    } catch (e: Exception) {
-                                        // fallback
-                                    }
-                                },
-                                onCommunityClick = { slug ->
-                                    communityClickHandler?.invoke(slug)
                                 }
-                            )
-
-                            // WhatsApp / OpenGraph rich banner preview when community slugs are shared
-                            val communitySlugs = remember(message.content) {
-                                com.example.utils.CommunitySlugHelper.extractCommunitySlugs(message.content)
                             }
-                            if (communitySlugs.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                communitySlugs.take(2).forEach { slug ->
-                                    CommunityOpenGraphCard(
-                                        slug = slug,
-                                        compact = true,
-                                        onCommunityClick = { targetSlug ->
-                                            communityClickHandler?.invoke(targetSlug)
+
+                            val displayContent = quotedSnippet?.remainingContent ?: message.content
+
+                            when {
+                                // Voice message
+                                message.type == "voice" || message.type == "audio" || isVoiceMessage(displayContent) -> {
+                                    VoiceMessagePlayer(
+                                        content = displayContent,
+                                        isMine = isMine,
+                                        modifier = Modifier.widthIn(min = 200.dp)
+                                    )
+                                }
+
+                                // Image message
+                                message.type == "image" || isImageUrl(displayContent) -> {
+                                    Column {
+                                        AsyncImage(
+                                            model = displayContent,
+                                            contentDescription = "Image envoyée",
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(max = 240.dp)
+                                                .clip(RoundedCornerShape(12.dp)),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                }
+
+                                // Video message
+                                message.type == "video" || isVideoUrl(displayContent) -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(180.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color.Black.copy(alpha = 0.8f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayCircleFilled,
+                                            contentDescription = "Lire la vidéo",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(54.dp)
+                                        )
+                                    }
+                                }
+
+                                // Sending/Failed audio placeholder
+                                message.type == "audio_sending" -> {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = contentColor
+                                        )
+                                        Text(
+                                            text = "Envoi du vocal en cours…",
+                                            color = contentColor,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                }
+
+                                message.type == "audio_error" -> {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Error,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "Échec de l'envoi vocal",
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                }
+
+                                // Story reply (WhatsApp-style compact quoted thumbnail + user's reply)
+                                isStoryReplyMessage(displayContent, message.type) -> {
+                                    val storyReply = remember(displayContent) { parseStoryReply(displayContent) }
+                                    if (storyReply != null) {
+                                        StoryReplyBubbleContent(
+                                            storyReply = storyReply,
+                                            partnerUsername = partnerUsername,
+                                            isMine = isMine,
+                                            contentColor = contentColor,
+                                            onImageClick = onImageClick,
+                                            onUrlClick = { url ->
+                                                try {
+                                                    uriHandler.openUri(url)
+                                                } catch (e: Exception) {
+                                                    // fallback
+                                                }
+                                            }
+                                        )
+                                    } else {
+                                        ClickableUrlText(
+                                            text = displayContent,
+                                            contentColor = contentColor,
+                                            onUrlClick = { url ->
+                                                try {
+                                                    uriHandler.openUri(url)
+                                                } catch (e: Exception) {
+                                                    // fallback
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+
+                                // Standard text message
+                                else -> {
+                                    val communityClickHandler = LocalCommunityClickHandler.current
+                                    ClickableUrlText(
+                                        text = displayContent,
+                                        contentColor = contentColor,
+                                        onUrlClick = { url ->
+                                            try {
+                                                uriHandler.openUri(url)
+                                            } catch (e: Exception) {
+                                                // fallback
+                                            }
                                         },
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Grouped reactions below bubble
-            if (message.reactions.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.testTag("bubble_reactions_${message.id}")
-                ) {
-                    message.reactions.forEach { reactionGroup ->
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (reactionGroup.hasReacted) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            },
-                            border = BorderStroke(
-                                1.dp,
-                                if (reactionGroup.hasReacted) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                }
-                            ),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onReactionClick(reactionGroup.emoji) }
-                                .testTag("reaction_group_${message.id}_${reactionGroup.emoji}")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                Text(text = reactionGroup.emoji, fontSize = 12.sp)
-                                if (reactionGroup.count > 1) {
-                                    Text(
-                                        text = reactionGroup.count.toString(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (reactionGroup.hasReacted) {
-                                            MaterialTheme.colorScheme.onPrimaryContainer
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        onCommunityClick = { slug ->
+                                            communityClickHandler?.invoke(slug)
                                         }
                                     )
+
+                                    // WhatsApp / OpenGraph rich banner preview when community slugs are shared
+                                    val communitySlugs = remember(displayContent) {
+                                        com.example.utils.CommunitySlugHelper.extractCommunitySlugs(displayContent)
+                                    }
+                                    if (communitySlugs.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        communitySlugs.take(2).forEach { slug ->
+                                            CommunityOpenGraphCard(
+                                                slug = slug,
+                                                compact = true,
+                                                onCommunityClick = { targetSlug ->
+                                                    communityClickHandler?.invoke(targetSlug)
+                                                },
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // Timestamp and delivery status (only on the last message of a series)
-            if (message.isLastInGroup) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                ) {
-                    Text(
-                        text = timeString,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                        fontSize = 11.sp
-                    )
+                // Grouped reactions below bubble
+                if (message.reactions.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.testTag("bubble_reactions_${message.id}")
+                    ) {
+                        message.reactions.forEach { reactionGroup ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (reactionGroup.hasReacted) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                },
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (reactionGroup.hasReacted) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    }
+                                ),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onReactionClick(reactionGroup.emoji) }
+                                    .testTag("reaction_group_${message.id}_${reactionGroup.emoji}")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text(text = reactionGroup.emoji, fontSize = 12.sp)
+                                    if (reactionGroup.count > 1) {
+                                        Text(
+                                            text = reactionGroup.count.toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (reactionGroup.hasReacted) {
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
-                    // Delivery status for sender's messages: NO read timestamp, strictly "envoyé" vs "lu"
-                    if (isMine) {
-                        when {
-                            message.isSending -> {
-                                Icon(
-                                    imageVector = Icons.Default.Schedule,
-                                    contentDescription = "Envoi en cours…",
-                                    tint = MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                            }
-                            message.isFailed -> {
-                                Icon(
-                                    imageVector = Icons.Default.Error,
-                                    contentDescription = "Échec de l'envoi",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                            }
-                            message.isRead -> {
-                                Icon(
-                                    imageVector = Icons.Default.DoneAll,
-                                    contentDescription = "Lu",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                            }
-                            else -> {
-                                Icon(
-                                    imageVector = Icons.Default.Done,
-                                    contentDescription = "Envoyé",
-                                    tint = MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.size(14.dp)
-                                )
+                // Timestamp and delivery status (only on the last message of a series)
+                if (message.isLastInGroup) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    ) {
+                        Text(
+                            text = timeString,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            fontSize = 11.sp
+                        )
+
+                        // Delivery status for sender's messages: NO read timestamp, strictly "envoyé" vs "lu"
+                        if (isMine) {
+                            when {
+                                message.isSending -> {
+                                    Icon(
+                                        imageVector = Icons.Default.Schedule,
+                                        contentDescription = "Envoi en cours…",
+                                        tint = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                                message.isFailed -> {
+                                    Icon(
+                                        imageVector = Icons.Default.Error,
+                                        contentDescription = "Échec de l'envoi",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                                message.isRead -> {
+                                    Icon(
+                                        imageVector = Icons.Default.DoneAll,
+                                        contentDescription = "Lu",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                                else -> {
+                                    Icon(
+                                        imageVector = Icons.Default.Done,
+                                        contentDescription = "Envoyé",
+                                        tint = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
                             }
                         }
                     }

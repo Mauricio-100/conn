@@ -9,7 +9,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.MilitaryTech
 import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.Stars
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -22,17 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.LevelTableItem
 import com.example.data.UserLevelResponse
-
-fun getRankEmoji(levelIndex: Int): String = when (levelIndex) {
-    0 -> "🔰"
-    1 -> "🥉"
-    2 -> "🥈"
-    3 -> "🥇"
-    4 -> "💎"
-    5 -> "👑"
-    6 -> "🌟"
-    else -> "🌟"
-}
 
 fun getRankColor(levelIndex: Int): Color = when (levelIndex) {
     0 -> Color(0xFF64748B) // Débutant
@@ -56,7 +48,6 @@ fun UserLevelBadge(
 ) {
     val levelIndex = level?.level_index ?: 0
     val levelName = level?.level_name ?: "Débutant"
-    val emoji = getRankEmoji(levelIndex)
     val rankColor = getRankColor(levelIndex)
 
     Surface(
@@ -76,7 +67,12 @@ fun UserLevelBadge(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(emoji, fontSize = 12.sp)
+            Icon(
+                imageVector = Icons.Outlined.MilitaryTech,
+                contentDescription = null,
+                tint = rankColor,
+                modifier = Modifier.size(13.dp)
+            )
             Text(
                 text = "$levelName • Niv. ${levelIndex + 1}",
                 style = MaterialTheme.typography.labelSmall,
@@ -101,7 +97,6 @@ fun UserLevelCard(
     val levelIndex = level?.level_index ?: 0
     val levelNum = levelIndex + 1
     val rankName = level?.level_name ?: "Débutant"
-    val rankEmoji = getRankEmoji(levelIndex)
     val rankColor = getRankColor(levelIndex)
     val score = level?.score ?: 0
     val progress = level?.progress ?: 0f
@@ -130,7 +125,12 @@ fun UserLevelCard(
                         modifier = Modifier.size(40.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text(rankEmoji, fontSize = 20.sp)
+                            Icon(
+                                imageVector = Icons.Outlined.MilitaryTech,
+                                contentDescription = null,
+                                tint = rankColor,
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.width(10.dp))
@@ -175,7 +175,12 @@ fun UserLevelCard(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("🏆", fontSize = 12.sp)
+                        Icon(
+                            imageVector = Icons.Outlined.EmojiEvents,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "Paliers",
@@ -207,7 +212,7 @@ fun UserLevelCard(
                     text = if (level?.next_level_name != null) {
                         "Prochain : ${level.next_level_name} (${level.points_to_next} pts restants)"
                     } else {
-                        "Rang maximal atteint ! 🌟"
+                        "Rang maximal atteint !"
                     },
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Medium,
@@ -263,7 +268,14 @@ fun LevelsLadderDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🏆 Rangs & Niveaux IDDET", fontWeight = FontWeight.Black)
+                Icon(
+                    imageVector = Icons.Outlined.EmojiEvents,
+                    contentDescription = null,
+                    tint = Color(0xFFF59E0B),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Rangs & Niveaux IDDET", fontWeight = FontWeight.Black)
             }
         },
         text = {
@@ -271,7 +283,6 @@ fun LevelsLadderDialog(
                 if (currentLevel != null) {
                     val userLvlIndex = currentLevel.level_index
                     val rankColor = getRankColor(userLvlIndex)
-                    val rankEmoji = getRankEmoji(userLvlIndex)
 
                     Surface(
                         shape = RoundedCornerShape(14.dp),
@@ -290,7 +301,12 @@ fun LevelsLadderDialog(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(rankEmoji, fontSize = 20.sp)
+                                Icon(
+                                    imageVector = Icons.Outlined.MilitaryTech,
+                                    contentDescription = null,
+                                    tint = rankColor,
+                                    modifier = Modifier.size(24.dp)
+                                )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = "Niveau ${currentLevel.level_index + 1} - ${currentLevel.level_name}",
@@ -329,7 +345,6 @@ fun LevelsLadderDialog(
                         val userLvl = (currentLevel?.level_index ?: 0) + 1
                         val isCurrent = userLvl == tierLevel
                         val isUnlocked = userLvl >= tierLevel
-                        val emoji = getRankEmoji(idx)
                         val rankColor = getRankColor(idx)
 
                         Surface(
@@ -349,7 +364,12 @@ fun LevelsLadderDialog(
                                 modifier = Modifier.padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(emoji, fontSize = 22.sp)
+                                Icon(
+                                    imageVector = Icons.Outlined.MilitaryTech,
+                                    contentDescription = null,
+                                    tint = rankColor,
+                                    modifier = Modifier.size(22.dp)
+                                )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -404,3 +424,4 @@ fun LevelsLadderDialog(
         }
     )
 }
+

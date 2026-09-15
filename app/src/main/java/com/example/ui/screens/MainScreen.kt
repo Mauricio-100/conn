@@ -544,6 +544,8 @@ fun MainScreen(viewModel: IddetViewModel) {
 
                     // Drawer menu list
                     val drawerItems = listOf(
+                        Triple("Reels & Vidéos 🎬", "reels", Icons.Outlined.VideoLibrary),
+                        Triple("Studio Musique 🎵", "music", Icons.Outlined.MusicNote),
                         Triple("Google Actualités 📰", "google_news", Icons.Outlined.Newspaper),
                         Triple("Iddet Plus VIP ✨", "iddet_plus", Icons.Outlined.Star),
                         Triple("Hide It Pro Studio 🐱", "hide_it_pro", Icons.Outlined.VisibilityOff),
@@ -751,6 +753,24 @@ fun MainScreen(viewModel: IddetViewModel) {
                 composable("marketplace") { MarketplaceScreen(navController) }
                 composable("iddet_plus") { IddetPlusScreen(viewModel, navController) }
                 composable("hide_it_pro") { HideItProScreen(navController) }
+                composable(
+                    "reels",
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) }
+                ) {
+                    ReelsFeedScreen(viewModel, navController)
+                }
+                composable(
+                    "music",
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) }
+                ) {
+                    MusicScreen(viewModel, navController)
+                }
                 composable(
                     "mcp_protocol",
                     enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },

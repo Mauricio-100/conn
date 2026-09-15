@@ -193,7 +193,7 @@ object NotificationHelper {
 
             val customReplyAction = NotificationCompat.Action.Builder(
                 R.drawable.ic_notification,
-                "💬 Message",
+                "Message",
                 customReplyPendingIntent
             ).addRemoteInput(remoteInput).build()
 
@@ -210,7 +210,7 @@ object NotificationHelper {
             val notification = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setLargeIcon(avatarBitmap)
-                .setContentTitle("📞 Appel entrant de @$callerUsername")
+                .setContentTitle("Appel entrant : @$callerUsername")
                 .setContentText("Appel vocal IDDET en cours...")
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
@@ -223,9 +223,9 @@ object NotificationHelper {
                 .setSound(callSoundUri)
                 .setVibrate(longArrayOf(0, 1000, 1000, 1000, 1000))
                 // Action Buttons
-                .addAction(R.drawable.ic_notification, "📞 Décrocher", answerPendingIntent)
-                .addAction(R.drawable.ic_notification, "❌ Refuser", declinePendingIntent)
-                .addAction(R.drawable.ic_notification, "💬 Plus tard", quickReply1PendingIntent)
+                .addAction(R.drawable.ic_notification, "Décrocher", answerPendingIntent)
+                .addAction(R.drawable.ic_notification, "Refuser", declinePendingIntent)
+                .addAction(R.drawable.ic_notification, "Plus tard", quickReply1PendingIntent)
                 .addAction(customReplyAction)
                 .build()
 

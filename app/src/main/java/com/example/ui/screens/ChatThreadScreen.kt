@@ -10,25 +10,33 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -46,11 +54,16 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.ui.IddetViewModel
 import com.example.ui.components.*
+import com.example.utils.ChatThemeManager
+import com.example.utils.ChatThemePreset
+import com.example.utils.RingtoneManagerHelper
+import com.example.utils.RingtonePreset
 import com.example.utils.SocketConnectionState
 import kotlinx.coroutines.launch
 
 /**
- * High-craftsmanship 1-on-1 Chat Thread screen for iDDET.
+ * High-craftsmanship 1-on-1 Chat Thread screen for iDDET with WhatsApp-style swipe to reply,
+ * customizable visual themes, synthesized ringtones, and humorous quick reactions.
  */
 @Composable
 fun ChatThreadScreen(
@@ -80,6 +93,14 @@ fun ChatThreadScreen(
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
 
+    LaunchedEffect(Unit) {
+        ChatThemeManager.init(context)
+        RingtoneManagerHelper.init(context)
+    }
+
+    val currentTheme by ChatThemeManager.currentTheme.collectAsState()
+    val currentRingtone by RingtoneManagerHelper.currentRingtone.collectAsState()
+
     val uiState by viewModel.uiState.collectAsState()
     val partnerInfo by viewModel.partnerInfo.collectAsState()
     val partnerAvatarUrl = remember(partnerInfo.avatarUrl) {
@@ -90,6 +111,10 @@ fun ChatThreadScreen(
     val socketState by viewModel.socketConnectionState.collectAsState()
 
     val listState = rememberLazyListState()
+
+    // Swipe-to-reply state
+    var replyingToMessage by remember { mutableStateOf<ChatMessageUiModel?>(null) }
+    var showThemeRingtoneSheet by remember { mutableStateOf(false) }
 
     // Context menu / Bottom sheet state for long-pressed message
     var selectedMessageForMenu by remember { mutableStateOf<ChatMessageUiModel?>(null) }
@@ -250,6 +275,19 @@ fun ChatThreadScreen(
                     }
                 },
                 actions = {
+                    // Chat Theme & Ringtone picker
+                    IconButton(
+                        onClick = { showThemeRingtoneSheet = true },
+                        modifier = Modifier.testTag("chat_theme_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Palette,
+                            contentDescription = "Personnaliser le thème",
+                            tint = currentTheme.accentColor
+                        )
+                    }
+
+                    // Voice Call
                     IconButton(
                         onClick = {
                             if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -286,98 +324,171 @@ fun ChatThreadScreen(
                 tonalElevation = 3.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                if (isVoiceRecording) {
-                    // Voice Recorder UI
-                    VoiceRecorderUI(
-                        onCancel = { isVoiceRecording = false },
-                        onSendVoice = { voiceString ->
-                            viewModel.sendVoiceMessage(voiceString)
-                            isVoiceRecording = false
-                        }
-                    )
-                } else {
-                    // Standard text and media input bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .imePadding()
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // WhatsApp-style Quoted Reply Composer Banner
+                    AnimatedVisibility(
+                        visible = replyingToMessage != null,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
                     ) {
-                        // Attachment button (Photos/Videos)
-                        IconButton(
-                            onClick = {
-                                mediaPickerLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
-                                )
-                            },
-                            modifier = Modifier.testTag("chat_attachment_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AttachFile,
-                                contentDescription = "Joindre un média",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        replyingToMessage?.let { replyTarget ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(4.dp)
+                                            .height(36.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(currentTheme.accentColor)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = if (replyTarget.isMine) "Réponse à vous-même" else "Réponse à ${partnerInfo.username}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = currentTheme.accentColor
+                                        )
+                                        Text(
+                                            text = when {
+                                                replyTarget.type == "voice" -> "🎙️ Message vocal"
+                                                replyTarget.type == "image" -> "📷 Photo"
+                                                replyTarget.type == "video" -> "🎬 Vidéo"
+                                                else -> replyTarget.content.replace("\n", " ")
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { replyingToMessage = null },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Annuler la réponse",
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
                         }
+                    }
 
-                        // Voice message button
-                        IconButton(
-                            onClick = { isVoiceRecording = true },
-                            modifier = Modifier.testTag("chat_mic_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Mic,
-                                contentDescription = "Enregistrer un vocal",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // Text Field (multi-line extensible)
-                        TextField(
-                            value = inputText,
-                            onValueChange = { viewModel.onInputTextChange(it) },
-                            placeholder = {
-                                Text(
-                                    text = "Message…",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
-                            },
-                            maxLines = 4,
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
-                            ),
-                            shape = RoundedCornerShape(24.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 4.dp)
-                                .testTag("chat_input_field")
+                    if (isVoiceRecording) {
+                        // Voice Recorder UI
+                        VoiceRecorderUI(
+                            onCancel = { isVoiceRecording = false },
+                            onSendVoice = { voiceString ->
+                                viewModel.sendVoiceMessage(voiceString)
+                                isVoiceRecording = false
+                            }
                         )
-
-                        // Send Button (only active when not empty)
-                        val canSend = inputText.trim().isNotBlank()
-                        IconButton(
-                            onClick = {
-                                if (canSend) {
-                                    viewModel.sendTextMessage()
-                                }
-                            },
-                            enabled = canSend,
-                            modifier = Modifier.testTag("chat_send_button")
+                    } else {
+                        // Standard text and media input bar
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .imePadding()
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Envoyer",
-                                tint = if (canSend) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                                }
+                            // Attachment button (Photos/Videos)
+                            IconButton(
+                                onClick = {
+                                    mediaPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                                    )
+                                },
+                                modifier = Modifier.testTag("chat_attachment_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AttachFile,
+                                    contentDescription = "Joindre un média",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            // Voice message button
+                            IconButton(
+                                onClick = { isVoiceRecording = true },
+                                modifier = Modifier.testTag("chat_mic_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "Enregistrer un vocal",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            // Text Field (multi-line extensible)
+                            TextField(
+                                value = inputText,
+                                onValueChange = { viewModel.onInputTextChange(it) },
+                                placeholder = {
+                                    Text(
+                                        text = if (replyingToMessage != null) "Votre réponse…" else "Message…",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    )
+                                },
+                                maxLines = 4,
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent
+                                ),
+                                shape = RoundedCornerShape(24.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 4.dp)
+                                    .testTag("chat_input_field")
                             )
+
+                            // Send Button (only active when not empty)
+                            val canSend = inputText.trim().isNotBlank()
+                            IconButton(
+                                onClick = {
+                                    if (canSend) {
+                                        val reply = replyingToMessage
+                                        if (reply != null) {
+                                            val author = if (reply.isMine) "Vous" else partnerInfo.username
+                                            val snippet = reply.content.take(60).replace("\n", " ")
+                                            viewModel.sendCustomTextMessage("[quote:$author|$snippet]\n$inputText")
+                                            replyingToMessage = null
+                                        } else {
+                                            viewModel.sendTextMessage()
+                                        }
+                                    }
+                                },
+                                enabled = canSend,
+                                modifier = Modifier.testTag("chat_send_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Envoyer",
+                                    tint = if (canSend) {
+                                        currentTheme.accentColor
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -388,7 +499,7 @@ fun ChatThreadScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(MaterialTheme.colorScheme.background)
+                .background(currentTheme.backgroundBrush)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Discrete connection state banner
@@ -398,7 +509,7 @@ fun ChatThreadScreen(
                     exit = shrinkVertically() + fadeOut()
                 ) {
                     Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -430,7 +541,7 @@ fun ChatThreadScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator()
+                            CircularProgressIndicator(color = currentTheme.accentColor)
                         }
                     }
 
@@ -452,7 +563,7 @@ fun ChatThreadScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Vos messages et vocaux sont synchronisés en direct.",
+                                    text = "Glissez un message à gauche ou à droite pour répondre.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -499,12 +610,14 @@ fun ChatThreadScreen(
                                         fullScreenImageUrl = imageUrl
                                     },
                                     onVideoClick = { videoUrl ->
-                                        // Navigate to video player or open full screen
                                         fullScreenImageUrl = videoUrl
+                                    },
+                                    onSwipeToReply = { target ->
+                                        replyingToMessage = target
                                     }
                                 )
                             }
-                            
+
                             if (isPartnerTyping) {
                                 item(key = "typing_indicator") {
                                     com.example.ui.components.TypingIndicatorBubble(
@@ -555,7 +668,7 @@ fun ChatThreadScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 // Quick emoji reaction bar
                 ReactionPicker(
@@ -567,7 +680,60 @@ fun ChatThreadScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Humorous quick reaction chips
+                Column {
+                    Text(
+                        text = "Réactions & Humour",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val humorReactions = listOf("🤣 MDR", "🔥 Chaud", "👀 Oula", "👑 Boss", "💀 Mort", "🎉 Fête", "💯 Validé", "🚀 Fusée")
+                        items(humorReactions) { item ->
+                            val emoji = item.split(" ").first()
+                            SuggestionChip(
+                                onClick = {
+                                    viewModel.toggleReaction(targetMessage.id, emoji)
+                                    selectedMessageForMenu = null
+                                },
+                                label = { Text(item, fontSize = 12.sp) },
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                        }
+                    }
+                }
+
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                // Action: Swipe-to-reply trigger
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            replyingToMessage = targetMessage
+                            selectedMessageForMenu = null
+                        }
+                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Reply,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "Répondre à ce message",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
 
                 // Action: Copy text
                 Row(
@@ -629,6 +795,34 @@ fun ChatThreadScreen(
         }
     }
 
+    // Themes & Ringtone Customizer Bottom Sheet
+    if (showThemeRingtoneSheet) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                RingtoneManagerHelper.stopPreview()
+                showThemeRingtoneSheet = false
+            },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            ChatThemeAndRingtoneContent(
+                currentTheme = currentTheme,
+                currentRingtone = currentRingtone,
+                onSelectTheme = { theme ->
+                    ChatThemeManager.setTheme(theme, context)
+                },
+                onSelectRingtone = { ringtone ->
+                    RingtoneManagerHelper.setRingtone(ringtone, context)
+                },
+                onPlayRingtone = { ringtone ->
+                    RingtoneManagerHelper.playPreview(context, ringtone)
+                },
+                onStopRingtone = {
+                    RingtoneManagerHelper.stopPreview()
+                }
+            )
+        }
+    }
+
     // Full Screen Image/Video Viewer Dialog
     if (fullScreenImageUrl != null) {
         val mediaUrl = fullScreenImageUrl!!
@@ -674,5 +868,224 @@ fun ChatThreadScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Tabbed customizer for 6 chat visual themes & 8 built-in synthesized ringtones
+ */
+@Composable
+private fun ChatThemeAndRingtoneContent(
+    currentTheme: ChatThemePreset,
+    currentRingtone: RingtonePreset,
+    onSelectTheme: (ChatThemePreset) -> Unit,
+    onSelectRingtone: (RingtonePreset) -> Unit,
+    onPlayRingtone: (RingtonePreset) -> Unit,
+    onStopRingtone: () -> Unit
+) {
+    var selectedTab by remember { mutableStateOf(0) }
+    val tabs = listOf("Thèmes visuels (6)", "Sonneries d'appel (8)")
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+    ) {
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = Color.Transparent,
+            modifier = Modifier.padding(bottom = 16.dp)
+        ) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = {
+                        onStopRingtone()
+                        selectedTab = index
+                    },
+                    text = {
+                        Text(
+                            text = title,
+                            fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                )
+            }
+        }
+
+        if (selectedTab == 0) {
+            // Theme selection list
+            Text(
+                text = "Choisissez l'ambiance de vos discussions :",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 380.dp)
+            ) {
+                items(ChatThemeManager.allThemes) { theme ->
+                    val isSelected = theme.id == currentTheme.id
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(
+                            2.dp,
+                            if (isSelected) theme.accentColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { onSelectTheme(theme) }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(theme.backgroundBrush)
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = theme.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (isSelected) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Icon(
+                                            imageVector = Icons.Outlined.Check,
+                                            contentDescription = "Sélectionné",
+                                            tint = theme.accentColor,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = theme.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                // Bubble previews
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 44.dp, height = 18.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(theme.myBubbleColor)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 44.dp, height = 18.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(theme.partnerBubbleColor)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Ringtone selection list
+            Text(
+                text = "Sonneries intégrées pour les appels audio/vidéo :",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 380.dp)
+            ) {
+                items(RingtoneManagerHelper.allRingtones) { ringtone ->
+                    val isSelected = ringtone.id == currentRingtone.id
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                onSelectRingtone(ringtone)
+                                onPlayRingtone(ringtone)
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.VolumeUp,
+                                    contentDescription = null,
+                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = ringtone.name,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = ringtone.description,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = { onPlayRingtone(ringtone) },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = "Écouter",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Check,
+                                        contentDescription = "Actif",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
