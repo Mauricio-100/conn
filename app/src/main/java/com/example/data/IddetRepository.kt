@@ -1145,6 +1145,50 @@ class IddetRepository(
         return messageDao.getMessageById(id)
     }
 
+    suspend fun startCall(receiverId: String): Result<CallStartResponse> {
+        return try {
+            val header = currentToken?.let { "Bearer $it" } ?: return Result.failure(Exception("Non authentifié"))
+            val response = RetrofitClient.apiService.startCall(header, receiverId)
+            Result.success(response)
+        } catch (e: Exception) {
+            android.util.Log.e("IddetRepository", "Error starting call: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun acceptCall(callId: String): Result<CallStatusResponse> {
+        return try {
+            val header = currentToken?.let { "Bearer $it" } ?: return Result.failure(Exception("Non authentifié"))
+            val response = RetrofitClient.apiService.acceptCall(header, callId)
+            Result.success(response)
+        } catch (e: Exception) {
+            android.util.Log.e("IddetRepository", "Error accepting call: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun declineCall(callId: String): Result<CallStatusResponse> {
+        return try {
+            val header = currentToken?.let { "Bearer $it" } ?: return Result.failure(Exception("Non authentifié"))
+            val response = RetrofitClient.apiService.declineCall(header, callId)
+            Result.success(response)
+        } catch (e: Exception) {
+            android.util.Log.e("IddetRepository", "Error declining call: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun endCall(callId: String): Result<CallEndResponse> {
+        return try {
+            val header = currentToken?.let { "Bearer $it" } ?: return Result.failure(Exception("Non authentifié"))
+            val response = RetrofitClient.apiService.endCall(header, callId)
+            Result.success(response)
+        } catch (e: Exception) {
+            android.util.Log.e("IddetRepository", "Error ending call: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
     suspend fun insertMessageLocal(message: Message) {
         messageDao.insertMessage(message)
     }

@@ -107,6 +107,24 @@ fun ChatThreadScreen(
         }
     }
 
+    val micCallLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            com.example.utils.CallManager.startCall(
+                calleeId = userId,
+                calleeUsername = partnerInfo.username,
+                calleeAvatar = partnerAvatarUrl
+            ) { success, msg ->
+                if (!success && msg != null) {
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            Toast.makeText(context, "Permission microphone requise pour les appels", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // Auto-scroll when messages change or new message is inserted
     val messagesCount = (uiState as? ChatThreadUiState.Success)?.messages?.size ?: 0
     val isNearBottom by remember {
@@ -228,6 +246,32 @@ fun ChatThreadScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Retour"
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                com.example.utils.CallManager.startCall(
+                                    calleeId = userId,
+                                    calleeUsername = partnerInfo.username,
+                                    calleeAvatar = partnerAvatarUrl
+                                ) { success, msg ->
+                                    if (!success && msg != null) {
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            } else {
+                                micCallLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                        modifier = Modifier.testTag("chat_voice_call_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Call,
+                            contentDescription = "Appel vocal",
+                            tint = Color(0xFF22C55E)
                         )
                     }
                 },

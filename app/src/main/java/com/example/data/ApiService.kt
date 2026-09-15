@@ -520,6 +520,31 @@ interface ApiService {
         @retrofit2.http.Path("userId") userId: String
     ): Map<String, Any>
 
+    @FormUrlEncoded
+    @POST("/api/calls/start")
+    suspend fun startCall(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @Field("receiver_id") receiverId: String
+    ): CallStartResponse
+
+    @POST("/api/calls/{callId}/accept")
+    suspend fun acceptCall(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("callId") callId: String
+    ): CallStatusResponse
+
+    @POST("/api/calls/{callId}/decline")
+    suspend fun declineCall(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("callId") callId: String
+    ): CallStatusResponse
+
+    @POST("/api/calls/{callId}/end")
+    suspend fun endCall(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("callId") callId: String
+    ): CallEndResponse
+
     @POST("/api/messages/{id}/react")
     suspend fun reactToMessage(
         @retrofit2.http.Header("Authorization") token: String?,
@@ -960,6 +985,24 @@ data class ConnectedAppItem(
     val icon_url: String? = null,
     val first_connected_at: String? = null,
     val last_connected_at: String? = null
+)
+
+data class CallStartResponse(
+    val call_id: String,
+    val status: String,
+    val receiver_username: String? = null,
+    val receiver_avatar: String? = null
+)
+
+data class CallStatusResponse(
+    val call_id: String,
+    val status: String
+)
+
+data class CallEndResponse(
+    val call_id: String,
+    val status: String,
+    val duration_seconds: Int = 0
 )
 
 object RetrofitClient {

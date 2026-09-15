@@ -41,6 +41,7 @@ import com.example.ui.screens.CustomBrowserScreen
 import com.example.ui.components.LocalCommunityClickHandler
 import com.example.ui.components.LocalChannelClickHandler
 import com.example.ui.components.VerificationBadge
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.CompositionLocalProvider
 import kotlinx.coroutines.launch
 
@@ -70,6 +71,7 @@ fun MainScreen(viewModel: IddetViewModel) {
         viewModel.loadLevelsTable()
     }
 
+    val context = LocalContext.current
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val currentUser by viewModel.currentUser.collectAsState()
@@ -84,6 +86,8 @@ fun MainScreen(viewModel: IddetViewModel) {
 
     LaunchedEffect(currentUser?.id) {
         val uid = currentUser?.id
+        com.example.utils.CallManager.initialize(context, viewModel.repository)
+        com.example.utils.CallManager.setCurrentUser(uid)
         if (uid != null) {
             com.example.utils.WebSocketManager.connect(uid)
         } else {
@@ -791,5 +795,7 @@ fun MainScreen(viewModel: IddetViewModel) {
             onDismiss = { showLadderDialog = false }
         )
     }
+
+    com.example.ui.components.CallOverlayHost()
 }
 }

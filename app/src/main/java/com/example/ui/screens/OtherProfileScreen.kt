@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Message
@@ -69,6 +70,25 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
     var userLevel by remember { mutableStateOf<com.example.data.UserLevelResponse?>(null) }
     var showLadderDialog by remember { mutableStateOf(false) }
     val levelsTable by viewModel.levelsTable.collectAsStateWithLifecycle()
+
+    val micCallLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val pUser = user ?: return@rememberLauncherForActivityResult
+            com.example.utils.CallManager.startCall(
+                calleeId = pUser.id,
+                calleeUsername = pUser.username,
+                calleeAvatar = pUser.avatarUrl
+            ) { success, msg ->
+                if (!success && msg != null) {
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            android.widget.Toast.makeText(context, "Permission microphone requise pour les appels", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     LaunchedEffect(userId) {
         viewModel.refreshUserProfile(userId)
@@ -286,6 +306,34 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                     Icon(Icons.Default.Message, contentDescription = "Message", modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Message", fontWeight = FontWeight.Bold)
+                                }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                // Voice Call Button
+                                FilledTonalButton(
+                                    onClick = {
+                                        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                            com.example.utils.CallManager.startCall(
+                                                calleeId = profileUser.id,
+                                                calleeUsername = profileUser.username,
+                                                calleeAvatar = profileUser.avatarUrl
+                                            ) { success, msg ->
+                                                if (!success && msg != null) {
+                                                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        } else {
+                                            micCallLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(20.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    modifier = Modifier.testTag("profile_call_button")
+                                ) {
+                                    Icon(Icons.Default.Call, contentDescription = "Appeler", modifier = Modifier.size(16.dp), tint = Color(0xFF22C55E))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Appeler", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

@@ -145,7 +145,13 @@ fun McpProtocolScreen(
             McpToolInfo("mcp_get_subscription_status", "Vérifie le statut d'abonnement Iddet Plus / VIP", "Abonnements", "user_id", "{\"user_id\": \"usr_123\"}"),
             McpToolInfo("mcp_list_subscriptions", "Liste les abonnements actifs", "Abonnements", "(aucun paramètre requis)", "{}"),
             McpToolInfo("mcp_cancel_subscription", "Annule l'abonnement Iddet Plus actif", "Abonnements", "(aucun paramètre)", "{}"),
-            McpToolInfo("mcp_grant_subscription", "Accorde un accès Iddet Plus pour une période donnée", "Abonnements", "user_id, tier, duration_days", "{\"user_id\": \"usr_123\", \"tier\": \"vip\", \"duration_days\": 30}")
+            McpToolInfo("mcp_grant_subscription", "Accorde un accès Iddet Plus pour une période donnée", "Abonnements", "user_id, tier, duration_days", "{\"user_id\": \"usr_123\", \"tier\": \"vip\", \"duration_days\": 30}"),
+
+            // Appels Mobiles & Relais Audio
+            McpToolInfo("mcp_start_call", "Démarre un appel vocal mobile vers un utilisateur IDDET", "Appels Mobiles", "receiver_id", "{\"receiver_id\": \"usr_456\"}"),
+            McpToolInfo("mcp_accept_call", "Accepte un appel vocal entrant", "Appels Mobiles", "call_id", "{\"call_id\": \"call_123\"}"),
+            McpToolInfo("mcp_decline_call", "Refuse ou rejette un appel vocal entrant", "Appels Mobiles", "call_id", "{\"call_id\": \"call_123\"}"),
+            McpToolInfo("mcp_end_call", "Termine un appel vocal en cours", "Appels Mobiles", "call_id", "{\"call_id\": \"call_123\"}")
         )
     }
 
@@ -173,7 +179,7 @@ fun McpProtocolScreen(
         viewModel.loadConnectedApps()
     }
 
-    val categories = listOf("Tous", "Apps Intégrées", "Utilisateurs", "Actfiles", "Messagerie", "Communautés", "Abonnements")
+    val categories = listOf("Tous", "Apps Intégrées", "Utilisateurs", "Actfiles", "Messagerie", "Communautés", "Abonnements", "Appels Mobiles")
     val filteredTools = if (selectedCategory == "Tous") allTools else allTools.filter { it.category == selectedCategory }
 
     Scaffold(

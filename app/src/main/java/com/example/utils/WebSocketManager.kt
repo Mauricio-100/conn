@@ -184,6 +184,43 @@ object WebSocketManager : ChatSocketClient {
                         _events.emit(WebSocketEvent.NewActfile(actfileId, fromUserId, fromUsername, msg))
                     }
                 }
+                "call_invite" -> {
+                    val callId = json.optString("call_id")
+                    val callerId = json.optString("caller_id")
+                    val callerUsername = json.optString("caller_username")
+                    val callerAvatar = json.optString("caller_avatar").takeIf { it.isNotBlank() }
+                    coroutineScope.launch {
+                        _events.emit(WebSocketEvent.CallInvite(callId, callerId, callerUsername, callerAvatar))
+                    }
+                }
+                "call_accepted" -> {
+                    val callId = json.optString("call_id")
+                    val calleeId = json.optString("callee_id")
+                    coroutineScope.launch {
+                        _events.emit(WebSocketEvent.CallAccepted(callId, calleeId))
+                    }
+                }
+                "call_declined" -> {
+                    val callId = json.optString("call_id")
+                    val byUserId = json.optString("by").takeIf { it.isNotBlank() }
+                    coroutineScope.launch {
+                        _events.emit(WebSocketEvent.CallDeclined(callId, byUserId))
+                    }
+                }
+                "call_unavailable" -> {
+                    val calleeId = json.optString("callee_id").takeIf { it.isNotBlank() }
+                    coroutineScope.launch {
+                        _events.emit(WebSocketEvent.CallUnavailable(calleeId))
+                    }
+                }
+                "call_ended" -> {
+                    val callId = json.optString("call_id")
+                    val byUserId = json.optString("by").takeIf { it.isNotBlank() }
+                    val durationSeconds = json.optInt("duration_seconds", 0)
+                    coroutineScope.launch {
+                        _events.emit(WebSocketEvent.CallEnded(callId, byUserId, durationSeconds))
+                    }
+                }
                 "error" -> {
                     val msg = json.optString("message", "Erreur serveur")
                     coroutineScope.launch { _events.emit(WebSocketEvent.Error(msg)) }
@@ -306,6 +343,28 @@ sealed class WebSocketEvent {
         val fromUserId: String,
         val fromUsername: String,
         val message: String
+    ) : WebSocketEvent()
+    data class CallInvite(
+        val callId: String,
+        val callerId: String,
+        val callerUsername: String,
+        val callerAvatar: String?
+    ) : WebSocketEvent()
+    data class CallAccepted(
+        val callId: String,
+        val calleeId: String
+    ) : WebSocketEvent()
+    data class CallDeclined(
+        val callId: String,
+        val byUserId: String?
+    ) : WebSocketEvent()
+    data class CallUnavailable(
+        val calleeId: String?
+    ) : WebSocketEvent()
+    data class CallEnded(
+        val callId: String,
+        val byUserId: String?,
+        val durationSeconds: Int = 0
     ) : WebSocketEvent()
     data class Error(val message: String) : WebSocketEvent()
 }
