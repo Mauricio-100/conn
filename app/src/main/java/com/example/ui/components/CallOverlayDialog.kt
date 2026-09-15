@@ -112,7 +112,7 @@ fun CallOverlayHost() {
             }
             is CallState.Ended -> {
                 ActiveOrOutgoingCallDialog(
-                    title = "Appel terminé",
+                    title = "Appel indisponible",
                     peerUsername = state.peerUsername,
                     peerAvatar = null,
                     subtitle = state.reason,
@@ -120,7 +120,7 @@ fun CallOverlayHost() {
                     isSpeakerOn = true,
                     onToggleMute = {},
                     onToggleSpeaker = {},
-                    onEndCall = { CallManager.endCall() }
+                    onEndCall = { CallManager.resetToIdle() }
                 )
             }
             CallState.Idle -> {}

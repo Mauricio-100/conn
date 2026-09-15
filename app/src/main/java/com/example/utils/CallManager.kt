@@ -185,7 +185,7 @@ object CallManager {
                     }
                 },
                 onFailure = { error ->
-                    Log.e(TAG, "Failed to start call", error)
+                    Log.w(TAG, "Call could not be started: ${error.message}")
                     stopRingTone()
                     val reason = error.message ?: "Impossible de joindre @$calleeUsername"
                     _callState.value = CallState.Ended(
@@ -584,6 +584,12 @@ object CallManager {
             toneGenerator?.release()
         } catch (_: Exception) {}
         toneGenerator = null
+    }
+
+    fun resetToIdle() {
+        stopRingTone()
+        stopAudioStream()
+        _callState.value = CallState.Idle
     }
 
     private fun autoResetToIdleAfterDelay() {

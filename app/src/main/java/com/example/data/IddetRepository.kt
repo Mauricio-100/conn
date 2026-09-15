@@ -1176,8 +1176,8 @@ class IddetRepository(
             val response = RetrofitClient.apiService.startCall(header, receiverId)
             Result.success(response)
         } catch (e: Exception) {
-            android.util.Log.e("IddetRepository", "Error starting call: ${e.message}", e)
             val friendlyMsg = extractCallErrorMessage(e, "Impossible de joindre le correspondant")
+            android.util.Log.w("IddetRepository", "Call start notice: $friendlyMsg")
             Result.failure(Exception(friendlyMsg, e))
         }
     }
@@ -1188,8 +1188,8 @@ class IddetRepository(
             val response = RetrofitClient.apiService.acceptCall(header, callId)
             Result.success(response)
         } catch (e: Exception) {
-            android.util.Log.e("IddetRepository", "Error accepting call: ${e.message}", e)
             val friendlyMsg = extractCallErrorMessage(e, "Impossible d'accepter l'appel")
+            android.util.Log.w("IddetRepository", "Call accept notice: $friendlyMsg")
             Result.failure(Exception(friendlyMsg, e))
         }
     }
@@ -1200,8 +1200,8 @@ class IddetRepository(
             val response = RetrofitClient.apiService.declineCall(header, callId)
             Result.success(response)
         } catch (e: Exception) {
-            android.util.Log.e("IddetRepository", "Error declining call: ${e.message}", e)
             val friendlyMsg = extractCallErrorMessage(e, "Impossible de refuser l'appel")
+            android.util.Log.w("IddetRepository", "Call decline notice: $friendlyMsg")
             Result.failure(Exception(friendlyMsg, e))
         }
     }
