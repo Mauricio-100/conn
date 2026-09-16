@@ -854,6 +854,73 @@ interface ApiService {
         @retrofit2.http.Path("user_id") userId: String
     ): List<SoundNetwork>
 
+    @retrofit2.http.Multipart
+    @retrofit2.http.POST("/api/sounds/upload")
+    suspend fun uploadSound(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Part audio_file: MultipartBody.Part,
+        @retrofit2.http.Part cover_file: MultipartBody.Part?,
+        @retrofit2.http.Part("title") title: RequestBody,
+        @retrofit2.http.Part("description") description: RequestBody,
+        @retrofit2.http.Part("category") category: RequestBody
+    ): SoundUploadResponse
+
+    @retrofit2.http.POST("/api/sounds/{id}/comment")
+    suspend fun commentSound(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("id") id: String,
+        @retrofit2.http.Body body: Map<String, String>
+    ): Map<String, Any>
+
+    @retrofit2.http.GET("/api/sounds/{id}/comments")
+    suspend fun getSoundComments(
+        @retrofit2.http.Path("id") id: String,
+        @retrofit2.http.Query("limit") limit: Int = 50
+    ): List<Map<String, Any>>
+
+    // ── VIDÉOS & FEED RÉELS DU SERVEUR ──
+    @retrofit2.http.GET("/api/feed")
+    suspend fun getVideoFeed(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+        @retrofit2.http.Query("limit") limit: Int = 20
+    ): List<VideoFeedItemNetwork>
+
+    @retrofit2.http.GET("/api/feed/random")
+    suspend fun getRandomVideos(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Query("limit") limit: Int = 20
+    ): List<VideoFeedItemNetwork>
+
+    @retrofit2.http.GET("/api/feed/next")
+    suspend fun getNextVideos(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Query("cursor") cursor: String? = null,
+        @retrofit2.http.Query("limit") limit: Int = 10
+    ): List<VideoFeedItemNetwork>
+
+    @retrofit2.http.POST("/api/videos/{id}/like")
+    suspend fun likeVideo(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Path("id") id: String
+    ): Map<String, Any>
+
+    @retrofit2.http.POST("/api/videos/{id}/view")
+    suspend fun recordVideoView(
+        @retrofit2.http.Path("id") id: String
+    ): Map<String, Any>
+
+    @retrofit2.http.Multipart
+    @retrofit2.http.POST("/api/videos/upload")
+    suspend fun uploadVideo(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Part video: MultipartBody.Part,
+        @retrofit2.http.Part("description") description: RequestBody,
+        @retrofit2.http.Part("is_public") isPublic: RequestBody,
+        @retrofit2.http.Part("has_original_sound") hasOriginalSound: RequestBody,
+        @retrofit2.http.Part("sound_id") soundId: RequestBody? = null
+    ): VideoUploadResponse
+
     // ── CLOUDFLARE LIVE STREAMING ──
     @retrofit2.http.POST("/api/live/create")
     suspend fun createCloudflareLive(
@@ -955,6 +1022,35 @@ data class SoundLikesCountResponse(
     val sound_id: String,
     val likes_count: Int,
     val has_liked: Boolean
+)
+
+data class SoundUploadResponse(
+    val status: String = "",
+    val sound_id: String = ""
+)
+
+data class VideoFeedItemNetwork(
+    val id: String = "",
+    val video_url: String = "",
+    val thumbnail_url: String? = null,
+    val description: String? = "",
+    val likes: Int = 0,
+    val views: Int = 0,
+    val duration: Double? = 0.0,
+    val created_at: String? = null,
+    val user_id: String = "",
+    val username: String = "",
+    val avatar_url: String? = null,
+    val is_verified: Boolean = false,
+    val liked: Boolean = false
+)
+
+data class VideoUploadResponse(
+    val id: String = "",
+    val video_url: String = "",
+    val thumbnail_url: String? = null,
+    val description: String? = "",
+    val created_at: String? = null
 )
 
 data class LiveCreateResponse(

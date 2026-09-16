@@ -643,6 +643,182 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
     private val _isUploadingStory = MutableStateFlow(false)
     val isUploadingStory: StateFlow<Boolean> = _isUploadingStory.asStateFlow()
 
+    // ── MUSIQUE & STRIP SOUNDS INTEGRATION ──
+    private val _sounds = MutableStateFlow<List<com.example.utils.MusicTrack>>(emptyList())
+    val sounds: StateFlow<List<com.example.utils.MusicTrack>> = _sounds.asStateFlow()
+
+    private val _isSoundsLoading = MutableStateFlow(false)
+    val isSoundsLoading: StateFlow<Boolean> = _isSoundsLoading.asStateFlow()
+
+    private val _isUploadingSound = MutableStateFlow(false)
+    val isUploadingSound: StateFlow<Boolean> = _isUploadingSound.asStateFlow()
+
+    fun loadSounds(category: String = "Tout") {
+        viewModelScope.launch {
+            _isSoundsLoading.value = true
+            try {
+                val soundNetworks = repository.getSoundsByCategory(category)
+                val mappedTracks = soundNetworks.map { it.toMusicTrack() }
+                _sounds.value = mappedTracks
+                com.example.utils.MusicPlayerManager.updatePlaylist(mappedTracks)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _sounds.value = emptyList()
+                com.example.utils.MusicPlayerManager.updatePlaylist(emptyList())
+            } finally {
+                _isSoundsLoading.value = false
+            }
+        }
+    }
+
+    fun uploadSound(
+        audioFile: java.io.File,
+        coverFile: java.io.File?,
+        title: String,
+        description: String,
+        category: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isUploadingSound.value = true
+            try {
+                val res = repository.uploadSound(audioFile, coverFile, title, description, category)
+                if (res.isSuccess) {
+                    loadSounds(category)
+                    onResult(true, "Son publié avec succès !")
+                } else {
+                    onResult(false, res.exceptionOrNull()?.message ?: "Erreur de publication du son")
+                }
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Erreur inconnue")
+            } finally {
+                _isUploadingSound.value = false
+            }
+        }
+    }
+
+    fun likeSound(soundId: String) {
+        viewModelScope.launch {
+            try {
+                repository.likeSound(soundId)
+                _sounds.value = _sounds.value.map { track ->
+                    if (track.id == soundId) track.copy(likesCount = track.likesCount + 1) else track
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun recordSoundPlay(soundId: String) {
+        viewModelScope.launch {
+            try {
+                repository.recordSoundPlay(soundId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun SoundNetwork.toMusicTrack(): com.example.utils.MusicTrack {
+        val dur = duration ?: 0.0
+        val mins = (dur / 60).toInt()
+        val secs = (dur % 60).toInt()
+        val formattedDuration = if (dur > 0) String.format("%02d:%02d", mins, secs) else "--:--"
+
+        val fixedAudioUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(audio_url)
+            ?.ifBlank { null }
+            ?: audio_url?.ifBlank { null }
+            ?: "https://hoosthubs-g.onrender.com/api/sounds/$id/short/stream"
+
+        val fixedCoverUrl = com.example.utils.UrlHelper.fixCloudinaryUrl(cover_url)
+            ?.ifBlank { null }
+            ?: cover_url?.ifBlank { null }
+            ?: ""
+
+        return com.example.utils.MusicTrack(
+            id = id,
+            title = if (title.isNotBlank()) title else "Piste Musicale IDDET",
+            artist = if (!author_username.isNullOrBlank()) author_username else "Artiste IDDET",
+            albumArt = fixedCoverUrl,
+            audioUrl = fixedAudioUrl,
+            durationFormatted = formattedDuration,
+            genre = if (category.isNotBlank()) category else "Autres",
+            likesCount = likes_count
+        )
+    }
+
+    // ── VIDEO FEED (REELS) INTEGRATION DIRECTE ──
+    private val _realVideoFeed = MutableStateFlow<List<VideoFeedItemNetwork>>(emptyList())
+    val realVideoFeed: StateFlow<List<VideoFeedItemNetwork>> = _realVideoFeed.asStateFlow()
+
+    private val _isVideoFeedLoading = MutableStateFlow(false)
+    val isVideoFeedLoading: StateFlow<Boolean> = _isVideoFeedLoading.asStateFlow()
+
+    fun loadVideoFeed() {
+        viewModelScope.launch {
+            _isVideoFeedLoading.value = true
+            try {
+                val videos = repository.getVideoFeed()
+                _realVideoFeed.value = videos
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _realVideoFeed.value = emptyList()
+            } finally {
+                _isVideoFeedLoading.value = false
+            }
+        }
+    }
+
+    fun likeVideo(videoId: String) {
+        viewModelScope.launch {
+            try {
+                repository.likeVideo(videoId)
+                _realVideoFeed.value = _realVideoFeed.value.map { v ->
+                    if (v.id == videoId) {
+                        val newLiked = !v.liked
+                        v.copy(liked = newLiked, likes = if (newLiked) v.likes + 1 else maxOf(0, v.likes - 1))
+                    } else v
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun recordVideoView(videoId: String) {
+        viewModelScope.launch {
+            try {
+                repository.recordVideoView(videoId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun uploadVideo(
+        videoFile: java.io.File,
+        description: String,
+        isPublic: Boolean = true,
+        hasOriginalSound: Boolean = false,
+        soundId: String? = null,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val res = repository.uploadVideo(videoFile, description, isPublic, hasOriginalSound, soundId)
+                if (res.isSuccess) {
+                    loadVideoFeed()
+                    onResult(true, "Vidéo publiée avec succès !")
+                } else {
+                    onResult(false, res.exceptionOrNull()?.message ?: "Erreur de publication vidéo")
+                }
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Erreur inconnue")
+            }
+        }
+    }
+
     fun refreshActfiles(targetUserId: String? = null) {
         viewModelScope.launch {
             _isFeedLoading.value = true

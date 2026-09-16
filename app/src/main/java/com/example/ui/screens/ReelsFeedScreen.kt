@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
+import android.content.Context
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -29,19 +33,20 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
-import com.example.data.ActfileWithUser
+import com.example.data.VideoFeedItemNetwork
 import com.example.ui.IddetViewModel
 import com.example.ui.components.ActfileVideoPlayer
 import com.example.ui.components.VerificationBadge
 import com.example.utils.FormatUtils
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import java.io.File
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -50,21 +55,16 @@ fun ReelsFeedScreen(
     navController: NavController
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val allActfiles by viewModel.actfiles.collectAsStateWithLifecycle()
+    val realVideoFeed by viewModel.realVideoFeed.collectAsStateWithLifecycle()
+    val isVideoFeedLoading by viewModel.isVideoFeedLoading.collectAsStateWithLifecycle()
 
-    // Filter media actfiles (with video or image)
-    val mediaPosts = remember(allActfiles) {
-        allActfiles.filter { actfile ->
-            val content = actfile.content
-            content.contains(".mp4", ignoreCase = true) ||
-            content.contains(".webm", ignoreCase = true) ||
-            content.contains("http", ignoreCase = true) ||
-            content.contains("![", ignoreCase = true)
-        }.ifEmpty { allActfiles }
+    var showPublishSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadVideoFeed()
     }
 
-    val pagerState = rememberPagerState(pageCount = { mediaPosts.size })
+    val pagerState = rememberPagerState(pageCount = { realVideoFeed.size })
 
     Scaffold(
         containerColor = Color.Black
@@ -74,24 +74,69 @@ fun ReelsFeedScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (mediaPosts.isEmpty()) {
+            if (realVideoFeed.isEmpty() && !isVideoFeedLoading) {
+                // Real server empty state: no mock fallbacks
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Outlined.VideoLibrary,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.6f),
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(88.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.VideoLibrary,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(44.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
                         Text(
-                            text = "Aucun clip vidéo pour le moment",
+                            text = "Aucun clip vidéo sur le serveur",
                             color = Color.White,
-                            style = MaterialTheme.typography.titleMedium
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Les vidéos publiées par la communauté apparaîtront ici en temps réel.",
+                            color = Color.White.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = { showPublishSheet = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.VideoCall, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Publier une vidéo 🎥", fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.loadVideoFeed() },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Actualiser le feed")
+                        }
                     }
                 }
             } else {
@@ -99,111 +144,171 @@ fun ReelsFeedScreen(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
-                    val post = mediaPosts[page]
+                    val videoItem = realVideoFeed[page]
                     val isPageActive = pagerState.currentPage == page
 
-                    ReelItemView(
-                        actfileWithUser = post,
+                    LaunchedEffect(isPageActive) {
+                        if (isPageActive) {
+                            viewModel.recordVideoView(videoItem.id)
+                        }
+                    }
+
+                    RealReelItemView(
+                        video = videoItem,
                         isActive = isPageActive,
-                        onLike = { viewModel.likeActfile(post.id) },
-                        onComment = { navController.navigate("discussion/${post.id}") },
+                        onLike = { viewModel.likeVideo(videoItem.id) },
                         onShare = {
                             val sendIntent = android.content.Intent().apply {
                                 action = android.content.Intent.ACTION_SEND
                                 putExtra(
                                     android.content.Intent.EXTRA_TEXT,
-                                    "Regarde ce clip sur IDDET : ${post.content.take(50)}\nhttps://hoosthubs-g.onrender.com/s/actfile/${post.id}"
+                                    "Regarde ce clip sur IDDET : ${videoItem.description ?: "Vidéo IDDET"}\n${videoItem.video_url}"
                                 )
                                 type = "text/plain"
                             }
                             val shareIntent = android.content.Intent.createChooser(sendIntent, "Partager ce clip")
                             context.startActivity(shareIntent)
                         },
-                        onUserClick = { navController.navigate("profile/${post.userId}") },
+                        onUserClick = {
+                            if (videoItem.user_id.isNotBlank()) {
+                                navController.navigate("profile/${videoItem.user_id}")
+                            }
+                        },
                         onMusicClick = { navController.navigate("music") }
                     )
                 }
             }
 
             // Top overlay bar
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(
-                    onClick = { navController.popBackStack() },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.4f))
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Color.White)
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Clips IDDET",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White
+                if (isVideoFeedLoading) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = Color.Transparent
                     )
                 }
-
-                IconButton(
-                    onClick = {
-                        viewModel.setShowComposer(true)
-                    },
+                Row(
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Créer un clip", tint = Color.White)
+                    IconButton(
+                        onClick = { navController.popBackStack() },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.4f))
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Color.White)
+                    }
+
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Feed Vidéo Réel",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            ) {
+                                Text(
+                                    text = "API",
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        IconButton(
+                            onClick = { viewModel.loadVideoFeed() },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.4f))
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Actualiser", tint = Color.White)
+                        }
+
+                        IconButton(
+                            onClick = { showPublishSheet = true },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Publier une vidéo", tint = Color.White)
+                        }
+                    }
                 }
             }
         }
     }
+
+    // Modal Sheet to upload real video to server
+    if (showPublishSheet) {
+        PublishVideoBottomSheet(
+            onDismiss = { showPublishSheet = false },
+            onUpload = { videoUri, desc, hasOriginalSound ->
+                val videoFile = uriToVideoFile(context, videoUri)
+                if (videoFile == null) {
+                    Toast.makeText(context, "Fichier vidéo inaccessible", Toast.LENGTH_SHORT).show()
+                    return@PublishVideoBottomSheet
+                }
+                viewModel.uploadVideo(
+                    videoFile = videoFile,
+                    description = desc,
+                    isPublic = true,
+                    hasOriginalSound = hasOriginalSound,
+                    soundId = null
+                ) { success, message ->
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    if (success) {
+                        showPublishSheet = false
+                    }
+                }
+            }
+        )
+    }
 }
 
 @Composable
-fun ReelItemView(
-    actfileWithUser: ActfileWithUser,
+fun RealReelItemView(
+    video: VideoFeedItemNetwork,
     isActive: Boolean,
     onLike: () -> Unit,
-    onComment: () -> Unit,
     onShare: () -> Unit,
     onUserClick: () -> Unit,
     onMusicClick: () -> Unit
 ) {
-    val actfile = actfileWithUser
-
-    var isLiked by remember(actfile.isLikedByMe) { mutableStateOf(actfile.isLikedByMe) }
-    var likesCount by remember(actfile.likesCount) { mutableIntStateOf(actfile.likesCount) }
+    var isLiked by remember(video.liked) { mutableStateOf(video.liked) }
+    var likesCount by remember(video.likes) { mutableIntStateOf(video.likes) }
     var isPlaying by remember { mutableStateOf(true) }
     var showDoubleTapHeart by remember { mutableStateOf(false) }
 
-    // Helper to extract media
-    val content = actfile.content
-    val isVideo = remember(content) {
-        content.contains(".mp4", ignoreCase = true) || content.contains(".webm", ignoreCase = true)
-    }
-
-    val mediaUrl = remember(content) {
-        val regex = Regex("""(https?://[^\s)]+\.(?:mp4|webm|jpg|jpeg|png|webp|gif))|!\[.*?\]\((https?://[^\s)]+)\)""", RegexOption.IGNORE_CASE)
-        val match = regex.find(content)
-        match?.groupValues?.getOrNull(1)?.ifBlank { null }
-            ?: match?.groupValues?.getOrNull(2)?.ifBlank { null }
-            ?: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=800&auto=format&fit=crop&q=80"
-    }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "music_rotation")
+    val infiniteTransition = rememberInfiniteTransition(label = "disc_rotation")
     val rotationAngle by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
@@ -231,19 +336,28 @@ fun ReelItemView(
                 )
             }
     ) {
-        // Media content (Video or Image)
-        if (isVideo && isActive) {
+        // Real server video stream
+        if (isActive && video.video_url.isNotBlank()) {
             ActfileVideoPlayer(
-                videoUrl = mediaUrl,
+                videoUrl = video.video_url,
                 modifier = Modifier.fillMaxSize()
             )
-        } else {
+        } else if (!video.thumbnail_url.isNullOrBlank()) {
             AsyncImage(
-                model = mediaUrl,
-                contentDescription = actfile.content.take(30),
+                model = video.thumbnail_url,
+                contentDescription = video.description,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
         }
 
         // Dark gradient overlay for text readability
@@ -313,33 +427,40 @@ fun ReelItemView(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // User Avatar with '+' follow badge
+            // User Avatar
             Box(
                 modifier = Modifier.size(54.dp),
                 contentAlignment = Alignment.Center
             ) {
-                AsyncImage(
-                    model = actfile.avatarUrl ?: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200",
-                    contentDescription = actfile.username,
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .clickable { onUserClick() },
-                    contentScale = ContentScale.Crop
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .size(20.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Suivre", tint = Color.White, modifier = Modifier.size(14.dp))
+                if (!video.avatar_url.isNullOrBlank()) {
+                    AsyncImage(
+                        model = video.avatar_url,
+                        contentDescription = video.username,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .clickable { onUserClick() },
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                            .clickable { onUserClick() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = video.username.take(1).uppercase().ifBlank { "U" },
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
-            // Like button with counter
+            // Like button with real counter
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(
                     onClick = {
@@ -364,21 +485,16 @@ fun ReelItemView(
                 )
             }
 
-            // Comment button
+            // Views counter
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(
-                    onClick = onComment,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.ChatBubbleOutline,
-                        contentDescription = "Commentaires",
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.Visibility,
+                    contentDescription = "Vues",
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(28.dp)
+                )
                 Text(
-                    text = FormatUtils.formatCount(actfile.commentsCount),
+                    text = FormatUtils.formatCount(video.views),
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
@@ -405,7 +521,7 @@ fun ReelItemView(
                 )
             }
 
-            // Rotating Vinyl Sound Disc
+            // Rotating Vinyl Sound Disc -> links to Music screen
             Box(
                 modifier = Modifier
                     .size(46.dp)
@@ -415,13 +531,11 @@ fun ReelItemView(
                     .clickable { onMusicClick() },
                 contentAlignment = Alignment.Center
             ) {
-                AsyncImage(
-                    model = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200",
-                    contentDescription = "Piste sonore",
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop
+                Icon(
+                    imageVector = Icons.Default.MusicNote,
+                    contentDescription = "Musique",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
                 )
                 Box(
                     modifier = Modifier
@@ -446,24 +560,28 @@ fun ReelItemView(
                 modifier = Modifier.clickable { onUserClick() }
             ) {
                 Text(
-                    text = "@${actfile.username}",
+                    text = "@${video.username}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
                     color = Color.White
                 )
-                Spacer(modifier = Modifier.width(6.dp))
-                VerificationBadge(isVerified = actfile.isVerified, userName = actfile.username)
+                if (video.is_verified) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    VerificationBadge(isVerified = true, userName = video.username)
+                }
             }
 
-            // Caption / Title
-            Text(
-                text = actfile.content.take(120),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            // Description / Caption
+            if (!video.description.isNullOrBlank()) {
+                Text(
+                    text = video.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
             // Music track pill
             Row(
@@ -482,12 +600,162 @@ fun ReelItemView(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Son original • IDDET Sound Beats",
+                    text = "Son original • Découvrir sur IDDET 🎶",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White,
                     maxLines = 1
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PublishVideoBottomSheet(
+    onDismiss: () -> Unit,
+    onUpload: (videoUri: Uri, description: String, hasOriginalSound: Boolean) -> Unit
+) {
+    var description by remember { mutableStateOf("") }
+    var hasOriginalSound by remember { mutableStateOf(true) }
+    var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploading by remember { mutableStateOf(false) }
+
+    val videoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        selectedVideoUri = uri
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Publier une vidéo sur le Feed 🎥",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Video selector
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { videoPicker.launch("video/*") },
+                color = if (selectedVideoUri != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (selectedVideoUri != null) Icons.Default.CheckCircle else Icons.Default.VideoFile,
+                        contentDescription = null,
+                        tint = if (selectedVideoUri != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = if (selectedVideoUri != null) "Vidéo sélectionnée" else "Choisir un clip vidéo (.mp4)",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        if (selectedVideoUri != null) {
+                            Text(
+                                text = selectedVideoUri?.lastPathSegment ?: "Fichier vidéo prêt",
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = description,
+                onValueChange = { description = it },
+                label = { Text("Légende / Description") },
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 3,
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "Son original",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Activer le son d'origine de la vidéo",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = hasOriginalSound,
+                    onCheckedChange = { hasOriginalSound = it }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Button(
+                onClick = {
+                    val uri = selectedVideoUri
+                    if (uri == null) return@Button
+                    isUploading = true
+                    onUpload(uri, description, hasOriginalSound)
+                },
+                enabled = selectedVideoUri != null && !isUploading,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                if (isUploading) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Publication sur le serveur...")
+                } else {
+                    Icon(Icons.Default.CloudUpload, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Publier la vidéo", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+private fun uriToVideoFile(context: Context, uri: Uri): File? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        val tempFile = File.createTempFile("video_upload_", ".mp4", context.cacheDir)
+        tempFile.outputStream().use { outputStream ->
+            inputStream.copyTo(outputStream)
+        }
+        tempFile
+    } catch (e: Exception) {
+        null
     }
 }

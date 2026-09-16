@@ -42,7 +42,7 @@ class CallActionReceiver : BroadcastReceiver() {
 
         when (action) {
             ACTION_ANSWER_CALL -> {
-                CallManager.acceptCall(callId)
+                CallManager.acceptCall(callId, callerId, callerUsername, callerAvatar)
 
                 // Launch MainActivity to bring call UI to foreground
                 val openAppIntent = Intent(context, MainActivity::class.java).apply {

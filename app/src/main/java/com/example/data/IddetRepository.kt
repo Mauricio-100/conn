@@ -2648,6 +2648,200 @@ class IddetRepository(
         return fallback
     }
 
+    // ── MUSIQUE & STRIP SOUNDS API INTEGRATION ──
+    suspend fun getRecommendedSounds(): List<SoundNetwork> {
+        val token = currentToken ?: prefs.getString("auth_token", null)
+        val authHeader = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+        return try {
+            RetrofitClient.apiService.getRecommendedSounds(authHeader, limit = 50)
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error fetching recommended sounds from API", e)
+            emptyList()
+        }
+    }
+
+    suspend fun getSoundsByCategory(category: String): List<SoundNetwork> {
+        val token = currentToken ?: prefs.getString("auth_token", null)
+        val authHeader = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+        return try {
+            if (category.equals("Tout", ignoreCase = true) || category.isBlank()) {
+                getRecommendedSounds()
+            } else {
+                RetrofitClient.apiService.getSoundsByCategory(authHeader, category, limit = 50)
+            }
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error fetching sounds by category from API", e)
+            emptyList()
+        }
+    }
+
+    suspend fun getSoundDetails(soundId: String): SoundNetwork? {
+        val token = currentToken ?: prefs.getString("auth_token", null)
+        val authHeader = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+        return try {
+            val res = RetrofitClient.apiService.getSoundDetails(authHeader, soundId)
+            res.sound
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error fetching sound details for $soundId", e)
+            null
+        }
+    }
+
+    suspend fun uploadSound(
+        audioFile: java.io.File,
+        coverFile: java.io.File?,
+        title: String,
+        description: String,
+        category: String
+    ): Result<String> {
+        val token = currentToken ?: prefs.getString("auth_token", null)
+            ?: return Result.failure(IllegalStateException("Authentification requise pour publier un son"))
+        val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+
+        return try {
+            val audioMediaType = "audio/*".toMediaTypeOrNull()
+            val audioReq = audioFile.asRequestBody(audioMediaType)
+            val audioPart = MultipartBody.Part.createFormData("audio_file", audioFile.name, audioReq)
+
+            val coverPart = coverFile?.let {
+                val coverMediaType = "image/*".toMediaTypeOrNull()
+                val coverReq = it.asRequestBody(coverMediaType)
+                MultipartBody.Part.createFormData("cover_file", it.name, coverReq)
+            }
+
+            val titleReq = title.toRequestBody("text/plain".toMediaTypeOrNull())
+            val descReq = description.toRequestBody("text/plain".toMediaTypeOrNull())
+            val catReq = category.toRequestBody("text/plain".toMediaTypeOrNull())
+
+            val res = RetrofitClient.apiService.uploadSound(
+                token = authHeader,
+                audio_file = audioPart,
+                cover_file = coverPart,
+                title = titleReq,
+                description = descReq,
+                category = catReq
+            )
+            Result.success(res.sound_id)
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error uploading sound to server", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun likeSound(soundId: String): Boolean {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: return false
+        val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+        return try {
+            val res = RetrofitClient.apiService.likeSound(authHeader, soundId)
+            res["liked"] == true || res["success"] == true
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error liking sound on API", e)
+            false
+        }
+    }
+
+    suspend fun recordSoundPlay(soundId: String): Boolean {
+        return try {
+            RetrofitClient.apiService.recordSoundPlay(soundId)
+            true
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error recording sound play", e)
+            false
+        }
+    }
+
+    suspend fun commentSound(soundId: String, content: String): Boolean {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: return false
+        val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+        return try {
+            RetrofitClient.apiService.commentSound(authHeader, soundId, mapOf("content" to content))
+            true
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error commenting sound", e)
+            false
+        }
+    }
+
+    // ── VIDEO FEED (REELS) API INTEGRATION DIRECTE DU SERVEUR ──
+    suspend fun getVideoFeed(cursor: String? = null, limit: Int = 20): List<VideoFeedItemNetwork> {
+        val token = currentToken ?: prefs.getString("auth_token", null)
+        val authHeader = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+        return try {
+            val feed = RetrofitClient.apiService.getVideoFeed(authHeader, cursor = cursor, limit = limit)
+            if (feed.isNotEmpty()) {
+                feed
+            } else {
+                // Fallback to random videos on server
+                RetrofitClient.apiService.getRandomVideos(authHeader, limit = limit)
+            }
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error fetching video feed from server", e)
+            try {
+                RetrofitClient.apiService.getRandomVideos(authHeader, limit = limit)
+            } catch (e2: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun likeVideo(videoId: String): Boolean {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: return false
+        val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+        return try {
+            val res = RetrofitClient.apiService.likeVideo(authHeader, videoId)
+            res["liked"] == true || res["success"] == true
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error liking video on API", e)
+            false
+        }
+    }
+
+    suspend fun recordVideoView(videoId: String): Boolean {
+        return try {
+            RetrofitClient.apiService.recordVideoView(videoId)
+            true
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error recording video view", e)
+            false
+        }
+    }
+
+    suspend fun uploadVideo(
+        videoFile: java.io.File,
+        description: String,
+        isPublic: Boolean = true,
+        hasOriginalSound: Boolean = false,
+        soundId: String? = null
+    ): Result<VideoUploadResponse> {
+        val token = currentToken ?: prefs.getString("auth_token", null)
+            ?: return Result.failure(IllegalStateException("Authentification requise pour publier une vidéo"))
+        val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
+
+        return try {
+            val videoMediaType = "video/*".toMediaTypeOrNull()
+            val videoReq = videoFile.asRequestBody(videoMediaType)
+            val videoPart = MultipartBody.Part.createFormData("video", videoFile.name, videoReq)
+
+            val descReq = description.toRequestBody("text/plain".toMediaTypeOrNull())
+            val isPublicReq = isPublic.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+            val hasSoundReq = hasOriginalSound.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+            val soundIdReq = soundId?.toRequestBody("text/plain".toMediaTypeOrNull())
+
+            val res = RetrofitClient.apiService.uploadVideo(
+                token = authHeader,
+                video = videoPart,
+                description = descReq,
+                isPublic = isPublicReq,
+                hasOriginalSound = hasSoundReq,
+                soundId = soundIdReq
+            )
+            Result.success(res)
+        } catch (e: Exception) {
+            Log.e("IddetRepository", "Error uploading video to server", e)
+            Result.failure(e)
+        }
+    }
+
     companion object {
         @Volatile
         private var INSTANCE: IddetRepository? = null

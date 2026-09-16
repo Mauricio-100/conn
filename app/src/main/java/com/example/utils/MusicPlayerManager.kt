@@ -38,87 +38,35 @@ object MusicPlayerManager {
     private const val PREFS_NAME = "iddet_music_prefs"
     private const val KEY_PROFILE_SONG_ID = "profile_favorite_song_id"
 
-    val CURATED_TRACKS = listOf(
-        MusicTrack(
-            id = "track_lofi_sunset",
-            title = "Midnight Lofi Coffee",
-            artist = "Aura Chill & IDDET Beats",
-            albumArt = "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=600&auto=format&fit=crop&q=80",
-            audioUrl = "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3",
-            durationFormatted = "02:45",
-            genre = "Lofi & Chill",
-            likesCount = 3890
-        ),
-        MusicTrack(
-            id = "track_afro_fusion",
-            title = "Kinshasa Sunset Glow",
-            artist = "K-Vibes & Afro Groove",
-            albumArt = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80",
-            audioUrl = "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=tropical-summer-112678.mp3",
-            durationFormatted = "03:12",
-            genre = "Afrobeats",
-            likesCount = 5420
-        ),
-        MusicTrack(
-            id = "track_synth_drive",
-            title = "Cyber Horizon 2099",
-            artist = "Neon Runner",
-            albumArt = "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=600&auto=format&fit=crop&q=80",
-            audioUrl = "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=synthwave-80s-110045.mp3",
-            durationFormatted = "03:30",
-            genre = "Synthwave",
-            likesCount = 4120
-        ),
-        MusicTrack(
-            id = "track_piano_dreams",
-            title = "Nocturne pour Étoiles",
-            artist = "Luna Serenade",
-            albumArt = "https://images.unsplash.com/photo-1520523839898-507127053c17?w=600&auto=format&fit=crop&q=80",
-            audioUrl = "https://cdn.pixabay.com/download/audio/2021/11/20/audio_c3c3a4f61f.mp3?filename=piano-moment-9835.mp3",
-            durationFormatted = "02:18",
-            genre = "Piano & Acoustique",
-            likesCount = 2890
-        ),
-        MusicTrack(
-            id = "track_deep_house",
-            title = "Ibiza Deep Breeze",
-            artist = "Solaris Club",
-            albumArt = "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80",
-            audioUrl = "https://cdn.pixabay.com/download/audio/2022/10/14/audio_9939f792cb.mp3?filename=deep-house-122977.mp3",
-            durationFormatted = "03:45",
-            genre = "Deep House",
-            likesCount = 6120
-        ),
-        MusicTrack(
-            id = "track_urban_flow",
-            title = "Streetlights & Bass",
-            artist = "Metro Flow",
-            albumArt = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80",
-            audioUrl = "https://cdn.pixabay.com/download/audio/2022/08/02/audio_884fe92c21.mp3?filename=hip-hop-beat-118801.mp3",
-            durationFormatted = "02:54",
-            genre = "Hip-Hop",
-            likesCount = 4780
-        )
-    )
-
     private var mediaPlayer: MediaPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
     private var progressRunnable: Runnable? = null
 
-    private val _state = MutableStateFlow(
-        MusicPlayerState(
-            currentTrack = CURATED_TRACKS.first(),
-            playlist = CURATED_TRACKS,
-            favoriteTrackId = CURATED_TRACKS.first().id
-        )
-    )
+    private val _state = MutableStateFlow(MusicPlayerState())
     val state: StateFlow<MusicPlayerState> = _state.asStateFlow()
 
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val favId = prefs.getString(KEY_PROFILE_SONG_ID, CURATED_TRACKS.first().id)
+        val favId = prefs.getString(KEY_PROFILE_SONG_ID, null)
         _state.value = _state.value.copy(
             favoriteTrackId = favId
+        )
+    }
+
+    fun updatePlaylist(tracks: List<MusicTrack>) {
+        if (tracks.isEmpty()) {
+            _state.value = _state.value.copy(playlist = emptyList())
+            return
+        }
+        val current = _state.value.currentTrack
+        val updatedCurrent = if (current != null && tracks.any { it.id == current.id }) {
+            tracks.find { it.id == current.id }
+        } else {
+            current ?: tracks.firstOrNull()
+        }
+        _state.value = _state.value.copy(
+            playlist = tracks,
+            currentTrack = updatedCurrent
         )
     }
 
@@ -128,9 +76,13 @@ object MusicPlayerManager {
         _state.value = _state.value.copy(favoriteTrackId = track.id)
     }
 
-    fun getFavoriteTrack(context: Context): MusicTrack {
-        val favId = _state.value.favoriteTrackId ?: CURATED_TRACKS.first().id
-        return CURATED_TRACKS.find { it.id == favId } ?: CURATED_TRACKS.first()
+    fun getFavoriteTrack(context: Context): MusicTrack? {
+        val favId = _state.value.favoriteTrackId
+        return if (favId != null) {
+            _state.value.playlist.find { it.id == favId } ?: _state.value.currentTrack
+        } else {
+            _state.value.currentTrack
+        }
     }
 
     fun playTrack(track: MusicTrack) {
@@ -188,8 +140,10 @@ object MusicPlayerManager {
     fun togglePlayPause() {
         val player = mediaPlayer
         if (player == null) {
-            val current = _state.value.currentTrack ?: CURATED_TRACKS.first()
-            playTrack(current)
+            val current = _state.value.currentTrack ?: _state.value.playlist.firstOrNull()
+            if (current != null) {
+                playTrack(current)
+            }
             return
         }
 

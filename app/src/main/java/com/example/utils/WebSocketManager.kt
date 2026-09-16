@@ -30,7 +30,8 @@ interface ChatSocketClient {
 object WebSocketManager : ChatSocketClient {
     private const val TAG = "WebSocketManager"
     private val client = OkHttpClient.Builder()
-        .pingInterval(0, TimeUnit.SECONDS) // Handle manually
+        .protocols(listOf(Protocol.HTTP_1_1))
+        .pingInterval(10, TimeUnit.SECONDS)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
@@ -95,14 +96,13 @@ object WebSocketManager : ChatSocketClient {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                val is404OrHttpError = response?.code in 400..499 ||
-                        t.message?.contains("404") == true ||
-                        (t is java.net.ProtocolException && t.message?.contains("101") == true)
+                val statusCode = response?.code ?: 0
+                val isTerminalError = statusCode == 404 || statusCode == 401
 
-                if (is404OrHttpError) {
-                    Log.i(TAG, "WebSocket endpoint not available on server (${t.message ?: "HTTP ${response?.code}"}). Falling back to REST mode.")
+                if (isTerminalError) {
+                    Log.i(TAG, "WebSocket endpoint terminal error (code=$statusCode): ${t.message}")
                 } else {
-                    Log.w(TAG, "WebSocket connection failed: ${t.message}")
+                    Log.w(TAG, "WebSocket connection failure (code=$statusCode): ${t.message}")
                 }
 
                 _connectionState.value = SocketConnectionState.DISCONNECTED
@@ -110,10 +110,9 @@ object WebSocketManager : ChatSocketClient {
                     _events.emit(WebSocketEvent.Disconnected)
                 }
 
-                if (!is404OrHttpError) {
+                if (!isTerminalError && !isClosedManually) {
                     triggerAutoReconnect()
                 } else {
-                    // Do not spam reconnect if the endpoint does not exist on server
                     reconnectJob?.cancel()
                 }
             }
@@ -193,30 +192,34 @@ object WebSocketManager : ChatSocketClient {
                         _events.emit(WebSocketEvent.CallInvite(callId, callerId, callerUsername, callerAvatar))
                     }
                 }
-                "call_accepted" -> {
+                "call_accepted", "call_accept", "call_answered" -> {
                     val callId = json.optString("call_id")
                     val calleeId = json.optString("callee_id")
+                    Log.i(TAG, "WebSocket dispatch: CallAccepted(callId=$callId, calleeId=$calleeId)")
                     coroutineScope.launch {
                         _events.emit(WebSocketEvent.CallAccepted(callId, calleeId))
                     }
                 }
-                "call_declined" -> {
+                "call_declined", "call_decline", "call_rejected" -> {
                     val callId = json.optString("call_id")
                     val byUserId = json.optString("by").takeIf { it.isNotBlank() }
+                    Log.i(TAG, "WebSocket dispatch: CallDeclined(callId=$callId, by=$byUserId)")
                     coroutineScope.launch {
                         _events.emit(WebSocketEvent.CallDeclined(callId, byUserId))
                     }
                 }
                 "call_unavailable" -> {
                     val calleeId = json.optString("callee_id").takeIf { it.isNotBlank() }
+                    Log.i(TAG, "WebSocket dispatch: CallUnavailable(calleeId=$calleeId)")
                     coroutineScope.launch {
                         _events.emit(WebSocketEvent.CallUnavailable(calleeId))
                     }
                 }
-                "call_ended" -> {
+                "call_ended", "call_end" -> {
                     val callId = json.optString("call_id")
                     val byUserId = json.optString("by").takeIf { it.isNotBlank() }
                     val durationSeconds = json.optInt("duration_seconds", 0)
+                    Log.i(TAG, "WebSocket dispatch: CallEnded(callId=$callId, by=$byUserId, duration=$durationSeconds)")
                     coroutineScope.launch {
                         _events.emit(WebSocketEvent.CallEnded(callId, byUserId, durationSeconds))
                     }

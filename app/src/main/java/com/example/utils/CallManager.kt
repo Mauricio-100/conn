@@ -25,6 +25,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -84,6 +85,8 @@ object CallManager {
     private val scope = CoroutineScope(Dispatchers.IO + Job())
     private var timerJob: Job? = null
     private var vibrationJob: Job? = null
+    private var outgoingToneJob: Job? = null
+    private var outgoingProbeJob: Job? = null
     private var toneGenerator: ToneGenerator? = null
 
     private var audioWebSocket: WebSocket? = null
@@ -93,6 +96,7 @@ object CallManager {
     private var isPlaying = false
 
     private val httpClient = OkHttpClient.Builder()
+        .protocols(listOf(Protocol.HTTP_1_1))
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS) // infinite for websocket stream
         .build()
@@ -181,6 +185,7 @@ object CallManager {
                     val current = _callState.value
                     if (current is CallState.OutgoingRinging) {
                         _callState.value = current.copy(callId = response.call_id)
+                        startOutgoingProbe(response.call_id, calleeId)
                     }
                     withContext(Dispatchers.Main) {
                         onResult(true, null)
@@ -207,24 +212,30 @@ object CallManager {
     /**
      * Accept an incoming call
      */
-    fun acceptCall(callId: String) {
-        val current = _callState.value
-        if (current !is CallState.IncomingRinging) return
-
+    fun acceptCall(callId: String, peerId: String? = null, peerUsername: String? = null, peerAvatar: String? = null) {
         stopRingTone()
         val repo = repository ?: return
+        val current = _callState.value
+
+        val finalPeerId = (if (!peerId.isNullOrBlank()) peerId else (current as? CallState.IncomingRinging)?.callerId) ?: ""
+        val finalPeerUsername = (if (!peerUsername.isNullOrBlank()) peerUsername else (current as? CallState.IncomingRinging)?.callerUsername) ?: "Contact"
+        val finalPeerAvatar = if (!peerAvatar.isNullOrBlank()) peerAvatar else (current as? CallState.IncomingRinging)?.callerAvatar
 
         _callState.value = CallState.Active(
             callId = callId,
-            peerId = current.callerId,
-            peerUsername = current.callerUsername,
-            peerAvatar = current.callerAvatar,
+            peerId = finalPeerId,
+            peerUsername = finalPeerUsername,
+            peerAvatar = finalPeerAvatar,
             isConnecting = true
         )
 
         scope.launch {
-            repo.acceptCall(callId)
-            startAudioStream(callId, current.callerId)
+            try {
+                repo.acceptCall(callId)
+            } catch (e: Exception) {
+                Log.w(TAG, "API acceptCall failure: ${e.message}")
+            }
+            startAudioStream(callId, finalPeerId)
         }
     }
 
@@ -232,6 +243,8 @@ object CallManager {
      * Decline an incoming call
      */
     fun declineCall(callId: String) {
+        outgoingProbeJob?.cancel()
+        outgoingProbeJob = null
         stopRingTone()
         val repo = repository
         val current = _callState.value
@@ -252,6 +265,8 @@ object CallManager {
      * End active or outgoing call
      */
     fun endCall() {
+        outgoingProbeJob?.cancel()
+        outgoingProbeJob = null
         stopRingTone()
         val current = _callState.value
         val repo = repository
@@ -375,20 +390,31 @@ object CallManager {
 
     private fun handleCallAccepted(callId: String, calleeId: String) {
         val current = _callState.value
+        Log.i(TAG, "handleCallAccepted: callId=$callId, calleeId=$calleeId, current=$current")
         if (current is CallState.OutgoingRinging) {
+            outgoingProbeJob?.cancel()
+            outgoingProbeJob = null
             stopRingTone()
+
+            val effectiveCallId = if (callId.isNotBlank()) callId else current.callId
+            val effectivePeerId = if (calleeId.isNotBlank()) calleeId else current.calleeId
+
             _callState.value = CallState.Active(
-                callId = callId,
-                peerId = calleeId,
+                callId = effectiveCallId,
+                peerId = effectivePeerId,
                 peerUsername = current.calleeUsername,
                 peerAvatar = current.calleeAvatar,
                 isConnecting = true
             )
-            startAudioStream(callId, calleeId)
+            startDurationTimer()
+            startAudioStream(effectiveCallId, effectivePeerId)
         }
     }
 
     private fun handleCallDeclined(callId: String) {
+        Log.i(TAG, "handleCallDeclined: callId=$callId")
+        outgoingProbeJob?.cancel()
+        outgoingProbeJob = null
         stopRingTone()
         stopAudioStream()
         val current = _callState.value
@@ -406,6 +432,9 @@ object CallManager {
     }
 
     private fun handleCallUnavailable() {
+        Log.i(TAG, "handleCallUnavailable")
+        outgoingProbeJob?.cancel()
+        outgoingProbeJob = null
         stopRingTone()
         stopAudioStream()
         val current = _callState.value
@@ -422,6 +451,9 @@ object CallManager {
     }
 
     private fun handleCallEnded(callId: String, durationSeconds: Int) {
+        Log.i(TAG, "handleCallEnded: callId=$callId, duration=$durationSeconds")
+        outgoingProbeJob?.cancel()
+        outgoingProbeJob = null
         stopRingTone()
         stopAudioStream()
         val current = _callState.value
@@ -610,11 +642,16 @@ object CallManager {
     }
 
     private fun startOutgoingRingTone() {
+        stopRingTone()
         try {
             toneGenerator = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 80)
-            scope.launch {
+            outgoingToneJob = scope.launch {
                 while (isActive && _callState.value is CallState.OutgoingRinging) {
-                    toneGenerator?.startTone(ToneGenerator.TONE_SUP_RINGTONE, 1000)
+                    try {
+                        toneGenerator?.startTone(ToneGenerator.TONE_SUP_RINGTONE, 1000)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "ToneGenerator startTone error: ${e.message}")
+                    }
                     delay(3500)
                 }
             }
@@ -623,7 +660,85 @@ object CallManager {
         }
     }
 
+    private fun startOutgoingProbe(callId: String, calleeId: String) {
+        outgoingProbeJob?.cancel()
+        if (callId.isBlank()) return
+
+        outgoingProbeJob = scope.launch(Dispatchers.IO) {
+            val userId = currentUserId ?: repository?.currentUser?.value?.id ?: return@launch
+            val checkClient = OkHttpClient.Builder()
+                .protocols(listOf(Protocol.HTTP_1_1))
+                .connectTimeout(2, TimeUnit.SECONDS)
+                .readTimeout(2, TimeUnit.SECONDS)
+                .build()
+
+            val probeUrl = "wss://hoosthubs-g.onrender.com/ws/call-audio/$callId/$userId"
+            var elapsedMs = 0L
+            val probeIntervalMs = 1200L
+            val maxRingingDurationMs = 50_000L
+
+            while (isActive && _callState.value is CallState.OutgoingRinging) {
+                delay(probeIntervalMs)
+                elapsedMs += probeIntervalMs
+
+                if (_callState.value !is CallState.OutgoingRinging) break
+
+                if (elapsedMs >= maxRingingDurationMs) {
+                    Log.i(TAG, "Outgoing call timeout reached after ${elapsedMs}ms")
+                    withContext(Dispatchers.Main) {
+                        stopRingTone()
+                        val current = _callState.value as? CallState.OutgoingRinging
+                        val peerName = current?.calleeUsername ?: "Contact"
+                        _callState.value = CallState.Ended(
+                            callId = callId,
+                            peerUsername = peerName,
+                            reason = "Pas de réponse"
+                        )
+                        scope.launch {
+                            try { repository?.endCall(callId) } catch (_: Exception) {}
+                        }
+                        autoResetToIdleAfterDelay()
+                    }
+                    break
+                }
+
+                try {
+                    val request = Request.Builder().url(probeUrl).build()
+                    var isAccepted = false
+                    val latch = java.util.concurrent.CountDownLatch(1)
+
+                    val testWs = checkClient.newWebSocket(request, object : WebSocketListener() {
+                        override fun onOpen(ws: WebSocket, response: Response) {
+                            Log.i(TAG, "OutgoingProbe: audio websocket connected! Callee answered call!")
+                            isAccepted = true
+                            ws.close(1000, "probe_done")
+                            latch.countDown()
+                        }
+
+                        override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                            latch.countDown()
+                        }
+                    })
+
+                    latch.await(1500, TimeUnit.MILLISECONDS)
+
+                    if (isAccepted && _callState.value is CallState.OutgoingRinging) {
+                        Log.i(TAG, "Call acceptance confirmed via audio relay probe!")
+                        withContext(Dispatchers.Main) {
+                            handleCallAccepted(callId, calleeId)
+                        }
+                        break
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "Outgoing probe check failed: ${e.message}")
+                }
+            }
+        }
+    }
+
     private fun stopRingTone() {
+        outgoingToneJob?.cancel()
+        outgoingToneJob = null
         CallRingtonePlayer.stopRinging()
         appContext?.let { NotificationHelper.cancelIncomingCallNotification(it) }
         vibrationJob?.cancel()
