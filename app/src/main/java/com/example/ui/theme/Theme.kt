@@ -1,16 +1,22 @@
 package com.example.ui.theme
 
 import android.app.Activity
-import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
+val LocalAppColorScheme = staticCompositionLocalOf<AppColorScheme> {
+    ShadcnLightColorScheme
+}
 
 @Composable
 fun MyApplicationTheme(
@@ -18,32 +24,54 @@ fun MyApplicationTheme(
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val scheme = appTheme.toColorScheme()
+    val isSystemDark = isSystemInDarkTheme()
+    val scheme = appTheme.toColorScheme(isSystemDark = isSystemDark)
+
     val colorScheme = if (scheme.isDark) {
         darkColorScheme(
             primary = scheme.primary,
-            secondary = scheme.secondary,
-            tertiary = scheme.tertiary,
-            background = scheme.background,
-            surface = scheme.surface,
             onPrimary = scheme.onPrimary,
+            primaryContainer = scheme.surfaceVariant,
+            onPrimaryContainer = scheme.onSurface,
+            secondary = scheme.secondary,
             onSecondary = scheme.onSecondary,
+            secondaryContainer = scheme.surfaceVariant,
+            onSecondaryContainer = scheme.onSurface,
+            tertiary = scheme.tertiary,
             onTertiary = scheme.onTertiary,
+            background = scheme.background,
             onBackground = scheme.onBackground,
-            onSurface = scheme.onSurface
+            surface = scheme.surface,
+            onSurface = scheme.onSurface,
+            surfaceVariant = scheme.surfaceVariant,
+            onSurfaceVariant = scheme.onSurfaceVariant,
+            outline = scheme.outline,
+            outlineVariant = scheme.outlineVariant,
+            error = scheme.error,
+            onError = scheme.onError
         )
     } else {
         lightColorScheme(
             primary = scheme.primary,
-            secondary = scheme.secondary,
-            tertiary = scheme.tertiary,
-            background = scheme.background,
-            surface = scheme.surface,
             onPrimary = scheme.onPrimary,
+            primaryContainer = scheme.surfaceVariant,
+            onPrimaryContainer = scheme.onSurface,
+            secondary = scheme.secondary,
             onSecondary = scheme.onSecondary,
+            secondaryContainer = scheme.surfaceVariant,
+            onSecondaryContainer = scheme.onSurface,
+            tertiary = scheme.tertiary,
             onTertiary = scheme.onTertiary,
+            background = scheme.background,
             onBackground = scheme.onBackground,
-            onSurface = scheme.onSurface
+            surface = scheme.surface,
+            onSurface = scheme.onSurface,
+            surfaceVariant = scheme.surfaceVariant,
+            onSurfaceVariant = scheme.onSurfaceVariant,
+            outline = scheme.outline,
+            outlineVariant = scheme.outlineVariant,
+            error = scheme.error,
+            onError = scheme.onError
         )
     }
 
@@ -56,9 +84,14 @@ fun MyApplicationTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(
+        LocalAppColorScheme provides scheme
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            shapes = Shapes,
+            content = content
+        )
+    }
 }

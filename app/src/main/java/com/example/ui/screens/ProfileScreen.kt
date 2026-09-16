@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -126,6 +127,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     var showFollowListSheet by remember { mutableStateOf(false) }
     var followListInitialTab by remember { mutableIntStateOf(0) }
     var showCategorySelectorDialog by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     var isUploading by remember { mutableStateOf(false) }
     var localPreviewUri by remember { mutableStateOf<Uri?>(null) }
@@ -326,9 +328,18 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                         }
                     }
 
-                    // Settings / Logout
+                    // Settings
                     IconButton(onClick = { navController.navigate("settings") }) {
                         Icon(Icons.Outlined.Settings, contentDescription = "Paramètres")
+                    }
+
+                    // Logout
+                    IconButton(onClick = { showLogoutDialog = true }) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.Logout,
+                            contentDescription = "Se déconnecter",
+                            tint = MaterialTheme.colorScheme.error
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -1853,6 +1864,46 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
             userId = user.id,
             initialTab = followListInitialTab,
             onDismissRequest = { showFollowListSheet = false }
+        )
+    }
+
+    // 10. Logout Confirmation Dialog
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            shape = RoundedCornerShape(8.dp),
+            title = {
+                Text(
+                    text = "Se déconnecter",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text("Voulez-vous vraiment vous déconnecter de votre compte @${user.username} ?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutDialog = false
+                        viewModel.logout()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Déconnexion", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showLogoutDialog = false },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Annuler")
+                }
+            }
         )
     }
 }

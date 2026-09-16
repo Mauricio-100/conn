@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -79,6 +80,7 @@ fun MainScreen(viewModel: IddetViewModel) {
     val levelsTable by viewModel.levelsTable.collectAsState()
     val iddetPlusStatus by viewModel.myIddetPlusStatus.collectAsState()
     var showLadderDialog by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
     val currentFeedTab by viewModel.feedTab.collectAsState()
     val currentSelectedCategory by viewModel.selectedCategoryFilter.collectAsState()
     val notifications by viewModel.notifications.collectAsState(initial = emptyList())
@@ -102,12 +104,15 @@ fun MainScreen(viewModel: IddetViewModel) {
         }
     }
 
+    val appColors = com.example.ui.theme.LocalAppColorScheme.current
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
-                drawerContainerColor = MaterialTheme.colorScheme.surface,
-                drawerContentColor = MaterialTheme.colorScheme.onSurface,
+                drawerContainerColor = appColors.sidebarBackground,
+                drawerContentColor = appColors.sidebarForeground,
+                drawerShape = RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp),
                 modifier = Modifier.width(300.dp)
             ) {
                 Column(
@@ -139,12 +144,12 @@ fun MainScreen(viewModel: IddetViewModel) {
                                 text = "CMO • Boosted Engine",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                color = appColors.sidebarForeground.copy(alpha = 0.6f)
                             )
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
 
                     // Profile Section
                     Column(
@@ -272,7 +277,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp, vertical = 12.dp)
@@ -290,14 +295,14 @@ fun MainScreen(viewModel: IddetViewModel) {
                         )
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
 
                     // SECTION: FEEDS (FLUX)
                     Text(
                         text = "FLUX PRINCIPAUX",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        color = appColors.sidebarForeground.copy(alpha = 0.6f),
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
                     )
 
@@ -314,14 +319,14 @@ fun MainScreen(viewModel: IddetViewModel) {
                                 Icon(
                                     icon,
                                     contentDescription = label,
-                                    tint = if (isFeedSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = if (isFeedSelected) appColors.sidebarActive else appColors.sidebarForeground
                                 )
                             },
                             label = {
                                 Text(
                                     label,
                                     fontWeight = if (isFeedSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                    color = if (isFeedSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    color = if (isFeedSelected) appColors.sidebarActive else appColors.sidebarForeground
                                 )
                             },
                             selected = isFeedSelected,
@@ -335,14 +340,20 @@ fun MainScreen(viewModel: IddetViewModel) {
                                     }
                                 }
                             },
+                            shape = RoundedCornerShape(8.dp),
                             colors = NavigationDrawerItemDefaults.colors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                selectedContainerColor = if (appColors.isDark) appColors.sidebarActive.copy(alpha = 0.2f) else appColors.sidebarActive.copy(alpha = 0.08f),
+                                unselectedContainerColor = Color.Transparent,
+                                selectedIconColor = appColors.sidebarActive,
+                                unselectedIconColor = appColors.sidebarForeground,
+                                selectedTextColor = appColors.sidebarActive,
+                                unselectedTextColor = appColors.sidebarForeground
                             ),
                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                         )
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 4.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 4.dp))
 
                     // Collapsible COMMUNAUTÉ section
                     Row(
@@ -567,14 +578,14 @@ fun MainScreen(viewModel: IddetViewModel) {
                                 Icon(
                                     icon, 
                                     contentDescription = label,
-                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = if (isSelected) appColors.sidebarActive else appColors.sidebarForeground
                                 ) 
                             },
                             label = { 
                                 Text(
                                     label, 
                                     fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    color = if (isSelected) appColors.sidebarActive else appColors.sidebarForeground
                                 ) 
                             },
                             selected = isSelected,
@@ -588,8 +599,14 @@ fun MainScreen(viewModel: IddetViewModel) {
                                     }
                                 }
                             },
+                            shape = RoundedCornerShape(8.dp),
                             colors = NavigationDrawerItemDefaults.colors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                selectedContainerColor = if (appColors.isDark) appColors.sidebarActive.copy(alpha = 0.2f) else appColors.sidebarActive.copy(alpha = 0.08f),
+                                unselectedContainerColor = Color.Transparent,
+                                selectedIconColor = appColors.sidebarActive,
+                                unselectedIconColor = appColors.sidebarForeground,
+                                selectedTextColor = appColors.sidebarActive,
+                                unselectedTextColor = appColors.sidebarForeground
                             ),
                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                         )
@@ -609,7 +626,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                                 Icon(
                                     Icons.Outlined.Notifications,
                                     contentDescription = "Notifications",
-                                    tint = if (isNotificationsSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = if (isNotificationsSelected) appColors.sidebarActive else appColors.sidebarForeground
                                 )
                             }
                         },
@@ -617,7 +634,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                             Text(
                                 "Notifications",
                                 fontWeight = if (isNotificationsSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                color = if (isNotificationsSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                color = if (isNotificationsSelected) appColors.sidebarActive else appColors.sidebarForeground
                             )
                         },
                         selected = isNotificationsSelected,
@@ -627,8 +644,14 @@ fun MainScreen(viewModel: IddetViewModel) {
                                 navController.navigate("notifications")
                             }
                         },
+                        shape = RoundedCornerShape(8.dp),
                         colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                            selectedContainerColor = if (appColors.isDark) appColors.sidebarActive.copy(alpha = 0.2f) else appColors.sidebarActive.copy(alpha = 0.08f),
+                            unselectedContainerColor = Color.Transparent,
+                            selectedIconColor = appColors.sidebarActive,
+                            unselectedIconColor = appColors.sidebarForeground,
+                            selectedTextColor = appColors.sidebarActive,
+                            unselectedTextColor = appColors.sidebarForeground
                         ),
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
@@ -639,14 +662,14 @@ fun MainScreen(viewModel: IddetViewModel) {
                             Icon(
                                 Icons.Outlined.Refresh, 
                                 contentDescription = "Rafraîchir",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = appColors.sidebarForeground
                             ) 
                         },
                         label = { 
                             Text(
                                 "Rafraîchir le fil", 
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = appColors.sidebarForeground
                             ) 
                         },
                         selected = false,
@@ -654,6 +677,42 @@ fun MainScreen(viewModel: IddetViewModel) {
                             scope.launch { drawerState.close() }
                             viewModel.refreshActfiles()
                         },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = NavigationDrawerItemDefaults.colors(
+                            unselectedContainerColor = Color.Transparent,
+                            unselectedIconColor = appColors.sidebarForeground,
+                            unselectedTextColor = appColors.sidebarForeground
+                        ),
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+
+                    // LOGOUT MENU ITEM
+                    NavigationDrawerItem(
+                        icon = { 
+                            Icon(
+                                Icons.AutoMirrored.Outlined.Logout, 
+                                contentDescription = "Se déconnecter",
+                                tint = appColors.error
+                            ) 
+                        },
+                        label = { 
+                            Text(
+                                "Déconnexion", 
+                                fontWeight = FontWeight.Bold,
+                                color = appColors.error
+                            ) 
+                        },
+                        selected = false,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            showLogoutDialog = true
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = NavigationDrawerItemDefaults.colors(
+                            unselectedContainerColor = Color.Transparent,
+                            unselectedIconColor = appColors.error,
+                            unselectedTextColor = appColors.error
+                        ),
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
                     
@@ -672,6 +731,53 @@ fun MainScreen(viewModel: IddetViewModel) {
             }
         }
     ) {
+        if (showLogoutDialog) {
+            AlertDialog(
+                onDismissRequest = { showLogoutDialog = false },
+                shape = RoundedCornerShape(8.dp),
+                containerColor = appColors.surfaceVariant,
+                title = {
+                    Text(
+                        text = "Se déconnecter",
+                        fontWeight = FontWeight.Bold,
+                        color = appColors.onSurface
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Voulez-vous vraiment vous déconnecter de votre compte IDDET ?",
+                        color = appColors.onSurfaceVariant
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showLogoutDialog = false
+                            viewModel.logout()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = appColors.error,
+                            contentColor = appColors.onError
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Déconnexion", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showLogoutDialog = false },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = appColors.onSurface
+                        )
+                    ) {
+                        Text("Annuler")
+                    }
+                }
+            )
+        }
+
         Scaffold { innerPadding ->
             CompositionLocalProvider(
                 LocalCommunityClickHandler provides { slug ->

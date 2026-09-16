@@ -224,6 +224,22 @@ object WebSocketManager : ChatSocketClient {
                         _events.emit(WebSocketEvent.CallEnded(callId, byUserId, durationSeconds))
                     }
                 }
+                "call_missed" -> {
+                    val callId = json.optString("call_id")
+                    val callerId = json.optString("caller_id").takeIf { it.isNotBlank() }
+                    Log.i(TAG, "WebSocket dispatch: CallMissed(callId=$callId, callerId=$callerId)")
+                    coroutineScope.launch {
+                        _events.emit(WebSocketEvent.CallMissed(callId, callerId))
+                    }
+                }
+                "call_timeout" -> {
+                    val callId = json.optString("call_id")
+                    val calleeId = json.optString("callee_id").takeIf { it.isNotBlank() }
+                    Log.i(TAG, "WebSocket dispatch: CallTimeout(callId=$callId, calleeId=$calleeId)")
+                    coroutineScope.launch {
+                        _events.emit(WebSocketEvent.CallTimeout(callId, calleeId))
+                    }
+                }
                 "error" -> {
                     val msg = json.optString("message", "Erreur serveur")
                     coroutineScope.launch { _events.emit(WebSocketEvent.Error(msg)) }
@@ -368,6 +384,14 @@ sealed class WebSocketEvent {
         val callId: String,
         val byUserId: String?,
         val durationSeconds: Int = 0
+    ) : WebSocketEvent()
+    data class CallMissed(
+        val callId: String,
+        val callerId: String?
+    ) : WebSocketEvent()
+    data class CallTimeout(
+        val callId: String,
+        val calleeId: String?
     ) : WebSocketEvent()
     data class Error(val message: String) : WebSocketEvent()
 }

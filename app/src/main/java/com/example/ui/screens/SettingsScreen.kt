@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -97,6 +98,7 @@ fun SettingsScreen(viewModel: IddetViewModel, navController: NavController) {
     // Local selection state
     val selectedCats = remember { mutableStateListOf<String>() }
     var isSaving by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.loadCategories()
@@ -721,7 +723,54 @@ fun SettingsScreen(viewModel: IddetViewModel, navController: NavController) {
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            // Section Compte & Session / Déconnexion
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Compte & Session",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Déconnectez-vous de votre compte IDDET sur cet appareil.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    OutlinedButton(
+                        onClick = { showLogoutDialog = true },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.Logout,
+                            contentDescription = "Déconnexion",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Se déconnecter",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             Button(
                 onClick = {
@@ -742,7 +791,7 @@ fun SettingsScreen(viewModel: IddetViewModel, navController: NavController) {
                     .fillMaxWidth()
                     .height(50.dp),
                 enabled = !isSaving && allCats.isNotEmpty(),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(8.dp)
             ) {
                 if (isSaving) {
                     CircularProgressIndicator(
@@ -758,6 +807,45 @@ fun SettingsScreen(viewModel: IddetViewModel, navController: NavController) {
                     )
                 }
             }
+        }
+
+        if (showLogoutDialog) {
+            AlertDialog(
+                onDismissRequest = { showLogoutDialog = false },
+                shape = RoundedCornerShape(8.dp),
+                title = {
+                    Text(
+                        text = "Se déconnecter",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Text("Voulez-vous vraiment vous déconnecter de votre compte IDDET ?")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showLogoutDialog = false
+                            viewModel.logout()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Déconnexion", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showLogoutDialog = false },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Annuler")
+                    }
+                }
+            )
         }
     }
 }

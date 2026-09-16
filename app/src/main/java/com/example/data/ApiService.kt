@@ -545,6 +545,18 @@ interface ApiService {
         @retrofit2.http.Path("callId") callId: String
     ): CallEndResponse
 
+    @GET("/api/calls/{callId}/status")
+    suspend fun getCallStatus(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("callId") callId: String
+    ): CallStatusDetailsResponse
+
+    @GET("/api/calls/missed")
+    suspend fun getMissedCalls(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Query("limit") limit: Int = 50
+    ): MissedCallsResponse
+
     @POST("/api/messages/{id}/react")
     suspend fun reactToMessage(
         @retrofit2.http.Header("Authorization") token: String?,
@@ -1099,6 +1111,27 @@ data class CallEndResponse(
     val call_id: String,
     val status: String,
     val duration_seconds: Int = 0
+)
+
+data class CallStatusDetailsResponse(
+    val call_id: String,
+    val status: String,
+    val accepted_at: String? = null,
+    val ended_at: String? = null,
+    val duration_seconds: Int = 0
+)
+
+data class MissedCallItem(
+    val call_id: String,
+    val caller_id: String,
+    val caller_username: String,
+    val caller_avatar: String? = null,
+    val started_at: String? = null,
+    val missed_at: String? = null
+)
+
+data class MissedCallsResponse(
+    val missed_calls: List<MissedCallItem> = emptyList()
 )
 
 object RetrofitClient {

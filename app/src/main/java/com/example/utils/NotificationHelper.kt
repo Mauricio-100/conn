@@ -243,6 +243,57 @@ object NotificationHelper {
         }
     }
 
+    suspend fun showMissedCallNotification(
+        context: Context,
+        callId: String,
+        callerId: String,
+        callerUsername: String,
+        callerAvatar: String? = null
+    ) {
+        withContext(Dispatchers.IO) {
+            initChannels(context)
+            cancelIncomingCallNotification(context)
+
+            val pFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+
+            // Click opens chat or profile with caller
+            val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("route", "chat_user")
+                putExtra("user_id", callerId)
+                putExtra("username", callerUsername)
+            }
+            val contentPendingIntent = PendingIntent.getActivity(context, callId.hashCode(), openAppIntent, pFlags)
+
+            val avatarBitmap = if (!callerAvatar.isNullOrEmpty()) {
+                downloadAvatarOrPlaceholder(com.example.utils.UrlHelper.fixCloudinaryUrl(callerAvatar) ?: callerAvatar, callerUsername)
+            } else {
+                generatePlaceholderAvatar(callerUsername)
+            }
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setLargeIcon(avatarBitmap)
+                .setContentTitle("Appel manqué")
+                .setContentText("@$callerUsername a tenté de vous appeler")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_MISSED_CALL)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setColor(Color.parseColor("#EF4444"))
+                .setContentIntent(contentPendingIntent)
+                .addAction(R.drawable.ic_notification, "Message", contentPendingIntent)
+                .build()
+
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify((callId + "_missed").hashCode(), notification)
+        }
+    }
+
     fun updateNotificationSound(context: Context, soundUri: android.net.Uri?) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

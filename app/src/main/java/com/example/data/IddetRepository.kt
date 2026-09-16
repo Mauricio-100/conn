@@ -1218,6 +1218,26 @@ class IddetRepository(
         }
     }
 
+    suspend fun getCallStatus(callId: String): Result<CallStatusDetailsResponse> {
+        return try {
+            val header = currentToken?.let { "Bearer $it" } ?: return Result.failure(Exception("Non authentifié"))
+            val response = RetrofitClient.apiService.getCallStatus(header, callId)
+            Result.success(response)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getMissedCalls(): Result<MissedCallsResponse> {
+        return try {
+            val header = currentToken?.let { "Bearer $it" } ?: return Result.failure(Exception("Non authentifié"))
+            val response = RetrofitClient.apiService.getMissedCalls(header)
+            Result.success(response)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun insertMessageLocal(message: Message) {
         messageDao.insertMessage(message)
     }
