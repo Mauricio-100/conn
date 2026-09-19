@@ -131,9 +131,9 @@ fun ActfileCard(
 
             if (hasCommunityInfo) {
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 10.dp)
@@ -148,14 +148,15 @@ fun ActfileCard(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(22.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                .size(24.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer),
                             contentAlignment = Alignment.Center
                         ) {
                             if (!effectiveCommunityIcon.isNullOrBlank()) {
                                 AsyncImage(
-                                    model = effectiveCommunityIcon,
+                                    model = com.example.utils.UrlHelper.fixCloudinaryUrl(effectiveCommunityIcon),
                                     contentDescription = null,
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
@@ -171,26 +172,28 @@ fun ActfileCard(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Communauté",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "•",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
                             text = effectiveCommunityName ?: "c/$effectiveCommunitySlug",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            color = MaterialTheme.colorScheme.primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        VerificationBadge(
+                            userName = effectiveCommunityName ?: effectiveCommunitySlug ?: "",
+                            isVerified = true,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        if (!actfile.channelName.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "#${actfile.channelName}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                 }
             }
@@ -292,7 +295,7 @@ fun ActfileCard(
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
-                            model = commIconUrl,
+                            model = com.example.utils.UrlHelper.fixCloudinaryUrl(commIconUrl),
                             contentDescription = "Communauté ${actfile.communityName ?: actfile.channelSlug}",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
@@ -321,6 +324,14 @@ fun ActfileCard(
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.clickable { onCategoryClick?.invoke(actfile.communityId ?: actfile.channelSlug ?: "") }
+                            )
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            VerificationBadge(
+                                userName = displayCommName,
+                                isVerified = true,
+                                modifier = Modifier.size(15.dp)
                             )
 
                             if (!actfile.channelName.isNullOrBlank()) {
