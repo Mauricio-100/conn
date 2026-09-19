@@ -263,7 +263,7 @@ class IddetRepository(
                         id = net.user_id,
                         username = if (net.username.isNotBlank()) net.username else existing.username,
                         avatarUrl = net.avatar_url ?: existing.avatarUrl,
-                        isVerified = net.is_verified || existing.isVerified
+                        isVerified = (net.is_verified ?: false) || existing.isVerified
                     )
                 } else {
                     User(
@@ -271,7 +271,7 @@ class IddetRepository(
                         username = net.username.ifBlank { "Utilisateur" },
                         passwordHash = "mocked",
                         avatarUrl = net.avatar_url,
-                        isVerified = net.is_verified
+                        isVerified = net.is_verified ?: false
                     )
                 }
                 usersToInsert.add(userToInsert)
@@ -300,7 +300,7 @@ class IddetRepository(
                         senderId = net.user_id,
                         senderUsername = net.username.ifBlank { "Utilisateur" },
                         senderAvatarUrl = net.avatar_url,
-                        isVerified = net.is_verified,
+                        isVerified = net.is_verified ?: false,
                         content = if (cleanText.isNotBlank()) cleanText else net.content,
                         type = if (net.content.contains("[!AUDIO]") || net.content.contains("audio_msg_") || net.content.contains("voice_") || net.content.contains("voice://")) "voice" else "text",
                         createdAt = parseIso(net.created_at)
@@ -327,7 +327,7 @@ class IddetRepository(
                             viewsCount = net.views_count,
                             commentsCount = net.comments_count ?: 0,
                             createdAt = parseIso(net.created_at),
-                            isLikedByMe = net.liked,
+                            isLikedByMe = net.liked ?: false,
                             category = net.category,
                             communityId = effectiveCommSlug,
                             channelId = net.channel_id,
@@ -340,7 +340,7 @@ class IddetRepository(
                             soundCoverUrl = parsedSound?.coverUrl,
                             communityName = effectiveCommName,
                             communityIconUrl = effectiveCommIcon,
-                            communityIsVerified = net.community_is_verified || (effectiveCommSlug?.lowercase() in listOf("iddet", "mshop"))
+                            communityIsVerified = (net.community_is_verified ?: false) || (effectiveCommSlug?.lowercase() in listOf("iddet", "mshop"))
                         )
                     )
                 }
@@ -1815,7 +1815,7 @@ class IddetRepository(
                     existing.copy(
                         username = net.username,
                         avatarUrl = net.avatar_url,
-                        isVerified = net.is_verified
+                        isVerified = net.is_verified ?: false
                     )
                 } else {
                     User(
@@ -1823,7 +1823,7 @@ class IddetRepository(
                         username = net.username,
                         passwordHash = "mocked",
                         avatarUrl = net.avatar_url,
-                        isVerified = net.is_verified
+                        isVerified = net.is_verified ?: false
                     )
                 }
                 userDao.insertUser(user)
@@ -1833,14 +1833,14 @@ class IddetRepository(
                     userId = net.user_id,
                     username = net.username,
                     avatarUrl = net.avatar_url,
-                    isVerified = net.is_verified,
+                    isVerified = net.is_verified ?: false,
                     content = net.content,
                     tags = "",
                     likesCount = net.likes_count,
                     viewsCount = net.views_count,
                     commentsCount = net.comments_count ?: 0,
                     createdAt = parseIso(net.created_at),
-                    isLikedByMe = net.liked,
+                    isLikedByMe = net.liked ?: false,
                     category = net.category,
                     communityId = net.community_id,
                     channelId = net.channel_id,

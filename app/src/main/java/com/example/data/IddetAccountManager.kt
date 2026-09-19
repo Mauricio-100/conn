@@ -2,6 +2,7 @@ package com.example.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import java.util.UUID
 
 /**
@@ -112,6 +113,13 @@ object IddetAccountManager {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    /**
+     * Seeds initial beautiful actfiles and verified users if database is empty to ensure a lively feed experience.
+     */
+    suspend fun seedInitialActfilesIfEmpty(userDao: UserDao, actfileDao: ActfileDao) = withContext(Dispatchers.IO) {
+        // Empty to ensure only real server responses are used
     }
 
     @Deprecated("Simulated IDDET account has been removed. Use purgeSimulatedIddetAccount.")

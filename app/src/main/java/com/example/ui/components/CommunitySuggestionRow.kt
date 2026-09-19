@@ -1,7 +1,15 @@
 package com.example.ui.components
-
+ 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -16,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -96,10 +105,31 @@ fun CommunitySuggestionCard(
     val categoryInfo = getCategoryById(community.category)
     val cardColor = categoryInfo?.color ?: MaterialTheme.colorScheme.secondary
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else if (isHovered) 1.03f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "suggestion_card_scale"
+    )
+
+    val animatedElevation by animateDpAsState(
+        targetValue = if (isPressed) 1.dp else if (isHovered) 8.dp else 2.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "suggestion_card_elevation"
+    )
+
     Card(
         modifier = Modifier
             .width(260.dp)
-            .clickable { onClick() }
+            .scale(animatedScale)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = onClick
+            )
             .testTag("suggested_community_${community.slug}"),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
@@ -109,7 +139,7 @@ fun CommunitySuggestionCard(
             width = 1.dp,
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = animatedElevation)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth()
