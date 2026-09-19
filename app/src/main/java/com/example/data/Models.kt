@@ -51,7 +51,8 @@ data class Actfile(
     val soundCoverUrl: String? = null,
     // Attached Community info
     val communityName: String? = null,
-    val communityIconUrl: String? = null
+    val communityIconUrl: String? = null,
+    val communityIsVerified: Boolean = false
 )
 
 @Entity(tableName = "messages")
@@ -102,7 +103,8 @@ data class ActfileWithUser(
     val soundCoverUrl: String? = null,
     // Attached Community info
     val communityName: String? = null,
-    val communityIconUrl: String? = null
+    val communityIconUrl: String? = null,
+    val communityIsVerified: Boolean = false
 )
 
 data class AttachedSound(

@@ -70,6 +70,7 @@ enum class VerificationState {
     OFFICIAL, // Admin / Founder / Official (Badge Vert à épines avec coche blanche)
     VERIFIED, // Regular Verified User (Badge Bleu à épines avec coche blanche)
     IDDET, // Iddet Official Account (Badge Jaune à épines avec coche blanche)
+    COMMUNITY, // Verified Community (Badge Blanc/Argenté à épines avec coche sombre)
     NONE
 }
 
@@ -77,11 +78,12 @@ enum class VerificationState {
 private val FOUNDER_USERNAMES = listOf("C.M.O", "Doffranel", "doffranel", "Crislem", "Mauricio-100", "admin")
 
 /**
- * Resolves the verification state based on username and verification flag.
+ * Resolves the verification state based on username, verification flag, and community flag.
  */
-fun getVerificationState(userName: String?, isVerified: Boolean): VerificationState {
+fun getVerificationState(userName: String?, isVerified: Boolean, isCommunity: Boolean = false): VerificationState {
     val name = userName ?: ""
     return when {
+        isCommunity && isVerified -> VerificationState.COMMUNITY
         com.example.data.IddetAccountManager.isOfficialIddetAccount(name) -> VerificationState.IDDET
         FOUNDER_USERNAMES.any { it.equals(name, ignoreCase = true) } -> VerificationState.OFFICIAL
         isVerified -> VerificationState.VERIFIED
@@ -95,24 +97,32 @@ fun VerificationBadge(
     modifier: Modifier = Modifier,
     userName: String? = null,
     isVerified: Boolean = false,
+    isCommunity: Boolean = false,
     state: VerificationState? = null, // Can be explicitly passed
     showExplainingOnClick: Boolean = true
 ) {
-    val resolvedState = state ?: getVerificationState(userName, isVerified)
+    val resolvedState = state ?: getVerificationState(userName, isVerified, isCommunity)
     if (resolvedState == VerificationState.NONE) return
 
     var showBottomSheet by remember { mutableStateOf(false) }
     val name = userName ?: ""
 
     // Badge Colors:
-    // Official/Admin: Green (0xFF16A34A) with white checkmark and spikes
-    // Verified: Blue (0xFF1DA1F2) with white checkmark and spikes
-    // Iddet: Yellow (0xFFEAB308) with white checkmark and spikes
+    // Official/Admin: Green (0xFF16A34A) with white checkmark
+    // Verified User: Blue (0xFF1DA1F2) with white checkmark
+    // Iddet Official Account: Yellow (0xFFEAB308) with white checkmark
+    // Community Verified: White/Silver (0xFFE2E8F0) with dark navy checkmark
     val badgeColor = when (resolvedState) {
-        VerificationState.OFFICIAL -> Color(0xFF16A34A) // Green for Admin/Founder/Official
-        VerificationState.VERIFIED -> Color(0xFF1DA1F2) // Blue for Default Verified
-        VerificationState.IDDET -> Color(0xFFEAB308) // Yellow for Iddet
+        VerificationState.OFFICIAL -> Color(0xFF16A34A)
+        VerificationState.VERIFIED -> Color(0xFF1DA1F2)
+        VerificationState.IDDET -> Color(0xFFEAB308)
+        VerificationState.COMMUNITY -> Color(0xFFE2E8F0)
         VerificationState.NONE -> Color.Transparent
+    }
+
+    val checkColor = when (resolvedState) {
+        VerificationState.COMMUNITY -> Color(0xFF0F172A)
+        else -> Color.White
     }
 
     Box(
@@ -130,8 +140,8 @@ fun VerificationBadge(
         ) {
             Icon(
                 imageVector = Icons.Default.Check,
-                contentDescription = if (resolvedState == VerificationState.OFFICIAL) "Badge officiel/admin" else "Badge vérifié",
-                tint = Color.White, // Coche blanche
+                contentDescription = if (resolvedState == VerificationState.COMMUNITY) "Communauté vérifiée" else "Badge vérifié",
+                tint = checkColor,
                 modifier = Modifier.size(11.dp)
             )
         }
@@ -158,7 +168,13 @@ fun VerificationBottomSheet(
     val badgeColor = when (verificationState) {
         VerificationState.OFFICIAL -> Color(0xFF16A34A)
         VerificationState.IDDET -> Color(0xFFEAB308)
+        VerificationState.COMMUNITY -> Color(0xFFE2E8F0)
         else -> Color(0xFF1DA1F2)
+    }
+
+    val checkColor = when (verificationState) {
+        VerificationState.COMMUNITY -> Color(0xFF0F172A)
+        else -> Color.White
     }
 
     ModalBottomSheet(
@@ -188,7 +204,7 @@ fun VerificationBottomSheet(
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = checkColor,
                     modifier = Modifier.size(38.dp)
                 )
             }
@@ -200,6 +216,7 @@ fun VerificationBottomSheet(
                 text = when (verificationState) {
                     VerificationState.OFFICIAL -> "Compte Officiel / Admin ($userName)"
                     VerificationState.IDDET -> "Compte Officiel Iddet"
+                    VerificationState.COMMUNITY -> "Communauté Vérifiée ($userName)"
                     else -> "Compte Vérifié"
                 },
                 style = MaterialTheme.typography.titleLarge,
@@ -215,6 +232,7 @@ fun VerificationBottomSheet(
                 text = when (verificationState) {
                     VerificationState.OFFICIAL -> "Ce badge vert à épines avec coche blanche distingue les administrateurs, fondateurs et membres officiels de la plateforme."
                     VerificationState.IDDET -> "Ce badge jaune à épines identifie le compte officiel du réseau Iddet."
+                    VerificationState.COMMUNITY -> "Ce badge blanc/argenté à épines atteste qu'il s'agit d'une communauté officielle ou vérifiée sur IDDET."
                     else -> "Ce badge bleu à épines avec coche blanche atteste de l'authenticité de ce profil vérifié."
                 },
                 style = MaterialTheme.typography.bodyMedium,

@@ -7,6 +7,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -130,6 +133,16 @@ fun ActfileCard(
             val hasCommunityInfo = !effectiveCommunityName.isNullOrBlank() || !effectiveCommunitySlug.isNullOrBlank()
 
             if (hasCommunityInfo) {
+                val pillInteractionSource = remember { MutableInteractionSource() }
+                val isPillPressed by pillInteractionSource.collectIsPressedAsState()
+                val isPillHovered by pillInteractionSource.collectIsHoveredAsState()
+
+                val pillScale by animateFloatAsState(
+                    targetValue = if (isPillPressed) 0.97f else if (isPillHovered) 1.02f else 1.0f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "comm_pill_scale"
+                )
+
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
@@ -137,10 +150,15 @@ fun ActfileCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 10.dp)
-                        .clickable {
-                            val target = effectiveCommunitySlug ?: effectiveCommunityName ?: ""
-                            onCategoryClick?.invoke(target)
-                        }
+                        .scale(pillScale)
+                        .clickable(
+                            interactionSource = pillInteractionSource,
+                            indication = ripple(),
+                            onClick = {
+                                val target = effectiveCommunitySlug ?: effectiveCommunityName ?: ""
+                                onCategoryClick?.invoke(target)
+                            }
+                        )
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -328,11 +346,15 @@ fun ActfileCard(
 
                             Spacer(modifier = Modifier.width(4.dp))
 
-                            VerificationBadge(
-                                userName = displayCommName,
-                                isVerified = true,
-                                modifier = Modifier.size(15.dp)
-                            )
+                            val isCommVerified = actfile.communityIsVerified || (displayCommName.lowercase().removePrefix("c/") in listOf("iddet", "mshop"))
+                            if (isCommVerified) {
+                                VerificationBadge(
+                                    userName = displayCommName,
+                                    isVerified = true,
+                                    isCommunity = true,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
 
                             if (!actfile.channelName.isNullOrBlank()) {
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -673,143 +695,151 @@ fun ActfileCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     // Like Button with responsive glow
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (actfile.isLikedByMe) Color(0xFFFF2D55).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onLike(actfile.id) }
+                    BouncyButton(
+                        onClick = { onLike(actfile.id) },
+                        pressedScale = 0.88f
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                                .scale(likeScale),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (actfile.isLikedByMe) Color(0xFFFF2D55).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                         ) {
-                            Icon(
-                                imageVector = if (actfile.isLikedByMe) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                contentDescription = if (actfile.isLikedByMe) "Ne plus aimer" else "Aimer",
-                                tint = likeColor,
-                                modifier = Modifier.size(17.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "${com.example.utils.FormatUtils.formatCount(actfile.likesCount)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = likeColor
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .scale(likeScale),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (actfile.isLikedByMe) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                    contentDescription = if (actfile.isLikedByMe) "Ne plus aimer" else "Aimer",
+                                    tint = likeColor,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "${com.example.utils.FormatUtils.formatCount(actfile.likesCount)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = likeColor
+                                )
+                            }
                         }
                     }
 
                     // Comment Button
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onComment(actfile.id) }
+                    BouncyButton(
+                        onClick = { onComment(actfile.id) },
+                        pressedScale = 0.88f
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Forum,
-                                contentDescription = "Commenter",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(17.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "${com.example.utils.FormatUtils.formatCount(actfile.commentsCount)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Forum,
+                                    contentDescription = "Commenter",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "${com.example.utils.FormatUtils.formatCount(actfile.commentsCount)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
 
                     // Share Button
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                if (onShare != null) {
-                                    onShare(actfile.id)
-                                } else {
-                                    com.example.utils.ShareHelper.shareActfile(
-                                        context = context,
-                                        actfileId = actfile.id,
-                                        authorUsername = actfile.username,
-                                        content = actfile.content,
-                                        category = actfile.category
-                                    )
-                                }
+                    BouncyButton(
+                        onClick = {
+                            if (onShare != null) {
+                                onShare(actfile.id)
+                            } else {
+                                com.example.utils.ShareHelper.shareActfile(
+                                    context = context,
+                                    actfileId = actfile.id,
+                                    authorUsername = actfile.username,
+                                    content = actfile.content,
+                                    category = actfile.category
+                                )
                             }
+                        },
+                        pressedScale = 0.88f
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Share,
-                                contentDescription = "Partager",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(17.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Share,
+                                    contentDescription = "Partager",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
                         }
                     }
 
                     // Translate Button
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (!showOriginal) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                if (showOriginal) {
-                                    if (translatedContent == null) {
-                                        isTranslating = true
-                                        coroutineScope.launch {
-                                            try {
-                                                val res = com.example.utils.TranslationHelper.translateText(actfile.content, targetLanguageName)
-                                                if (res.isNotBlank()) {
-                                                    translatedContent = res
-                                                    showOriginal = false
-                                                    android.widget.Toast.makeText(context, "Traduit en $targetLanguageName", android.widget.Toast.LENGTH_SHORT).show()
-                                                } else {
-                                                    android.widget.Toast.makeText(context, "Texte original conservé", android.widget.Toast.LENGTH_SHORT).show()
-                                                }
-                                            } catch (e: Exception) {
-                                                android.widget.Toast.makeText(context, "Traduction temporairement indisponible", android.widget.Toast.LENGTH_SHORT).show()
-                                            } finally {
-                                                isTranslating = false
+                    BouncyButton(
+                        onClick = {
+                            if (showOriginal) {
+                                if (translatedContent == null) {
+                                    isTranslating = true
+                                    coroutineScope.launch {
+                                        try {
+                                            val res = com.example.utils.TranslationHelper.translateText(actfile.content, targetLanguageName)
+                                            if (res.isNotBlank()) {
+                                                translatedContent = res
+                                                showOriginal = false
+                                                android.widget.Toast.makeText(context, "Traduit en $targetLanguageName", android.widget.Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                android.widget.Toast.makeText(context, "Texte original conservé", android.widget.Toast.LENGTH_SHORT).show()
                                             }
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "Traduction temporairement indisponible", android.widget.Toast.LENGTH_SHORT).show()
+                                        } finally {
+                                            isTranslating = false
                                         }
-                                    } else {
-                                        showOriginal = false
                                     }
                                 } else {
-                                    showOriginal = true
+                                    showOriginal = false
                                 }
-                            }
-                    ) {
-                        Box(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isTranslating) {
-                                CircularProgressIndicator(modifier = Modifier.size(15.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
                             } else {
-                                Icon(
-                                    imageVector = Icons.Outlined.Translate,
-                                    contentDescription = "Traduire",
-                                    tint = if (!showOriginal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(17.dp)
-                                )
+                                showOriginal = true
+                            }
+                        },
+                        pressedScale = 0.88f
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (!showOriginal) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isTranslating) {
+                                    CircularProgressIndicator(modifier = Modifier.size(15.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Translate,
+                                        contentDescription = "Traduire",
+                                        tint = if (!showOriginal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
                             }
                         }
                     }

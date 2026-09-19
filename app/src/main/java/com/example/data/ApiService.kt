@@ -150,6 +150,7 @@ data class ActfileNetwork(
     val community_slug: String? = null,
     val community_name: String? = null,
     val community_icon_url: String? = null,
+    val community_is_verified: Boolean = false,
     val channel_id: String? = null,
     val channel_slug: String? = null,
     val channel_name: String? = null

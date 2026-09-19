@@ -339,7 +339,8 @@ class IddetRepository(
                             soundAudioUrl = parsedSound?.audioUrl,
                             soundCoverUrl = parsedSound?.coverUrl,
                             communityName = effectiveCommName,
-                            communityIconUrl = effectiveCommIcon
+                            communityIconUrl = effectiveCommIcon,
+                            communityIsVerified = net.community_is_verified || (effectiveCommSlug?.lowercase() in listOf("iddet", "mshop"))
                         )
                     )
                 }

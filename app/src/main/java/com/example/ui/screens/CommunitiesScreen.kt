@@ -34,7 +34,17 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.scale
 import com.example.data.Community
+import com.example.ui.components.BouncyButton
+import com.example.ui.components.VerificationBadge
 import com.example.data.getCategoryDefaultBanner
 import com.example.data.getCategoryDefaultIcon
 import com.example.ui.IddetViewModel
@@ -154,6 +164,14 @@ fun CommunitiesScreen(
             )
         },
         floatingActionButton = {
+            val fabInteractionSource = remember { MutableInteractionSource() }
+            val isFabPressed by fabInteractionSource.collectIsPressedAsState()
+            val fabScale by animateFloatAsState(
+                targetValue = if (isFabPressed) 0.92f else 1.0f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                label = "fab_scale"
+            )
+
             ExtendedFloatingActionButton(
                 onClick = { showCreateDialog = true },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
@@ -161,9 +179,11 @@ fun CommunitiesScreen(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = RoundedCornerShape(20.dp),
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                interactionSource = fabInteractionSource,
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = if (isFabPressed) 2.dp else 6.dp),
                 modifier = Modifier
                     .padding(16.dp)
+                    .scale(fabScale)
                     .testTag("create_community_fab")
             )
         }
@@ -678,14 +698,35 @@ fun FeaturedCommunityCard(
     onClick: () -> Unit,
     onJoinToggle: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else if (isHovered) 1.03f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "featured_card_scale"
+    )
+
+    val animatedElevation by animateDpAsState(
+        targetValue = if (isPressed) 1.dp else if (isHovered) 10.dp else 3.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "featured_card_elevation"
+    )
+
     Surface(
         modifier = Modifier
             .width(220.dp)
-            .clickable { onClick() },
+            .scale(animatedScale)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = onClick
+            ),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-        shadowElevation = 3.dp
+        shadowElevation = animatedElevation
     ) {
         Column {
             // Cover Header
@@ -765,13 +806,24 @@ fun FeaturedCommunityCard(
                     }
                 }
 
-                Text(
-                    text = community.name,
-                    fontWeight = FontWeight.ExtraBold,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = community.name,
+                        fontWeight = FontWeight.ExtraBold,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (community.isVerified || community.slug.lowercase() in listOf("iddet", "mshop")) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        VerificationBadge(
+                            userName = community.name,
+                            isVerified = true,
+                            isCommunity = true,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
 
                 Text(
                     text = "c/${community.slug}",
@@ -793,21 +845,26 @@ fun FeaturedCommunityCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Button(
+                    BouncyButton(
                         onClick = onJoinToggle,
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (community.isMember) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
-                            contentColor = if (community.isMember) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                        modifier = Modifier.height(28.dp)
+                        pressedScale = 0.90f
                     ) {
-                        Text(
-                            if (community.isMember) "Membre" else "+ Rejoindre",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Button(
+                            onClick = onJoinToggle,
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (community.isMember) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
+                                contentColor = if (community.isMember) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
+                            ),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text(
+                                if (community.isMember) "Membre" else "+ Rejoindre",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -821,15 +878,36 @@ fun CommunityCardItem(
     onJoinToggle: () -> Unit,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else if (isHovered) 1.02f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "community_card_scale"
+    )
+
+    val animatedElevation by animateDpAsState(
+        targetValue = if (isPressed) 1.dp else if (isHovered) 8.dp else 2.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "community_card_elevation"
+    )
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .scale(animatedScale)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = onClick
+            )
             .testTag("community_card_${community.slug}"),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-        shadowElevation = 2.dp
+        shadowElevation = animatedElevation
     ) {
         Column {
             // Cover Photo Banner
@@ -901,6 +979,15 @@ fun CommunityCardItem(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        if (community.isVerified || community.slug.lowercase() in listOf("iddet", "mshop")) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            VerificationBadge(
+                                userName = community.name,
+                                isVerified = true,
+                                isCommunity = true,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
                         if (community.isPrivate) {
                             Spacer(modifier = Modifier.width(4.dp))
                             Icon(
@@ -971,21 +1058,26 @@ fun CommunityCardItem(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                Button(
+                BouncyButton(
                     onClick = onJoinToggle,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (community.isMember) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
-                        contentColor = if (community.isMember) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
-                    ),
-                    shape = RoundedCornerShape(20.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                    modifier = Modifier.testTag("join_toggle_button_${community.slug}")
+                    pressedScale = 0.90f
                 ) {
-                    Text(
-                        text = if (community.isMember) "Quitter" else "Rejoindre",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Button(
+                        onClick = onJoinToggle,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (community.isMember) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
+                            contentColor = if (community.isMember) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("join_toggle_button_${community.slug}")
+                    ) {
+                        Text(
+                            text = if (community.isMember) "Quitter" else "Rejoindre",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
