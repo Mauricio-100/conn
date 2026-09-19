@@ -64,6 +64,7 @@ fun VoiceMessagePlayer(
     DisposableEffect(content) {
         onDispose {
             com.example.utils.RealAudioPlayer.stop()
+            com.example.utils.VoiceSynthPlayer.stop()
         }
     }
 
@@ -150,9 +151,16 @@ fun VoiceMessagePlayer(
                                         progress = 0f
                                     }
                                     override fun onError(error: String) {
-                                        Log.w("VoiceMessagePlayer", "RealAudioPlayer playback issue: $error")
-                                        isPlaying = false
-                                        progress = 0f
+                                        Log.w("VoiceMessagePlayer", "RealAudioPlayer playback issue: $error, falling back to VoiceSynthPlayer")
+                                        com.example.utils.VoiceSynthPlayer.play(
+                                            amplitudes = amplitudes,
+                                            durationSeconds = voiceData.durationSeconds.coerceAtLeast(2),
+                                            onProgress = { p -> progress = p },
+                                            onFinished = {
+                                                isPlaying = false
+                                                progress = 0f
+                                            }
+                                        )
                                     }
                                 },
                                 context = context
@@ -524,16 +532,18 @@ fun VoiceRecorderUI(
                         } else {
                             recordAmplitudes.toList()
                         }
-                        val ampsString = finalAmps.map { String.format("%.2f", it) }.joinToString(",")
+                        val ampsString = finalAmps.map { String.format(java.util.Locale.US, "%.2f", it) }.joinToString(",")
                         val finalDuration = if (durationSeconds == 0) 2 else durationSeconds
-                        val voiceMarkdown = "[Voice Message](voice://duration=$finalDuration&amplitudes=$ampsString)"
+                        val audioPath = file?.absolutePath ?: ""
+                        val encodedPath = try { java.net.URLEncoder.encode(audioPath, "UTF-8") } catch (e: Exception) { audioPath }
+                        val voiceMarkdown = "[Voice Message](voice://url=$encodedPath&duration=$finalDuration&amplitudes=$ampsString)"
 
                         if (onSendVoiceFile != null && file != null && file.exists() && file.length() > 0) {
                             onSendVoiceFile(file)
-                        } else if (onSendVoice != null) {
-                            onSendVoice(voiceMarkdown)
                         } else if (onSendVoiceFile != null && file != null) {
                             onSendVoiceFile(file)
+                        } else if (onSendVoice != null) {
+                            onSendVoice(voiceMarkdown)
                         } else {
                             onCancel()
                         }
@@ -695,12 +705,12 @@ fun VoiceRecorderUI(
                         val encodedPath = java.net.URLEncoder.encode(audioPath, "UTF-8")
                         val voiceMarkdown = "[Voice Message](voice://url=$encodedPath&duration=$finalDuration&amplitudes=$ampsString)"
 
-                        if (onSendVoice != null) {
-                            onSendVoice(voiceMarkdown)
-                        } else if (onSendVoiceFile != null && file != null && file.exists() && file.length() > 0) {
+                        if (onSendVoiceFile != null && file != null && file.exists() && file.length() > 0) {
                             onSendVoiceFile(file)
                         } else if (onSendVoiceFile != null && file != null) {
                             onSendVoiceFile(file)
+                        } else if (onSendVoice != null) {
+                            onSendVoice(voiceMarkdown)
                         } else {
                             onCancel()
                         }
@@ -726,7 +736,17 @@ fun VoiceRecorderUI(
  */
 fun isVoiceMessage(content: String): Boolean {
     val trimmed = content.trim()
-    return trimmed.startsWith("[Voice Message]") || trimmed.startsWith("voice://") || trimmed.contains("voice://")
+    if (trimmed.isEmpty()) return false
+    return trimmed.startsWith("[Voice Message]") ||
+            trimmed.startsWith("voice://") ||
+            trimmed.contains("voice://") ||
+            trimmed.startsWith("data:audio") ||
+            trimmed.startsWith("data:video/mp4") ||
+            trimmed.contains("/voice_messages/") ||
+            (trimmed.contains("voice_") && trimmed.endsWith(".m4a")) ||
+            (trimmed.startsWith("http") && (trimmed.endsWith(".m4a") || trimmed.endsWith(".mp3") || trimmed.endsWith(".wav") || trimmed.endsWith(".aac") || trimmed.endsWith(".3gp") || trimmed.endsWith(".ogg"))) ||
+            (trimmed.startsWith("/") && (trimmed.endsWith(".m4a") || trimmed.endsWith(".wav") || trimmed.endsWith(".mp3") || trimmed.contains("voice_notes") || trimmed.contains("voice_record"))) ||
+            com.example.utils.AudioMessageHelper.isAudioContent(trimmed)
 }
 
 data class VoiceMessageData(
@@ -736,30 +756,92 @@ data class VoiceMessageData(
     val transcription: String? = null
 )
 
+/**
+ * Parses flexible amplitude representations, including European comma decimals (0,59,0,55)
+ * and standard dot decimals (0.59,0.55).
+ */
+fun parseAmplitudesFlexible(ampsString: String): List<Float> {
+    if (ampsString.isBlank()) return emptyList()
+    
+    // First try standard float parse
+    val direct = ampsString.split(",").mapNotNull { it.trim().toFloatOrNull() }
+    if (direct.isNotEmpty() && direct.all { it <= 1.0f }) {
+        return direct
+    }
+    
+    // Check if tokens were paired due to comma decimal format e.g. ["0", "59", "0", "55"]
+    val rawTokens = ampsString.split(",").map { it.trim() }
+    if (rawTokens.size >= 2 && rawTokens.size % 2 == 0) {
+        val paired = mutableListOf<Float>()
+        for (i in 0 until rawTokens.size step 2) {
+            val floatVal = "${rawTokens[i]}.${rawTokens[i + 1]}".toFloatOrNull()
+            if (floatVal != null) {
+                paired.add(floatVal.coerceIn(0.05f, 1.0f))
+            }
+        }
+        if (paired.isNotEmpty()) return paired
+    }
+    
+    return direct.map { (it / 100f).coerceIn(0.05f, 1.0f) }
+}
+
+private fun generateWaveformFromHash(seed: String): List<Float> {
+    val hash = kotlin.math.abs(seed.hashCode())
+    return List(24) { idx ->
+        val wave = 0.25f + 0.65f * kotlin.math.abs(kotlin.math.sin((idx + hash % 11).toFloat() * 0.55f))
+        wave.coerceIn(0.15f, 0.95f)
+    }
+}
+
 fun parseVoiceMessage(content: String): VoiceMessageData? {
-    if (!isVoiceMessage(content)) return null
+    val trimmed = content.trim()
+    if (trimmed.isEmpty()) return null
+    
     return try {
-        val uri = if (content.contains("voice://")) {
-            content.substringAfter("voice://").removeSuffix(")")
+        if (trimmed.contains("voice://")) {
+            val uri = if (trimmed.contains("voice://")) {
+                trimmed.substringAfter("voice://").removeSuffix(")")
+            } else {
+                trimmed.removePrefix("voice://")
+            }
+            val params = uri.split("&").associate {
+                val parts = it.split("=")
+                parts[0] to parts.getOrNull(1)
+            }
+            val duration = params["duration"]?.toIntOrNull() ?: 5
+            val ampsString = params["amplitudes"] ?: ""
+            val amplitudes = parseAmplitudesFlexible(ampsString)
+            val audioUrl = params["url"]?.let { 
+                try { java.net.URLDecoder.decode(it, "UTF-8") } catch (e: Exception) { it }
+            }
+            val transcription = params["transcription"]?.let { 
+                try { java.net.URLDecoder.decode(it, "UTF-8") } catch (e: Exception) { it }
+            }
+            VoiceMessageData(
+                durationSeconds = duration,
+                amplitudes = if (amplitudes.isEmpty()) generateWaveformFromHash(trimmed) else amplitudes,
+                audioUrl = audioUrl,
+                transcription = transcription
+            )
         } else {
-            content.removePrefix("voice://")
+            // Direct audio URL (GitHub raw, Cloudinary, etc.) or local file path or base64 data
+            val audioUrl = when {
+                trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
+                trimmed.startsWith("/") -> trimmed
+                trimmed.startsWith("data:audio") || trimmed.contains("base64,") || trimmed.length > 80 -> trimmed
+                else -> null
+            }
+            val hash = (audioUrl ?: trimmed).hashCode()
+            val pseudoDur = 4 + (kotlin.math.abs(hash) % 12)
+            val amps = generateWaveformFromHash(trimmed)
+            VoiceMessageData(
+                durationSeconds = pseudoDur,
+                amplitudes = amps,
+                audioUrl = audioUrl ?: trimmed,
+                transcription = null
+            )
         }
-        val params = uri.split("&").associate {
-            val parts = it.split("=")
-            parts[0] to parts.getOrNull(1)
-        }
-        val duration = params["duration"]?.toIntOrNull() ?: 5
-        val ampsString = params["amplitudes"] ?: ""
-        val amplitudes = ampsString.split(",").mapNotNull { it.toFloatOrNull() }
-        val audioUrl = params["url"]?.let { java.net.URLDecoder.decode(it, "UTF-8") }
-        val transcription = params["transcription"]?.let { java.net.URLDecoder.decode(it, "UTF-8") }
-        VoiceMessageData(
-            durationSeconds = duration,
-            amplitudes = if (amplitudes.isEmpty()) List(20) { 0.4f } else amplitudes,
-            audioUrl = audioUrl,
-            transcription = transcription
-        )
     } catch (e: Exception) {
-        VoiceMessageData(5, List(20) { 0.4f }, null, null)
+        VoiceMessageData(5, generateWaveformFromHash(trimmed), trimmed, null)
     }
 }

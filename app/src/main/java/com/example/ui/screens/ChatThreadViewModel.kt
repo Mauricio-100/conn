@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.content.Context
 import android.net.Uri
+import android.util.Base64
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -271,6 +272,30 @@ class ChatThreadViewModel(
                         }
                     }
 
+                    is WebSocketEvent.MessageSent -> {
+                        val currentUserId = repository.currentUser.value?.id ?: ""
+                        val msgType = if (event.msgType.isNotBlank()) event.msgType else "text"
+                        val msg = Message(
+                            id = event.messageId,
+                            senderId = currentUserId,
+                            receiverId = partnerUserId,
+                            content = event.content,
+                            type = msgType,
+                            isRead = false,
+                            createdAt = System.currentTimeMillis()
+                        )
+                        repository.insertMessageLocal(msg)
+                        repository.updateConversationLastMessage(
+                            otherUserId = partnerUserId,
+                            content = if (com.example.utils.AudioMessageHelper.isAudioContent(event.content, msgType)) "🎤 Message vocal" else event.content,
+                            type = msgType,
+                            isIncoming = false
+                        )
+                        _optimisticMessages.value = _optimisticMessages.value.filter {
+                            it.id != event.messageId && !(it.type == msgType && it.isSending)
+                        }
+                    }
+
                     is WebSocketEvent.MessageDeleted -> {
                         repository.deleteMessageLocal(event.messageId)
                         _optimisticMessages.value = _optimisticMessages.value.filter { it.id != event.messageId }
@@ -365,17 +390,68 @@ class ChatThreadViewModel(
         }
     }
 
+    fun sendVoiceFile(file: File) {
+        val currentUserId = repository.currentUser.value?.id ?: ""
+        val myUsername = repository.currentUser.value?.username ?: "Moi"
+        val tempId = "voice_" + UUID.randomUUID().toString()
+
+        val optimistic = ChatMessageUiModel(
+            id = tempId,
+            senderId = currentUserId,
+            receiverId = partnerUserId,
+            content = file.absolutePath,
+            type = "audio",
+            isMine = true,
+            isRead = false,
+            createdAt = System.currentTimeMillis(),
+            isSending = true
+        )
+        _optimisticMessages.value = _optimisticMessages.value + optimistic
+
+        viewModelScope.launch(Dispatchers.IO) {
+            var sent = false
+            try {
+                if (file.exists() && file.length() > 0) {
+                    val bytes = file.readBytes()
+                    val audioB64 = "data:audio/mp4;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    sent = socketClient.sendVoiceMessage(partnerUserId, audioB64, myUsername)
+                    if (!sent) {
+                        repository.sendMessage(partnerUserId, audioB64, "audio")
+                        sent = true
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ChatThreadVM", "Error sending voice file", e)
+            }
+
+            repository.updateConversationLastMessage(
+                otherUserId = partnerUserId,
+                content = "🎤 Message vocal",
+                type = "audio",
+                isIncoming = false
+            )
+
+            if (sent) {
+                _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }
+            } else {
+                _optimisticMessages.value = _optimisticMessages.value.map {
+                    if (it.id == tempId) it.copy(isSending = false, isFailed = false) else it
+                }
+            }
+        }
+    }
+
     fun sendVoiceMessage(audioB64: String) {
         val currentUserId = repository.currentUser.value?.id ?: ""
         val myUsername = repository.currentUser.value?.username ?: "Moi"
-        val tempId = UUID.randomUUID().toString()
+        val tempId = "voice_" + UUID.randomUUID().toString()
 
         val optimistic = ChatMessageUiModel(
             id = tempId,
             senderId = currentUserId,
             receiverId = partnerUserId,
             content = audioB64,
-            type = "voice",
+            type = "audio",
             isMine = true,
             isRead = false,
             createdAt = System.currentTimeMillis(),
@@ -391,18 +467,21 @@ class ChatThreadViewModel(
                 e.printStackTrace()
             }
 
-            try {
-                repository.sendMessage(partnerUserId, audioB64, "voice")
-                repository.updateConversationLastMessage(
-                    otherUserId = partnerUserId,
-                    content = "[Voice Message](voice://duration=5&amplitudes=0.5)",
-                    type = "voice",
-                    isIncoming = false
-                )
-                sent = true
-            } catch (e: Exception) {
-                e.printStackTrace()
+            if (!sent) {
+                try {
+                    repository.sendMessage(partnerUserId, audioB64, "audio")
+                    sent = true
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
+
+            repository.updateConversationLastMessage(
+                otherUserId = partnerUserId,
+                content = "🎤 Message vocal",
+                type = "audio",
+                isIncoming = false
+            )
 
             if (sent) {
                 _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }

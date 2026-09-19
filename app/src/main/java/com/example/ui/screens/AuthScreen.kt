@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,6 +56,8 @@ val ZODIAC_SIGNS = listOf(
 @Composable
 fun AuthScreen(viewModel: IddetViewModel) {
     var mode by remember { mutableStateOf(AuthMode.INITIAL) }
+    val currentTargetLang by viewModel.targetLanguage.collectAsState()
+    var languageMenuExpanded by remember { mutableStateOf(false) }
     
     // Login / Credentials
     var username by remember { mutableStateOf("") }
@@ -81,19 +84,60 @@ fun AuthScreen(viewModel: IddetViewModel) {
             .padding(24.dp)
             .imePadding()
     ) {
-        if (mode != AuthMode.INITIAL) {
-            IconButton(
-                onClick = {
-                    mode = when (mode) {
-                        AuthMode.LOGIN, AuthMode.SIGNUP_CREDENTIALS -> AuthMode.INITIAL
-                        AuthMode.SIGNUP_PERSONAL -> AuthMode.SIGNUP_CREDENTIALS
-                        AuthMode.SIGNUP_IDENTITY -> AuthMode.SIGNUP_PERSONAL
-                        AuthMode.SIGNUP_AVATAR -> AuthMode.SIGNUP_IDENTITY
-                        else -> AuthMode.INITIAL
+        // Top Bar with Back Button & Language Selector
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (mode != AuthMode.INITIAL) {
+                IconButton(
+                    onClick = {
+                        mode = when (mode) {
+                            AuthMode.LOGIN, AuthMode.SIGNUP_CREDENTIALS -> AuthMode.INITIAL
+                            AuthMode.SIGNUP_PERSONAL -> AuthMode.SIGNUP_CREDENTIALS
+                            AuthMode.SIGNUP_IDENTITY -> AuthMode.SIGNUP_PERSONAL
+                            AuthMode.SIGNUP_AVATAR -> AuthMode.SIGNUP_IDENTITY
+                            else -> AuthMode.INITIAL
+                        }
+                    }
+                ) {
+                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                }
+            } else {
+                Spacer(modifier = Modifier.width(48.dp))
+            }
+
+            // Language Selector Button & Dropdown
+            Box {
+                AssistChip(
+                    onClick = { languageMenuExpanded = true },
+                    label = { Text(currentTargetLang, fontWeight = FontWeight.Bold) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = "Language",
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                )
+                DropdownMenu(
+                    expanded = languageMenuExpanded,
+                    onDismissRequest = { languageMenuExpanded = false },
+                    modifier = Modifier.heightIn(max = 280.dp)
+                ) {
+                    com.example.utils.TranslationHelper.supportedLanguages.forEach { lang ->
+                        DropdownMenuItem(
+                            text = { Text(lang, fontWeight = if (lang == currentTargetLang) FontWeight.Bold else FontWeight.Normal) },
+                            onClick = {
+                                viewModel.setTargetLanguage(lang)
+                                languageMenuExpanded = false
+                            }
+                        )
                     }
                 }
-            ) {
-                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
             }
         }
 

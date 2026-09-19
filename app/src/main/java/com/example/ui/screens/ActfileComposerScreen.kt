@@ -51,6 +51,8 @@ import com.example.ui.components.APP_CATEGORIES
 import com.example.ui.components.CategoryInfo
 import com.example.ui.components.MarkdownActfile
 import com.example.utils.LocalAiManager
+import com.example.utils.MusicPlayerManager
+import com.example.utils.MusicTrack
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -174,7 +176,14 @@ val POPULAR_TAGS_SUGGESTIONS = listOf(
 fun ActfileComposerScreen(
     viewModel: IddetViewModel,
     onDismiss: () -> Unit,
-    onPublish: (String, String, String?, Boolean) -> Unit,
+    onPublish: (
+        content: String,
+        tags: String,
+        category: String?,
+        postAsIddet: Boolean,
+        attachedSound: MusicTrack?,
+        selectedCommunity: Community?
+    ) -> Unit,
     modifier: Modifier = Modifier,
     initialCommunity: Community? = null,
     initialCategory: String? = null
@@ -189,6 +198,19 @@ fun ActfileComposerScreen(
     var postAsIddet by remember { mutableStateOf(false) }
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     var tags by remember { mutableStateOf("") }
+
+    // Attached Sound integration
+    val attachedSoundFromVm by viewModel.attachedComposerSound.collectAsStateWithLifecycle()
+    var attachedSound by remember(attachedSoundFromVm) { mutableStateOf<MusicTrack?>(attachedSoundFromVm) }
+    var showSoundPickerDialog by remember { mutableStateOf(false) }
+    val availableSounds by viewModel.sounds.collectAsStateWithLifecycle()
+    val isSoundsLoading by viewModel.isSoundsLoading.collectAsStateWithLifecycle()
+
+    LaunchedEffect(showSoundPickerDialog) {
+        if (showSoundPickerDialog && availableSounds.isEmpty()) {
+            viewModel.loadSounds()
+        }
+    }
 
     LaunchedEffect(initialTextFromVm) {
         if (!initialTextFromVm.isNullOrBlank()) {
@@ -424,7 +446,8 @@ fun ActfileComposerScreen(
                                             val finalContent = if (selectedCommunity != null) {
                                                 "$textContent\n\n@c/${selectedCommunity!!.slug}"
                                             } else textContent
-                                            onPublish(finalContent, tags, selectedCategory, postAsIddet)
+                                            viewModel.setAttachedComposerSound(null)
+                                            onPublish(finalContent, tags, selectedCategory, postAsIddet, attachedSound, selectedCommunity)
                                         } else {
                                             safetyError = "⚠️ Ce contenu enfreint les règles de la communauté Iddet."
                                         }
@@ -538,6 +561,96 @@ fun ActfileComposerScreen(
                                             fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    // Attached Sound banner in composer
+                    if (attachedSound != null) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val playerState by MusicPlayerManager.state.collectAsState()
+                                val isPlayingThis = playerState.isPlaying && (
+                                    playerState.currentTrack?.id == attachedSound?.id ||
+                                    playerState.currentTrack?.title == attachedSound?.title
+                                )
+
+                                FilledIconButton(
+                                    onClick = {
+                                        val sound = attachedSound ?: return@FilledIconButton
+                                        if (isPlayingThis) {
+                                            MusicPlayerManager.togglePlayPause()
+                                        } else {
+                                            MusicPlayerManager.playTrack(sound)
+                                        }
+                                    },
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    ),
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isPlayingThis) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = if (isPlayingThis) "Pause" else "Lancer le son",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.MusicNote,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = attachedSound?.title ?: "Son",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "par @${attachedSound?.artist ?: "créateur"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        attachedSound = null
+                                        viewModel.setAttachedComposerSound(null)
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Retirer le son",
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
                         }
@@ -940,6 +1053,18 @@ fun ActfileComposerScreen(
                                         Icon(Icons.Default.Image, contentDescription = "Image ou Vidéo", modifier = Modifier.size(18.dp))
                                     }
                                 }
+                                // Sound Attachment
+                                IconButton(
+                                    onClick = { showSoundPickerDialog = true },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MusicNote,
+                                        contentDescription = "Ajouter un son",
+                                        tint = if (attachedSound != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                                 // Divider
                                 IconButton(onClick = { insertSnippet("\n---\n") }, modifier = Modifier.size(36.dp)) {
                                     Icon(Icons.Default.HorizontalRule, contentDescription = "Séparateur", modifier = Modifier.size(18.dp))
@@ -1203,6 +1328,21 @@ fun ActfileComposerScreen(
                             insertSnippet(imgMarkdown)
                             showInsertImageDialog = false
                         }
+                    )
+                }
+
+                // Sound Picker Dialog
+                if (showSoundPickerDialog) {
+                    SoundPickerModal(
+                        availableSounds = availableSounds,
+                        isLoading = isSoundsLoading,
+                        onDismiss = { showSoundPickerDialog = false },
+                        onSelectSound = { sound ->
+                            attachedSound = sound
+                            viewModel.setAttachedComposerSound(sound)
+                            showSoundPickerDialog = false
+                        },
+                        onRefresh = { viewModel.loadSounds() }
                     )
                 }
 
@@ -1528,3 +1668,178 @@ fun InsertImageModal(
         }
     )
 }
+
+@Composable
+fun SoundPickerModal(
+    availableSounds: List<MusicTrack>,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onSelectSound: (MusicTrack) -> Unit,
+    onRefresh: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredSounds = remember(availableSounds, searchQuery) {
+        if (searchQuery.isBlank()) availableSounds
+        else availableSounds.filter {
+            it.title.contains(searchQuery, ignoreCase = true) ||
+            it.artist.contains(searchQuery, ignoreCase = true) ||
+            it.genre.contains(searchQuery, ignoreCase = true)
+        }
+    }
+    val playerState by MusicPlayerManager.state.collectAsState()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 600.dp)
+            .testTag("sound_picker_modal"),
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Ajouter un son",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Fermer")
+                }
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Rechercher un son ou artiste...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(18.dp)) {
+                                Icon(Icons.Default.Clear, contentDescription = null)
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (isLoading && availableSounds.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    }
+                } else if (filteredSounds.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "Aucun son trouvé",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = onRefresh) {
+                                Text("Recharger les sons")
+                            }
+                        }
+                    }
+                } else {
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filteredSounds, key = { it.id }) { track ->
+                            val isPlaying = playerState.isPlaying && (
+                                playerState.currentTrack?.id == track.id ||
+                                playerState.currentTrack?.title == track.title
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isPlaying) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelectSound(track) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    FilledIconButton(
+                                        onClick = {
+                                            if (isPlaying) MusicPlayerManager.togglePlayPause()
+                                            else MusicPlayerManager.playTrack(track)
+                                        },
+                                        colors = IconButtonDefaults.filledIconButtonColors(
+                                            containerColor = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (isPlaying) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                            contentDescription = if (isPlaying) "Pause" else "Lire",
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = track.title,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "@${track.artist}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Button(
+                                        onClick = { onSelectSound(track) },
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Text("Choisir", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {}
+    )
+}
+

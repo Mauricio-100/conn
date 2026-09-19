@@ -147,6 +147,9 @@ data class ActfileNetwork(
     val liked: Boolean = false,
     val category: String? = null,
     val community_id: String? = null,
+    val community_slug: String? = null,
+    val community_name: String? = null,
+    val community_icon_url: String? = null,
     val channel_id: String? = null,
     val channel_slug: String? = null,
     val channel_name: String? = null

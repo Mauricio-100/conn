@@ -56,6 +56,9 @@ interface UserDao {
         ORDER BY last_msgs.lastMessageTime DESC
     """)
     fun getChatPartners(userId: String): Flow<List<User>>
+
+    @Query("DELETE FROM users WHERE id = :id OR username = :username")
+    suspend fun deleteUser(id: String, username: String)
 }
 
 @Dao
@@ -67,28 +70,31 @@ interface ActfileDao {
     suspend fun insertActfiles(actfiles: List<Actfile>)
 
     @Query("""
-        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
+        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
-        WHERE (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
+        WHERE (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun getAllActfilesWithUser(): Flow<List<ActfileWithUser>>
 
     @Query("""
-        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
+        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
-        WHERE (a.userId = :userId OR u.username = :userId OR u.id = :userId) AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
+        WHERE (a.userId = :userId OR u.username = :userId OR u.id = :userId) AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun getActfilesByUser(userId: String): Flow<List<ActfileWithUser>>
 
     @Query("""
-        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
+        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
-        WHERE (a.content LIKE '%' || :query || '%' OR a.tags LIKE '%' || :query || '%') AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
+        WHERE (a.content LIKE '%' || :query || '%' OR a.tags LIKE '%' || :query || '%') AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun searchActfiles(query: String): Flow<List<ActfileWithUser>>
@@ -112,25 +118,28 @@ interface ActfileDao {
     suspend fun updateCommentCount(id: String, count: Int)
 
     @Query("""
-        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
+        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
-        WHERE (a.communityId = :communityId OR a.communityId = :slug OR a.channelSlug = :slug OR a.content LIKE '%@c/' || :slug || '%') AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
+        WHERE (a.communityId = :communityId OR a.communityId = :slug OR a.channelSlug = :slug OR a.content LIKE '%@c/' || :slug || '%') AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun getCommunityActfiles(communityId: String, slug: String): Flow<List<ActfileWithUser>>
 
     @Query("""
-        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
+        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
-        WHERE (a.communityId = :communityId OR a.communityId = :slug OR a.channelSlug = :slug OR a.content LIKE '%@c/' || :slug || '%') AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
+        WHERE (a.communityId = :communityId OR a.communityId = :slug OR a.channelSlug = :slug OR a.content LIKE '%@c/' || :slug || '%') AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     suspend fun getCommunityActfilesList(communityId: String, slug: String): List<ActfileWithUser>
 
     @Query("""
-        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
+        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         WHERE a.id = :actfileId
@@ -139,20 +148,22 @@ interface ActfileDao {
     fun getActfileById(actfileId: String): Flow<ActfileWithUser?>
 
     @Query("""
-        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
+        SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
-        WHERE a.isLikedByMe = 1 AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
+        WHERE a.isLikedByMe = 1 AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun getLikedActfiles(): Flow<List<ActfileWithUser>>
 
     @Query("""
-        SELECT DISTINCT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName 
+        SELECT DISTINCT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         INNER JOIN actfile_comments c ON a.id = c.actfileId
-        WHERE (c.userId = :userId OR u.username = :userId) AND (a.channelId IS NULL OR a.channelId = '') AND (a.content NOT LIKE '%@#%')
+        WHERE (c.userId = :userId OR u.username = :userId) AND (a.content NOT LIKE '%@#%')
         ORDER BY a.createdAt DESC
     """)
     fun getCommentedActfiles(userId: String): Flow<List<ActfileWithUser>>

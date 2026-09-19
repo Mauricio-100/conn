@@ -85,6 +85,20 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
         userActfiles.filter { extractFirstMediaUrl(it.content) != null }
     }
 
+    // Wings (sound and video) posts
+    val wingsActfiles = remember(userActfiles) {
+        userActfiles.filter { actfile ->
+            !actfile.soundAudioUrl.isNullOrBlank() ||
+            !actfile.soundId.isNullOrBlank() ||
+            actfile.content.contains(".mp4", ignoreCase = true) ||
+            actfile.content.contains(".webm", ignoreCase = true) ||
+            actfile.content.contains("<video", ignoreCase = true) ||
+            actfile.content.contains("youtube", ignoreCase = true) ||
+            actfile.content.contains("vimeo", ignoreCase = true) ||
+            actfile.category in listOf("wings", "musique", "multimedia", "sound", "video")
+        }
+    }
+
     val micCallLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -161,18 +175,19 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                 actions = {
                     IconButton(
                         onClick = {
-                            val sendIntent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                putExtra(
-                                    Intent.EXTRA_TEXT,
-                                    "Découvrez le profil de @${profileUser.username} sur IDDET : https://iddet.app/u/${profileUser.username}"
-                                )
-                                type = "text/plain"
-                            }
-                            context.startActivity(Intent.createChooser(sendIntent, "Partager le profil"))
+                            com.example.utils.ShareHelper.shareUserProfile(
+                                context = context,
+                                username = profileUser.username,
+                                displayName = profileUser.username,
+                                bio = profileUser.bio,
+                                isVerified = profileUser.isVerified,
+                                followersCount = profileUser.followersCount,
+                                videosCount = userActfiles.count { it.content.contains(".mp4") },
+                                soundsCount = userActfiles.count { it.content.contains(".mp3") || it.content.contains(".m4a") || it.content.contains("voice://") }
+                            )
                         }
                     ) {
-                        Icon(Icons.Outlined.Share, contentDescription = "Partager")
+                        Icon(Icons.Outlined.Share, contentDescription = "Partager le portfolio")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -530,6 +545,30 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+
+                                VerticalDivider(
+                                    modifier = Modifier.height(28.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
+
+                                // Total Views
+                                val totalViews = remember(userActfiles) { userActfiles.sumOf { it.viewsCount } }
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = com.example.utils.FormatUtils.formatCount(totalViews),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFF0284C7)
+                                    )
+                                    Text(
+                                        text = "Vues",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
 
@@ -634,28 +673,35 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
 
                         // Tab Selector
                         Spacer(modifier = Modifier.height(18.dp))
-                        SecondaryTabRow(
+                        ScrollableTabRow(
                             selectedTabIndex = selectedTab,
                             containerColor = MaterialTheme.colorScheme.background,
                             contentColor = MaterialTheme.colorScheme.primary,
+                            edgePadding = 0.dp,
                             divider = {}
                         ) {
                             Tab(
                                 selected = selectedTab == 0,
                                 onClick = { selectedTab = 0 },
-                                text = { Text("Publications", fontWeight = FontWeight.Bold) },
+                                text = { Text("Publications", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
                                 icon = { Icon(Icons.Outlined.Feed, contentDescription = "Publications", modifier = Modifier.size(18.dp)) }
                             )
                             Tab(
                                 selected = selectedTab == 1,
                                 onClick = { selectedTab = 1 },
-                                text = { Text("Médias", fontWeight = FontWeight.Bold) },
+                                text = { Text("Médias", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
                                 icon = { Icon(Icons.Outlined.GridOn, contentDescription = "Médias", modifier = Modifier.size(18.dp)) }
                             )
                             Tab(
                                 selected = selectedTab == 2,
                                 onClick = { selectedTab = 2 },
-                                text = { Text("Niveau", fontWeight = FontWeight.Bold) },
+                                text = { Text("Wings 🎵", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                                icon = { Icon(Icons.Outlined.GraphicEq, contentDescription = "Wings", modifier = Modifier.size(18.dp)) }
+                            )
+                            Tab(
+                                selected = selectedTab == 3,
+                                onClick = { selectedTab = 3 },
+                                text = { Text("Niveau", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
                                 icon = { Icon(Icons.Outlined.MilitaryTech, contentDescription = "Niveau", modifier = Modifier.size(18.dp)) }
                             )
                         }
@@ -838,8 +884,69 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                     }
                 }
 
-                // Tab 2: Gamified Level & Badges
+                // Tab 2: Wings (Sounds & Vidéos)
                 if (selectedTab == 2) {
+                    if (wingsActfiles.isEmpty()) {
+                        item(key = "empty_wings") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 48.dp, horizontal = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Outlined.GraphicEq,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(52.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Aucun Wings (Sound / Vidéo) publié",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Les publications contenant des sons, musiques ou vidéos de cet utilisateur apparaîtront ici.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        items(wingsActfiles, key = { "wing_${it.id}" }) { actfile ->
+                            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                                ActfileCard(
+                                    actfile = actfile,
+                                    onLike = { viewModel.likeActfile(it) },
+                                    onView = { viewModel.incrementView(it) },
+                                    targetLanguageName = targetLanguage,
+                                    isAiReady = aiState == com.example.utils.AiModelState.READY,
+                                    onLinkClick = { url ->
+                                        val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                        navController.navigate("browser/$encodedUrl")
+                                    },
+                                    onUserClick = {},
+                                    onComment = { navController.navigate("discussion/$it") },
+                                    onDelete = { viewModel.deleteActfile(it) },
+                                    onMentionClick = { username ->
+                                        scope.launch {
+                                            val u = viewModel.getUserByUsername(username)
+                                            if (u != null) {
+                                                navController.navigate("profile/${u.id}")
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Tab 3: Gamified Level & Badges
+                if (selectedTab == 3) {
                     item {
                         Column(
                             modifier = Modifier

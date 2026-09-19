@@ -350,165 +350,6 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                     )
                 }
 
-                // Section Sujets Tendance (Tech & IA via Recherche Google pour la communauté Markdown)
-                if (searchQuery.isBlank()) {
-                    item(key = "trending_topics_section") {
-                        TrendingTopicsSection(
-                            topics = trendingTopics,
-                            isLoading = isTrendingLoading,
-                            selectedCategory = selectedTrendingCategory,
-                            onSelectCategory = { category ->
-                                viewModel.selectTrendingCategory(category)
-                            },
-                            onRefresh = {
-                                viewModel.refreshTrendingTopics()
-                            },
-                            onOpenArticle = { url ->
-                                val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
-                                navController.navigate("browser/$encodedUrl")
-                            },
-                            onDiscussInPost = { topic ->
-                                val snippetText = if (!topic.snippet.isNullOrBlank()) "> ${topic.snippet.replace("\n", " ").trim()}\n" else ""
-                                val tagsFormatted = topic.tags.joinToString(" ") { if (it.startsWith("#")) it else "#$it" }
-                                val debateDocument = """
-                                    |> [!DEBATE]
-                                    |> 🔍 **sujet à débattre** • source première google search
-                                    |> [${topic.title}](${topic.link})
-                                    |> *source : ${topic.source}*
-                                    $snippetText
-                                    
-                                    Donnez votre point de vue et lancez le débat ici...
-                                    
-                                    $tagsFormatted
-                                """.trimMargin().trim()
-                                viewModel.setComposerInitialContent(debateDocument)
-                                viewModel.setShowComposer(true)
-                            },
-                            onOpenGoogleNewsHub = {
-                                navController.navigate("google_news")
-                            }
-                        )
-                    }
-                }
-
-                if (recommendedUsers.isNotEmpty() && (feedTab == 0 || activeActfiles.isEmpty())) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = if (feedTab == 1) "Abonnez-vous pour enrichir votre fil !" else "Comptes suggérés à suivre",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "Créateurs et personnalités actives sur Iddet",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(recommendedUsers, key = { it.id }) { user ->
-                                val isFollowingUser by viewModel.isFollowing(user.id).collectAsStateWithLifecycle(initialValue = false)
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier
-                                        .background(
-                                            MaterialTheme.colorScheme.surface,
-                                            RoundedCornerShape(16.dp)
-                                        )
-                                        .border(
-                                            width = 1.dp,
-                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                                            shape = RoundedCornerShape(16.dp)
-                                        )
-                                        .padding(12.dp)
-                                        .width(118.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .clip(CircleShape)
-                                            .clickable { navController.navigate("profile/${user.id}") }
-                                            .background(MaterialTheme.colorScheme.primaryContainer),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (!user.avatarUrl.isNullOrBlank()) {
-                                            AsyncImage(
-                                                model = com.example.utils.UrlHelper.fixCloudinaryUrl(user.avatarUrl),
-                                                contentDescription = user.username,
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop
-                                            )
-                                        } else {
-                                            Text(
-                                                text = user.username.firstOrNull()?.toString()?.uppercase() ?: "?",
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 18.sp
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                        modifier = Modifier.clickable { navController.navigate("profile/${user.id}") }
-                                    ) {
-                                        Text(
-                                            text = user.username,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        com.example.ui.components.VerificationBadge(
-                                            userName = user.username,
-                                            isVerified = user.isVerified,
-                                            modifier = Modifier.size(12.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    CopyableUserId(
-                                        id = user.id,
-                                        isBot = user.username.contains("bot", ignoreCase = true),
-                                        fontSize = 9.sp,
-                                        iconSize = 9.dp
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Button(
-                                        onClick = {
-                                            if (isFollowingUser) viewModel.unfollowUser(user.id) else viewModel.followUser(user.id)
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isFollowingUser) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
-                                            contentColor = if (isFollowingUser) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        modifier = Modifier.fillMaxWidth().height(30.dp)
-                                    ) {
-                                        Text(
-                                            text = if (isFollowingUser) "Abonné" else "Suivre",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 itemsIndexed(activeActfiles, key = { _, actfile -> actfile.id }) { index, actfile ->
                     val isMine = actfile.userId == currentUser?.id || (currentUser?.username != null && actfile.username.equals(currentUser?.username, ignoreCase = true))
                     val targetLanguage by viewModel.targetLanguage.collectAsStateWithLifecycle()
@@ -627,8 +468,22 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
             ActfileComposerScreen(
                 viewModel = viewModel,
                 onDismiss = { viewModel.setShowComposer(false) },
-                onPublish = { content, tags, category, postAsIddet ->
-                    viewModel.publishActfile(content, tags, category, postAsIddet = postAsIddet)
+                onPublish = { content, tags, category, postAsIddet, attachedSound, selectedComm ->
+                    viewModel.publishActfile(
+                        content = content,
+                        tags = tags,
+                        category = category,
+                        communityId = selectedComm?.id ?: selectedComm?.slug,
+                        channelId = null,
+                        postAsIddet = postAsIddet,
+                        soundId = attachedSound?.id,
+                        soundTitle = attachedSound?.title,
+                        soundAuthor = attachedSound?.artist,
+                        soundAudioUrl = attachedSound?.audioUrl,
+                        soundCoverUrl = attachedSound?.albumArt,
+                        communityName = selectedComm?.name,
+                        communityIconUrl = selectedComm?.iconUrl
+                    )
                     viewModel.setShowComposer(false)
                 }
             )

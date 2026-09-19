@@ -34,7 +34,7 @@ object IddetAccountManager {
     )
 
     /**
-     * Constructs the official IDDET User model.
+     * Constructs the official IDDET User model with genuine metadata.
      */
     fun getOfficialIddetUser(): User {
         return User(
@@ -45,11 +45,11 @@ object IddetAccountManager {
             bio = IDDET_BIO,
             privacySetting = "Public",
             isVerified = true,
-            followingCount = 1,
-            followersCount = 125000,
+            followingCount = 0,
+            followersCount = 0,
             isGiant = true,
             level = 10,
-            xp = 99999,
+            xp = 0,
             badges = "IDDET,Official,Verified,Hub",
             email = "contact@iddet.system",
             preferredCategory = "Actu"
@@ -88,15 +88,14 @@ object IddetAccountManager {
 
     /**
      * Determines whether the given user is authorized to publish or modify content under IDDET.
+     * With simulated IDDET account removed, always returns false.
      */
     fun canPostAsIddet(user: User?): Boolean {
-        if (user == null) return false
-        return isUserDesignatedAdmin(user.username)
+        return false
     }
 
     /**
      * Checks if the IDDET account is in read-only mode for the current user.
-     * Public users cannot edit IDDET's profile or post under IDDET.
      */
     fun isReadOnlyForUser(currentUser: User?, targetUsername: String?): Boolean {
         if (!isOfficialIddetAccount(targetUsername)) return false
@@ -104,94 +103,19 @@ object IddetAccountManager {
     }
 
     /**
-     * Ensures that the IDDET official user and seed official hub actfiles exist in Room local database.
+     * Purges and removes the simulated IDDET official user from Room local database.
      */
-    suspend fun ensureIddetAccountExists(userDao: UserDao, actfileDao: ActfileDao) = withContext(Dispatchers.IO) {
+    suspend fun purgeSimulatedIddetAccount(userDao: UserDao, actfileDao: ActfileDao) = withContext(Dispatchers.IO) {
         try {
-            // 1. Ensure User entity in Room
-            val officialUser = getOfficialIddetUser()
-            userDao.insertUser(officialUser)
-
-            // Also insert alias lowercase if needed
-            val legacyUser = officialUser.copy(id = "iddet-official-id", username = "Iddet")
-            userDao.insertUser(legacyUser)
-
-            // 2. Ensure initial official announcements from IDDET exist
-            val officialPosts = listOf(
-                Actfile(
-                    id = "iddet-announcement-welcome-01",
-                    userId = IDDET_USER_ID,
-                    content = """# 🌟 Hub Officiel IDDET : Bienvenue !
-
-Bienvenue sur le hub d'informations certifié **IDDET** de la plateforme STRIP.
-
-### 📌 À quoi sert ce compte officiel ?
-- 📢 **Annonces officielles** et nouveautés en temps réel
-- ⚡ **Notes de version** et déploiements techniques
-- 🛡️ **Sécurité, vérification** et directives de la communauté
-- 💛 **Badge Jaune Certifié** garantissant l'authenticité de nos publications
-
-> [!NOTE]
-> Ce compte officiel est administré exclusivement par l'équipe officielle (*C.M.O, Crislem, Offranel*).
-
-Suivez ce compte pour ne rien manquer des futures mises à jour ! ✨""",
-                    tags = "iddet, officiel, annonce, hub, strip",
-                    likesCount = 1420,
-                    viewsCount = 18900,
-                    commentsCount = 84,
-                    createdAt = System.currentTimeMillis() - 86400000L * 2,
-                    category = "Actu"
-                ),
-                Actfile(
-                    id = "iddet-announcement-v7-update-02",
-                    userId = IDDET_USER_ID,
-                    content = """# 🚀 Mise à Jour STRIP & IDDET v7.0
-
-Nous sommes ravis d'annoncer les dernières fonctionnalités disponibles :
-
-### ✨ Nouveautés majeures :
-1. 📝 **Actfiles Markdown enrichis** : Support complet du Markdown, aperçu temps réel et filtrage par catégories.
-2. 🎵 **STRIP Sounds** : Studio audio collaboratif, remix et streaming de sons en haute qualité.
-3. 💬 **Salons & Communautés** : Créez et rejoignez vos espaces de discussion favoris.
-4. 🔐 **Système de Vérification** : Niveaux d'utilisateurs et badges de certification.
-
----
-💬 *Vos retours sont précieux. Partagez vos impressions en commentaire !*""",
-                    tags = "update, version7, markdown, sounds, strip",
-                    likesCount = 980,
-                    viewsCount = 14500,
-                    commentsCount = 42,
-                    createdAt = System.currentTimeMillis() - 86400000L,
-                    category = "Tech"
-                ),
-                Actfile(
-                    id = "iddet-announcement-safety-03",
-                    userId = IDDET_USER_ID,
-                    content = """# 🛡️ Guide de Certification & Sécurité
-
-Pour maintenir un espace sain et authentique sur la plateforme, voici les critères pour obtenir votre badge vérifié :
-
-### 🎯 Critères de vérification :
-- ✅ Profil complet (Photo de profil, bio, coordonnées)
-- 📹 Au moins 1 publication originale
-- 👥 Engagement communautaire actif
-- 🔞 Respect strict des conditions d'utilisation
-
-> Le badge officiel vert est réservé aux administrateurs, le badge jaune au compte officiel **IDDET**, et le badge bleu à tous les profils vérifiés.""",
-                    tags = "securite, verification, badge, officiel",
-                    likesCount = 750,
-                    viewsCount = 9600,
-                    commentsCount = 28,
-                    createdAt = System.currentTimeMillis() - 3600000L * 4,
-                    category = "Business"
-                )
-            )
-
-            for (post in officialPosts) {
-                actfileDao.insertActfile(post)
-            }
+            userDao.deleteUser(IDDET_USER_ID, IDDET_USERNAME)
+            userDao.deleteUser("iddet-official-id", "Iddet")
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    @Deprecated("Simulated IDDET account has been removed. Use purgeSimulatedIddetAccount.")
+    suspend fun ensureIddetAccountExists(userDao: UserDao, actfileDao: ActfileDao) = withContext(Dispatchers.IO) {
+        purgeSimulatedIddetAccount(userDao, actfileDao)
     }
 }

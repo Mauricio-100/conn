@@ -119,8 +119,15 @@ fun MusicScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showPublishDialog = true }) {
-                        Icon(Icons.Default.CloudUpload, contentDescription = "Publier un son", tint = MaterialTheme.colorScheme.primary)
+                    FilledTonalButton(
+                        onClick = { showPublishDialog = true },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Publier", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                     IconButton(onClick = { viewModel.loadSounds(selectedGenre) }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Actualiser")
@@ -384,13 +391,32 @@ fun MusicScreen(
                                         }
 
                                         OutlinedButton(
-                                            onClick = { showFullPlayerModal = true },
+                                            onClick = { navController.navigate("sound/${currentTrack.id}") },
                                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                             shape = RoundedCornerShape(12.dp)
                                         ) {
-                                            Icon(Icons.Default.OpenInFull, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Agrandir", style = MaterialTheme.typography.labelSmall)
+                                            Text("Détail", style = MaterialTheme.typography.labelSmall)
+                                        }
+
+                                        IconButton(
+                                            onClick = {
+                                                com.example.utils.ShareHelper.shareSound(
+                                                    context = context,
+                                                    soundId = currentTrack.id,
+                                                    title = currentTrack.title,
+                                                    authorUsername = currentTrack.artist,
+                                                    category = currentTrack.genre
+                                                )
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Share,
+                                                contentDescription = "Partager le son",
+                                                modifier = Modifier.size(18.dp)
+                                            )
                                         }
                                     }
                                 }
@@ -611,6 +637,38 @@ fun MusicScreen(
                             )
                         }
 
+                        IconButton(
+                            onClick = { navController.navigate("sound/${track.id}") },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = "Détail du son",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                com.example.utils.ShareHelper.shareSound(
+                                    context = context,
+                                    soundId = track.id,
+                                    title = track.title,
+                                    authorUsername = track.artist,
+                                    category = track.genre
+                                )
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Share,
+                                contentDescription = "Partager",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+
                         Column(
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.Center
@@ -814,6 +872,44 @@ fun MusicScreen(
                             contentDescription = "Répéter",
                             tint = if (playerState.isRepeat) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            com.example.utils.ShareHelper.shareSound(
+                                context = context,
+                                soundId = currentTrack.id,
+                                title = currentTrack.title,
+                                authorUsername = currentTrack.artist,
+                                category = currentTrack.genre
+                            )
+                        },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Partager le son", fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val link = com.example.utils.ShareHelper.getSoundWebUrl(currentTrack.id)
+                            com.example.utils.ShareHelper.copyToClipboard(context, link, "Lien du son copié !")
+                        },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Copier le lien", fontWeight = FontWeight.SemiBold)
                     }
                 }
 

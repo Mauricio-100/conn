@@ -237,24 +237,60 @@ private fun MarkdownHeadingNode(
     onLinkClick: ((String) -> Unit)?
 ) {
     val style = when (node.level) {
-        1 -> MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
-        2 -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        else -> MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        1 -> MaterialTheme.typography.titleLarge.copy(
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 20.sp,
+            lineHeight = 26.sp,
+            letterSpacing = (-0.2).sp
+        )
+        2 -> MaterialTheme.typography.titleMedium.copy(
+            fontWeight = FontWeight.Bold,
+            fontSize = 17.5.sp,
+            lineHeight = 23.sp,
+            letterSpacing = (-0.1).sp
+        )
+        3 -> MaterialTheme.typography.titleSmall.copy(
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.5.sp,
+            lineHeight = 21.sp
+        )
+        else -> MaterialTheme.typography.bodyMedium.copy(
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.5.sp,
+            lineHeight = 20.sp
+        )
     }
-    val headerTextColor = if (isMine) Color.White else when (node.level) {
-        1 -> primaryColor
-        2 -> MaterialTheme.colorScheme.secondary
-        else -> MaterialTheme.colorScheme.onSurface
-    }
+
+    // High-contrast, natural typography color so headings are readable and consistent across themes
+    val headerTextColor = if (isMine) Color.White else MaterialTheme.colorScheme.onSurface
     val formattedText = rememberRichMarkdownStyles(node.text, primaryColor, isMine)
-    MarkdownRenderedText(
-        annotatedString = formattedText,
-        style = style,
-        textColor = headerTextColor,
-        onMentionClick = onMentionClick,
-        onLinkClick = onLinkClick,
-        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
-    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = if (node.level == 1) 4.dp else 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (node.level == 1) {
+            Box(
+                modifier = Modifier
+                    .width(3.5.dp)
+                    .height(20.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(if (isMine) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
+        MarkdownRenderedText(
+            annotatedString = formattedText,
+            style = style,
+            textColor = headerTextColor,
+            onMentionClick = onMentionClick,
+            onLinkClick = onLinkClick,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+    }
 }
 
 @Composable
@@ -624,20 +660,36 @@ private fun MarkdownImageNode(
         ActfileVideoPlayer(
             videoUrl = node.url,
             title = node.altText,
+            lazyLoad = true,
             modifier = Modifier.padding(vertical = 4.dp)
         )
     } else {
-        AsyncImage(
-            model = node.url,
-            contentDescription = node.altText ?: "Markdown Image",
+        val context = LocalContext.current
+        val imageModel = remember(node.url) {
+            coil.request.ImageRequest.Builder(context)
+                .data(com.example.utils.UrlHelper.fixCloudinaryUrl(node.url))
+                .crossfade(true)
+                .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                .build()
+        }
+
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                 .testTag("markdown_image_node"),
-            contentScale = ContentScale.FillWidth
-        )
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = imageModel,
+                contentDescription = node.altText ?: "Markdown Image",
+                modifier = Modifier.fillMaxWidth(),
+                contentScale = ContentScale.FillWidth
+            )
+        }
     }
 }
 
@@ -648,6 +700,7 @@ private fun MarkdownVideoNode(
     ActfileVideoPlayer(
         videoUrl = node.url,
         title = node.title,
+        lazyLoad = true,
         modifier = Modifier.padding(vertical = 4.dp)
     )
 }
@@ -1034,7 +1087,17 @@ private fun MarkdownCarouselNode(
             state = pagerState,
             modifier = Modifier.fillMaxWidth()
         ) { page ->
+            val context = LocalContext.current
             val imageNode = node.images[page]
+            val carouselImageModel = remember(imageNode.url) {
+                coil.request.ImageRequest.Builder(context)
+                    .data(com.example.utils.UrlHelper.fixCloudinaryUrl(imageNode.url))
+                    .crossfade(true)
+                    .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                    .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                    .build()
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1042,7 +1105,7 @@ private fun MarkdownCarouselNode(
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
-                    model = com.example.utils.UrlHelper.fixCloudinaryUrl(imageNode.url),
+                    model = carouselImageModel,
                     contentDescription = imageNode.altText ?: "Carousel Image ${page + 1}",
                     modifier = Modifier
                         .fillMaxWidth()

@@ -158,16 +158,12 @@ fun ReelsFeedScreen(
                         isActive = isPageActive,
                         onLike = { viewModel.likeVideo(videoItem.id) },
                         onShare = {
-                            val sendIntent = android.content.Intent().apply {
-                                action = android.content.Intent.ACTION_SEND
-                                putExtra(
-                                    android.content.Intent.EXTRA_TEXT,
-                                    "Regarde ce clip sur IDDET : ${videoItem.description ?: "Vidéo IDDET"}\n${videoItem.video_url}"
-                                )
-                                type = "text/plain"
-                            }
-                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Partager ce clip")
-                            context.startActivity(shareIntent)
+                            com.example.utils.ShareHelper.shareVideo(
+                                context = context,
+                                videoId = videoItem.id,
+                                authorUsername = videoItem.username,
+                                description = videoItem.description
+                            )
                         },
                         onUserClick = {
                             if (videoItem.user_id.isNotBlank()) {

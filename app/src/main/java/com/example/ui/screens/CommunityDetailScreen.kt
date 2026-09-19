@@ -682,22 +682,30 @@ fun CommunityDetailScreen(
                 initialCommunity = community,
                 initialCategory = community.category,
                 onDismiss = { showComposerDialog = false },
-                onPublish = { content, tags, category, postAsIddet ->
+                onPublish = { content, tags, category, postAsIddet, attachedSound, selectedComm ->
                     showComposerDialog = false
-                    val taggedContent = if (!content.contains("@c/${community.slug}")) {
-                        "$content\n\n@c/${community.slug}"
+                    val targetComm = selectedComm ?: community
+                    val taggedContent = if (!content.contains("@c/${targetComm.slug}")) {
+                        "$content\n\n@c/${targetComm.slug}"
                     } else content
                     viewModel.publishActfile(
                         content = taggedContent,
                         tags = tags,
-                        category = category ?: community.category,
-                        communityId = community.slug,
+                        category = category ?: targetComm.category,
+                        communityId = targetComm.slug,
                         channelId = null,
-                        postAsIddet = postAsIddet
+                        postAsIddet = postAsIddet,
+                        soundId = attachedSound?.id,
+                        soundTitle = attachedSound?.title,
+                        soundAuthor = attachedSound?.artist,
+                        soundAudioUrl = attachedSound?.audioUrl,
+                        soundCoverUrl = attachedSound?.albumArt,
+                        communityName = targetComm.name,
+                        communityIconUrl = targetComm.iconUrl
                     )
                     refreshTrigger++
                     coroutineScope.launch {
-                        snackbarHostState.showSnackbar("Publication ajoutée à c/${community.slug} !")
+                        snackbarHostState.showSnackbar("Publication ajoutée à c/${targetComm.slug} !")
                     }
                 }
             )
@@ -1016,16 +1024,13 @@ fun RedditPostCard(
                 // Share button
                 IconButton(
                     onClick = {
-                        val sendIntent = android.content.Intent().apply {
-                            action = android.content.Intent.ACTION_SEND
-                            putExtra(
-                                android.content.Intent.EXTRA_TEXT,
-                                "Regarde cette publication sur c/$communitySlug :\n👉 https://bit.gopu.inc/s/actfile/${actfile.id}"
-                            )
-                            type = "text/plain"
-                        }
-                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Partager")
-                        context.startActivity(shareIntent)
+                        com.example.utils.ShareHelper.shareActfile(
+                            context = context,
+                            actfileId = actfile.id,
+                            authorUsername = actfile.username,
+                            content = actfile.content,
+                            category = actfile.category
+                        )
                     },
                     modifier = Modifier.size(32.dp)
                 ) {

@@ -163,10 +163,10 @@ class ConversationsListViewModel(
 
         val existingIndex = currentList.indexOfFirst { it.user_id == partnerId }
 
-        val snippet = when (event.msgType) {
-            "voice", "audio" -> "[Voice Message]"
-            "image" -> "[Photo]"
-            "video" -> "[Vidéo]"
+        val snippet = when {
+            com.example.utils.AudioMessageHelper.isAudioContent(event.content, event.msgType) -> "🎤 Message vocal"
+            event.msgType == "image" -> "[Photo]"
+            event.msgType == "video" -> "[Vidéo]"
             else -> event.content
         }
 

@@ -524,18 +524,14 @@ fun CommunityShareDialog(
                     item {
                         OutlinedButton(
                             onClick = {
-                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, "Rejoins ${community.name} sur IDDET")
-                                    putExtra(
-                                        Intent.EXTRA_TEXT,
-                                        "Rejoins la communauté *${community.name}* sur IDDET !\n" +
-                                                "Raccourci IDDET : /${community.slug} ou c/${community.slug}\n" +
-                                                "Lien direct : https://iddet.app/c/${community.slug}\n\n" +
-                                                (community.description ?: "")
-                                    )
-                                }
-                                context.startActivity(Intent.createChooser(shareIntent, "Partager la communauté via"))
+                                com.example.utils.ShareHelper.shareCommunity(
+                                    context = context,
+                                    slug = community.slug,
+                                    name = community.name,
+                                    description = community.description,
+                                    membersCount = community.membersCount,
+                                    isVerified = false
+                                )
                             },
                             modifier = Modifier
                                 .fillMaxWidth()

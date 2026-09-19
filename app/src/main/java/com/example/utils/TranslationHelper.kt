@@ -40,19 +40,54 @@ object TranslationHelper {
         "turkish" to "tr", "turc" to "tr", "tr" to "tr",
         "polish" to "pl", "polonais" to "pl", "pl" to "pl",
         "ukrainian" to "uk", "ukrainien" to "uk", "uk" to "uk",
-        "swedish" to "sv", "suédois" to "sv", "sv" to "sv"
+        "swedish" to "sv", "suédois" to "sv", "sv" to "sv",
+        "vietnamese" to "vi", "vietnamien" to "vi", "vi" to "vi",
+        "thai" to "th", "thaïlandais" to "th", "th" to "th",
+        "indonesian" to "id", "indonésien" to "id", "id" to "id",
+        "malay" to "ms", "malais" to "ms", "ms" to "ms",
+        "greek" to "el", "grec" to "el", "el" to "el",
+        "czech" to "cs", "tchèque" to "cs", "cs" to "cs",
+        "romanian" to "ro", "roumain" to "ro", "ro" to "ro",
+        "hungarian" to "hu", "hongrois" to "hu", "hu" to "hu",
+        "danish" to "da", "danois" to "da", "da" to "da",
+        "finnish" to "fi", "finnois" to "fi", "fi" to "fi",
+        "norwegian" to "no", "norvégien" to "no", "no" to "no",
+        "hebrew" to "he", "hébreu" to "he", "he" to "he",
+        "persian" to "fa", "farsi" to "fa", "persan" to "fa", "fa" to "fa",
+        "bengali" to "bn", "bengali" to "bn", "bn" to "bn",
+        "punjabi" to "pa", "pendjabi" to "pa", "pa" to "pa",
+        "tamil" to "ta", "tamoul" to "ta", "ta" to "ta",
+        "telugu" to "te", "télougou" to "te", "te" to "te",
+        "gujarati" to "gu", "gujaratis" to "gu", "gu" to "gu",
+        "swahili" to "sw", "swahili" to "sw", "sw" to "sw",
+        "tagalog" to "tl", "filipino" to "tl", "tl" to "tl",
+        "catalan" to "ca", "catalan" to "ca", "ca" to "ca",
+        "croatian" to "hr", "croate" to "hr", "hr" to "hr",
+        "slovak" to "sk", "slovaque" to "sk", "sk" to "sk",
+        "bulgarian" to "bg", "bulgare" to "bg", "bg" to "bg",
+        "serbian" to "sr", "serbe" to "sr", "sr" to "sr"
     )
 
     /**
-     * List of supported languages provided by the engine.
+     * List of 40+ supported languages provided by the engine.
      */
     val supportedLanguages: List<String> by lazy {
         val baseList = listOf(
             "Français", "Anglais", "Espagnol", "Allemand", "Italien",
             "Portugais", "Russe", "Chinois", "Japonais", "Arabe",
-            "Néerlandais", "Coréen", "Hindi", "Turc", "Polonais"
+            "Néerlandais", "Coréen", "Hindi", "Turc", "Polonais",
+            "Ukrainien", "Suédois", "Vietnamien", "Thaïlandais", "Indonésien",
+            "Malais", "Grec", "Tchèque", "Roumain", "Hongrois",
+            "Danois", "Finnois", "Norvégien", "Hébreu", "Persan",
+            "Bengali", "Pendjabi", "Tamoul", "Télougou", "Gujarati",
+            "Swahili", "Filipino", "Catalan", "Croate", "Slovaque",
+            "Bulgare", "Serbe"
         )
-        val bushList = Language.values().map { it.name.lowercase().capitalize() }
+        val bushList = try {
+            Language.values().map { it.name.lowercase().capitalize() }
+        } catch (_: Exception) {
+            emptyList()
+        }
         (baseList + bushList).distinct().sorted()
     }
 
@@ -204,16 +239,13 @@ object TranslationHelper {
     }
 
     private fun cleanHtml(text: String): String {
-        return try {
-            Html.fromHtml(text, Html.FROM_HTML_MODE_LEGACY).toString().trim()
-        } catch (_: Exception) {
-            text.replace("&quot;", "\"")
-                .replace("&#39;", "'")
-                .replace("&amp;", "&")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .trim()
-        }
+        return text.replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&nbsp;", " ")
+            .trim()
     }
 }
 

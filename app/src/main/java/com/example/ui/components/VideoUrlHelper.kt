@@ -101,6 +101,34 @@ object VideoUrlHelper {
         return VideoInfo(url, VideoType.EMBED_WEB, url)
     }
 
+    fun getThumbnailUrl(videoInfo: VideoInfo): String? {
+        return when (videoInfo.type) {
+            VideoType.YOUTUBE -> {
+                if (!videoInfo.videoId.isNullOrBlank()) {
+                    "https://img.youtube.com/vi/${videoInfo.videoId}/hqdefault.jpg"
+                } else null
+            }
+            VideoType.DIRECT_FILE -> {
+                if (videoInfo.originalUrl.contains("cloudinary.com") && videoInfo.originalUrl.contains("/video/upload/")) {
+                    videoInfo.originalUrl
+                        .replace("/video/upload/", "/video/upload/so_0,w_720,c_scale/")
+                        .substringBeforeLast(".") + ".jpg"
+                } else null
+            }
+            else -> null
+        }
+    }
+
+    fun getProviderName(type: VideoType): String {
+        return when (type) {
+            VideoType.YOUTUBE -> "YouTube"
+            VideoType.TIKTOK -> "TikTok"
+            VideoType.INSTAGRAM -> "Instagram"
+            VideoType.DIRECT_FILE -> "Vidéo"
+            VideoType.EMBED_WEB -> "Web Video"
+        }
+    }
+
     private fun extractYouTubeId(url: String): String? {
         return try {
             val regex = "(?i)(?:youtube\\.com\\/(?:[^\\/]+\\/.+\\/|(?:v|e(?:mbed)?|shorts)\\/|.*[?&]v=)|youtu\\.be\\/)([^\"&?\\/\\s]{11})".toRegex()

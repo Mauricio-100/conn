@@ -41,17 +41,112 @@ class MainActivity : ComponentActivity() {
         } else {
             val uri = intent.data
             if (uri != null) {
-                // Check if URI points to a community (iddet://community/slug, https://hoosthubs-g.onrender.com/c/slug, etc.)
+                val scheme = uri.scheme?.lowercase()
+                val host = uri.host?.lowercase() ?: ""
+                val pathSegments = uri.pathSegments ?: emptyList()
+
+                // 1. Custom iddet:// scheme
+                if (scheme == "iddet") {
+                    when (host) {
+                        "profile", "u", "user" -> {
+                            val username = pathSegments.firstOrNull()
+                            if (!username.isNullOrBlank()) {
+                                com.example.utils.NotificationRouter.pendingRoute.value = "profile/$username"
+                                return
+                            }
+                        }
+                        "community", "c" -> {
+                            val slug = pathSegments.firstOrNull()
+                            if (!slug.isNullOrBlank()) {
+                                com.example.utils.NotificationRouter.pendingRoute.value = "community/$slug"
+                                return
+                            }
+                        }
+                        "actfile", "discussion" -> {
+                            val id = pathSegments.firstOrNull()
+                            if (!id.isNullOrBlank()) {
+                                com.example.utils.NotificationRouter.pendingRoute.value = "discussion/$id"
+                                return
+                            }
+                        }
+                        "sounds", "sound", "music" -> {
+                            com.example.utils.NotificationRouter.pendingRoute.value = "music"
+                            return
+                        }
+                        "video", "videos", "reels", "wings" -> {
+                            com.example.utils.NotificationRouter.pendingRoute.value = "reels"
+                            return
+                        }
+                        "messages", "chat" -> {
+                            val peer = pathSegments.firstOrNull()
+                            if (!peer.isNullOrBlank()) {
+                                com.example.utils.NotificationRouter.pendingRoute.value = "chat/$peer"
+                            } else {
+                                com.example.utils.NotificationRouter.pendingRoute.value = "messages"
+                            }
+                            return
+                        }
+                        "home" -> {
+                            com.example.utils.NotificationRouter.pendingRoute.value = "home"
+                            return
+                        }
+                    }
+                }
+
+                // 2. HTTP/HTTPS Web URLs (hoosthubs-g.onrender.com, iddet.app, etc.)
+                if (pathSegments.isNotEmpty()) {
+                    val first = pathSegments[0].lowercase()
+                    when {
+                        // User Profile: /u/{username}
+                        first == "u" && pathSegments.size >= 2 -> {
+                            val username = pathSegments[1]
+                            com.example.utils.NotificationRouter.pendingRoute.value = "profile/$username"
+                            return
+                        }
+                        // Community: /c/{slug} or /community/{slug}
+                        (first == "c" || first == "community") && pathSegments.size >= 2 -> {
+                            val slug = pathSegments[1]
+                            com.example.utils.NotificationRouter.pendingRoute.value = "community/$slug"
+                            return
+                        }
+                        // Actfile: /actfile/{id} or /s/actfile/{id}
+                        first == "actfile" && pathSegments.size >= 2 -> {
+                            val actfileId = pathSegments[1]
+                            com.example.utils.NotificationRouter.pendingRoute.value = "discussion/$actfileId"
+                            return
+                        }
+                        first == "s" && pathSegments.size >= 3 && pathSegments[1] == "actfile" -> {
+                            val actfileId = pathSegments[2]
+                            com.example.utils.NotificationRouter.pendingRoute.value = "discussion/$actfileId"
+                            return
+                        }
+                        // Sound / Music: /sounds/{id} or /sounds
+                        first == "sounds" || first == "sound" -> {
+                            com.example.utils.NotificationRouter.pendingRoute.value = "music"
+                            return
+                        }
+                        // Video: /video/{id} or /videos
+                        first == "video" || first == "videos" || first == "reels" -> {
+                            com.example.utils.NotificationRouter.pendingRoute.value = "reels"
+                            return
+                        }
+                        // Messages: /messages/{username}
+                        first == "messages" -> {
+                            if (pathSegments.size >= 2) {
+                                com.example.utils.NotificationRouter.pendingRoute.value = "chat/${pathSegments[1]}"
+                            } else {
+                                com.example.utils.NotificationRouter.pendingRoute.value = "messages"
+                            }
+                            return
+                        }
+                    }
+                }
+
+                // Check slug extractor fallback
                 val communitySlug = com.example.utils.CommunitySlugHelper.extractSlugFromUrl(uri.toString())
                 if (!communitySlug.isNullOrBlank()) {
                     com.example.utils.NotificationRouter.pendingRoute.value = "community/$communitySlug"
                     return
-                }
-
-                val pathSegments = uri.pathSegments
-                if (pathSegments != null && pathSegments.size >= 3 && pathSegments[0] == "s" && pathSegments[1] == "actfile") {
-                    val actfileId = pathSegments[2]
-                    com.example.utils.NotificationRouter.pendingRoute.value = "discussion/$actfileId"
                 }
             }
         }

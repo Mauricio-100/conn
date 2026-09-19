@@ -48,6 +48,7 @@ fun DiscussionScreen(
     navController: NavController,
     actfileId: String
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val actfile by viewModel.getActfile(actfileId).collectAsStateWithLifecycle(initialValue = null)
     val comments by viewModel.getComments(actfileId).collectAsStateWithLifecycle(initialValue = emptyList())
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
@@ -80,6 +81,27 @@ fun DiscussionScreen(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Retour"
                         )
+                    }
+                },
+                actions = {
+                    val currentAct = actfile
+                    if (currentAct != null) {
+                        IconButton(
+                            onClick = {
+                                com.example.utils.ShareHelper.shareActfile(
+                                    context = context,
+                                    actfileId = currentAct.id,
+                                    authorUsername = currentAct.username,
+                                    content = currentAct.content,
+                                    category = currentAct.category
+                                )
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Partager la publication"
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

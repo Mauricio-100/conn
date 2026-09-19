@@ -118,20 +118,8 @@ class IddetRepository(
 
     init {
         INSTANCE = this
-        if (localCommunities.isEmpty()) {
-            localCommunities.addAll(listOf(
-                Community(id = "com_tech", slug = "tech", name = "Technologies & Dev", description = "Discussions sur l'IA, le dev mobile, Android, hardware et innovations numériques.", category = "Technologie", membersCount = 1420, isMember = false),
-                Community(id = "com_gaming", slug = "gaming", name = "Jeux Vidéo & E-sport", description = "Communauté gaming francophone : actualités, streams, consoles et discussions.", category = "Jeux vidéo", membersCount = 3840, isMember = false),
-                Community(id = "com_obsidian", slug = "obsidian", name = "Obsidian & PKM", description = "Astuces, plugins, markdown et prise de notes avec Obsidian et IDDET.", category = "Productivité", membersCount = 890, isMember = false),
-                Community(id = "com_france", slug = "france", name = "France & Société", description = "Actus, culture, société et débats d'actualité en France.", category = "Actualités", membersCount = 5210, isMember = false),
-                Community(id = "com_crypto", slug = "crypto", name = "Crypto & Web3", description = "Bitcoin, Ethereum, DeFi, blockchains et analyses de marché.", category = "Finance", membersCount = 2150, isMember = false),
-                Community(id = "com_cinema", slug = "cinema", name = "Cinéma & Séries", description = "Critiques de films, séries TV, bandes-annonces et recommandations.", category = "Divertissement", membersCount = 1630, isMember = false),
-                Community(id = "com_musique", slug = "musique", name = "Musique & Sons", description = "Partage de morceaux, découvertes musicales, vinyles et instruments.", category = "Musique", membersCount = 1240, isMember = false),
-                Community(id = "com_general", slug = "general", name = "Général & Discussion", description = "Le salon général pour discuter de tout et de rien sur IDDET.", category = "Général", membersCount = 6780, isMember = true)
-            ))
-        }
         repositoryScope.launch {
-            IddetAccountManager.ensureIddetAccountExists(userDao, actfileDao)
+            IddetAccountManager.purgeSimulatedIddetAccount(userDao, actfileDao)
         }
         val savedUserId = prefs.getString("user_id", null)
         if (savedUserId != null) {
@@ -322,6 +310,14 @@ class IddetRepository(
                     // Also clean up any accidental entry from actfiles local table
                     actfileDao.deleteActfileLocal(net.id)
                 } else {
+                    val parsedSound = ActfileMetadataHelper.parseSound(net.content)
+                    val parsedComm = ActfileMetadataHelper.parseCommunity(net.content)
+                    val effectiveCommSlug = net.community_slug?.ifBlank { null } ?: net.community_id?.ifBlank { null } ?: net.channel_slug?.ifBlank { null } ?: if (net.content.contains("@c/")) {
+                        Regex("@c/([a-zA-Z0-9_-]+)").find(net.content)?.groupValues?.get(1)
+                    } else null
+                    val effectiveCommName = net.community_name?.ifBlank { null } ?: parsedComm?.first?.ifBlank { null } ?: net.channel_name?.ifBlank { null }
+                    val effectiveCommIcon = net.community_icon_url?.ifBlank { null } ?: parsedComm?.second?.ifBlank { null }
+
                     actfilesToInsert.add(
                         Actfile(
                             id = net.id,
@@ -333,10 +329,17 @@ class IddetRepository(
                             createdAt = parseIso(net.created_at),
                             isLikedByMe = net.liked,
                             category = net.category,
-                            communityId = net.community_id,
+                            communityId = effectiveCommSlug,
                             channelId = net.channel_id,
-                            channelSlug = net.channel_slug,
-                            channelName = net.channel_name
+                            channelSlug = net.channel_slug ?: effectiveCommSlug,
+                            channelName = net.channel_name,
+                            soundId = parsedSound?.id,
+                            soundTitle = parsedSound?.title,
+                            soundAuthor = parsedSound?.author,
+                            soundAudioUrl = parsedSound?.audioUrl,
+                            soundCoverUrl = parsedSound?.coverUrl,
+                            communityName = effectiveCommName,
+                            communityIconUrl = effectiveCommIcon
                         )
                     )
                 }
@@ -595,23 +598,43 @@ class IddetRepository(
         category: String? = null,
         communityId: String? = null,
         channelId: String? = null,
-        postAsIddet: Boolean = false
+        postAsIddet: Boolean = false,
+        soundId: String? = null,
+        soundTitle: String? = null,
+        soundAuthor: String? = null,
+        soundAudioUrl: String? = null,
+        soundCoverUrl: String? = null,
+        communityName: String? = null,
+        communityIconUrl: String? = null
     ) {
         val user = _currentUser.value ?: return
         val validCategory = normalizeCategory(category)
-        val targetUserId = if (postAsIddet && IddetAccountManager.canPostAsIddet(user)) {
-            IddetAccountManager.IDDET_USER_ID
-        } else {
-            user.id
+        val targetUserId = user.id
+
+        val embeddedContent = buildString {
+            append(content)
+            if (!soundTitle.isNullOrBlank()) {
+                val sId = soundId ?: ""
+                val sTitle = soundTitle.replace("\"", "\\\"")
+                val sAuthor = (soundAuthor ?: "").replace("\"", "\\\"")
+                val sUrl = soundAudioUrl ?: ""
+                val sCover = soundCoverUrl ?: ""
+                append("\n<!--sound:{\"id\":\"$sId\",\"title\":\"$sTitle\",\"author\":\"$sAuthor\",\"url\":\"$sUrl\",\"cover\":\"$sCover\"}-->")
+            }
+            if (!communityName.isNullOrBlank() && !content.contains("@c/")) {
+                val cName = communityName.replace("\"", "\\\"")
+                val cIcon = (communityIconUrl ?: "").replace("\"", "\\\"")
+                append("\n<!--community:{\"name\":\"$cName\",\"icon\":\"$cIcon\"}-->")
+            }
         }
         
         try {
             val header = currentToken?.let { "Bearer $it" }
-            if (header != null && !postAsIddet) {
+            if (header != null) {
                 val netActfile = RetrofitClient.apiService.publishActfile(
                     token = header,
                     request = PublishActfileRequest(
-                        content = content,
+                        content = embeddedContent,
                         category = validCategory,
                         community_slug = communityId?.takeIf { it.isNotBlank() },
                         channel_slug = channelId?.takeIf { it.isNotBlank() }
@@ -621,7 +644,7 @@ class IddetRepository(
                     Actfile(
                         id = netActfile.id,
                         userId = if (netActfile.user_id.isNotBlank()) netActfile.user_id else targetUserId,
-                        content = if (netActfile.content.isNotBlank()) netActfile.content else content,
+                        content = if (netActfile.content.isNotBlank()) netActfile.content else embeddedContent,
                         tags = tags,
                         likesCount = netActfile.likes_count,
                         viewsCount = netActfile.views_count,
@@ -630,18 +653,34 @@ class IddetRepository(
                         communityId = netActfile.community_id ?: communityId,
                         channelId = netActfile.channel_id ?: channelId,
                         channelSlug = netActfile.channel_slug,
-                        channelName = netActfile.channel_name
+                        channelName = netActfile.channel_name,
+                        soundId = soundId,
+                        soundTitle = soundTitle,
+                        soundAuthor = soundAuthor,
+                        soundAudioUrl = soundAudioUrl,
+                        soundCoverUrl = soundCoverUrl,
+                        communityName = communityName,
+                        communityIconUrl = communityIconUrl
                     )
                 )
             } else {
                 actfileDao.insertActfile(
                     Actfile(
                         userId = targetUserId,
-                        content = content,
+                        content = embeddedContent,
                         tags = tags,
                         category = validCategory,
                         communityId = communityId,
-                        channelId = channelId
+                        channelId = channelId,
+                        channelSlug = communityId,
+                        channelName = communityName,
+                        soundId = soundId,
+                        soundTitle = soundTitle,
+                        soundAuthor = soundAuthor,
+                        soundAudioUrl = soundAudioUrl,
+                        soundCoverUrl = soundCoverUrl,
+                        communityName = communityName,
+                        communityIconUrl = communityIconUrl
                     )
                 )
             }
@@ -651,11 +690,20 @@ class IddetRepository(
             actfileDao.insertActfile(
                 Actfile(
                     userId = targetUserId,
-                    content = content,
+                    content = embeddedContent,
                     tags = tags,
                     category = validCategory,
                     communityId = communityId,
-                    channelId = channelId
+                    channelId = channelId,
+                    channelSlug = communityId,
+                    channelName = communityName,
+                    soundId = soundId,
+                    soundTitle = soundTitle,
+                    soundAuthor = soundAuthor,
+                    soundAudioUrl = soundAudioUrl,
+                    soundCoverUrl = soundCoverUrl,
+                    communityName = communityName,
+                    communityIconUrl = communityIconUrl
                 )
             )
         }
@@ -2660,7 +2708,7 @@ class IddetRepository(
             name = cleanSlug.replaceFirstChar { it.uppercase() },
             category = "Général",
             description = "Bienvenue dans la communauté c/$cleanSlug sur IDDET. Partagez, échangez et suivez les salons thématiques.",
-            membersCount = 42,
+            membersCount = 0,
             isMember = false
         )
         localCommunities.removeAll { it.slug.equals(cleanSlug, ignoreCase = true) }

@@ -42,7 +42,16 @@ data class Actfile(
     val communityId: String? = null,
     val channelId: String? = null,
     val channelSlug: String? = null,
-    val channelName: String? = null
+    val channelName: String? = null,
+    // Attached Sound
+    val soundId: String? = null,
+    val soundTitle: String? = null,
+    val soundAuthor: String? = null,
+    val soundAudioUrl: String? = null,
+    val soundCoverUrl: String? = null,
+    // Attached Community info
+    val communityName: String? = null,
+    val communityIconUrl: String? = null
 )
 
 @Entity(tableName = "messages")
@@ -84,8 +93,75 @@ data class ActfileWithUser(
     val communityId: String? = null,
     val channelId: String? = null,
     val channelSlug: String? = null,
-    val channelName: String? = null
+    val channelName: String? = null,
+    // Attached Sound
+    val soundId: String? = null,
+    val soundTitle: String? = null,
+    val soundAuthor: String? = null,
+    val soundAudioUrl: String? = null,
+    val soundCoverUrl: String? = null,
+    // Attached Community info
+    val communityName: String? = null,
+    val communityIconUrl: String? = null
 )
+
+data class AttachedSound(
+    val id: String = "",
+    val title: String = "",
+    val author: String = "",
+    val audioUrl: String = "",
+    val coverUrl: String = ""
+)
+
+object ActfileMetadataHelper {
+    private val SOUND_REGEX = Regex("<!--sound:\\{(.*?)\\}-->")
+    private val COMM_REGEX = Regex("<!--community:\\{(.*?)\\}-->")
+
+    fun parseSound(content: String): AttachedSound? {
+        try {
+            val match = SOUND_REGEX.find(content) ?: return null
+            val body = match.groupValues[1]
+            fun get(key: String): String {
+                val r = Regex("\"$key\"\\s*:\\s*\"(.*?)\"")
+                return r.find(body)?.groupValues?.get(1)?.replace("\\\"", "\"") ?: ""
+            }
+            val title = get("title")
+            if (title.isBlank()) return null
+            return AttachedSound(
+                id = get("id"),
+                title = title,
+                author = get("author"),
+                audioUrl = get("url"),
+                coverUrl = get("cover")
+            )
+        } catch (e: Exception) {
+            return null
+        }
+    }
+
+    fun parseCommunity(content: String): Pair<String, String>? {
+        try {
+            val match = COMM_REGEX.find(content) ?: return null
+            val body = match.groupValues[1]
+            fun get(key: String): String {
+                val r = Regex("\"$key\"\\s*:\\s*\"(.*?)\"")
+                return r.find(body)?.groupValues?.get(1)?.replace("\\\"", "\"") ?: ""
+            }
+            val name = get("name")
+            if (name.isBlank()) return null
+            return Pair(name, get("icon"))
+        } catch (e: Exception) {
+            return null
+        }
+    }
+
+    fun cleanContent(content: String): String {
+        return content
+            .replace(SOUND_REGEX, "")
+            .replace(COMM_REGEX, "")
+            .trimEnd()
+    }
+}
 
 @Entity(tableName = "actfile_comments")
 data class ActfileComment(
@@ -135,6 +211,7 @@ data class Community(
     val category: String = "Général",
     @Json(name = "creator_id") val creatorId: String? = null,
     @Json(name = "is_private") val isPrivate: Boolean = false,
+    @Json(name = "is_verified") val isVerified: Boolean = false,
     @Json(name = "members_count") val membersCount: Int = 1,
     @Json(name = "online_count") val onlineCount: Int? = null,
     @Json(name = "posts_count") val postsCount: Int = 0,

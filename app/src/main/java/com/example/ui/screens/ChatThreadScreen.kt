@@ -392,6 +392,10 @@ fun ChatThreadScreen(
                         // Voice Recorder UI
                         VoiceRecorderUI(
                             onCancel = { isVoiceRecording = false },
+                            onSendVoiceFile = { file ->
+                                viewModel.sendVoiceFile(file)
+                                isVoiceRecording = false
+                            },
                             onSendVoice = { voiceString ->
                                 viewModel.sendVoiceMessage(voiceString)
                                 isVoiceRecording = false

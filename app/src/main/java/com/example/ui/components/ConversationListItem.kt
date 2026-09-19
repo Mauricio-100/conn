@@ -252,9 +252,10 @@ private fun LastMessagePreview(
     val trimmed = lastMessage.trim()
     val isStory = trimmed.startsWith("[Story:") || trimmed.startsWith("📷 Réponse à votre story:") ||
             (trimmed.startsWith("❤️") && trimmed.contains("Réaction à votre story"))
-    val isVoice = trimmed.startsWith("[Voice Message]") || trimmed.contains("voice://") ||
+    val isVoice = com.example.utils.AudioMessageHelper.isAudioContent(trimmed) ||
+            trimmed.startsWith("[Voice Message]") || trimmed.contains("voice://") ||
             trimmed.contains(".mp3") || trimmed.contains(".m4a") || trimmed.contains(".aac") ||
-            trimmed.startsWith("audio:")
+            trimmed.startsWith("audio:") || trimmed.contains("Message vocal")
     val isImage = trimmed.startsWith("[Photo]") || trimmed.startsWith("image:") ||
             (trimmed.startsWith("http") && (trimmed.endsWith(".jpg") || trimmed.endsWith(".png") || trimmed.endsWith(".webp") || trimmed.endsWith(".jpeg")))
     val isVideo = trimmed.startsWith("[Vidéo]") || trimmed.startsWith("video:") ||

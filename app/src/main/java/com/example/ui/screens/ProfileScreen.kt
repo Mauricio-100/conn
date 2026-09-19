@@ -108,6 +108,20 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
         userActfiles.filter { extractFirstMediaUrl(it.content) != null }
     }
 
+    // Wings (sound and video) posts
+    val wingsActfiles = remember(userActfiles) {
+        userActfiles.filter { actfile ->
+            !actfile.soundAudioUrl.isNullOrBlank() ||
+            !actfile.soundId.isNullOrBlank() ||
+            actfile.content.contains(".mp4", ignoreCase = true) ||
+            actfile.content.contains(".webm", ignoreCase = true) ||
+            actfile.content.contains("<video", ignoreCase = true) ||
+            actfile.content.contains("youtube", ignoreCase = true) ||
+            actfile.content.contains("vimeo", ignoreCase = true) ||
+            actfile.category in listOf("wings", "musique", "multimedia", "sound", "video")
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.refreshProfile()
         viewModel.refreshActfiles()
@@ -128,6 +142,8 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     var followListInitialTab by remember { mutableIntStateOf(0) }
     var showCategorySelectorDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var showSharePortfolioModal by remember { mutableStateOf(false) }
+    val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     var isRefreshing by remember { mutableStateOf(false) }
     var isUploading by remember { mutableStateOf(false) }
     var localPreviewUri by remember { mutableStateOf<Uri?>(null) }
@@ -292,19 +308,9 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
 
                     // Share Profile
                     IconButton(
-                        onClick = {
-                            val sendIntent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                putExtra(
-                                    Intent.EXTRA_TEXT,
-                                    "Découvrez mon profil @${user.username} sur IDDET : https://iddet.app/u/${user.username}"
-                                )
-                                type = "text/plain"
-                            }
-                            context.startActivity(Intent.createChooser(sendIntent, "Partager mon profil"))
-                        }
+                        onClick = { showSharePortfolioModal = true }
                     ) {
-                        Icon(Icons.Outlined.Share, contentDescription = "Partager")
+                        Icon(Icons.Outlined.Share, contentDescription = "Partager mon portfolio")
                     }
 
                     // Refresh
@@ -522,17 +528,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                             }
 
                             OutlinedButton(
-                                onClick = {
-                                    val sendIntent = Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        putExtra(
-                                            Intent.EXTRA_TEXT,
-                                            "Profil de @${user.username} sur IDDET : https://iddet.app/u/${user.username}"
-                                        )
-                                        type = "text/plain"
-                                    }
-                                    context.startActivity(Intent.createChooser(sendIntent, "Partager"))
-                                },
+                                onClick = { showSharePortfolioModal = true },
                                 shape = RoundedCornerShape(20.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
                             ) {
@@ -780,7 +776,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                                 )
 
-                                // Total Likes
+                                 // Total Likes
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.weight(1f)
@@ -793,6 +789,29 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                     )
                                     Text(
                                         text = "J'aime",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                VerticalDivider(
+                                    modifier = Modifier.height(28.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
+
+                                // Total Views (Vues Totales)
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = com.example.utils.FormatUtils.formatCount(totalViews),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFF0284C7)
+                                    )
+                                    Text(
+                                        text = "Vues",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -849,36 +868,43 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                             )
                         }
 
-                        // Multi-Tab Selector (Publications, Médias, Niveau & Badges, À propos)
+                        // Multi-Tab Selector (Publications, Médias, Wings, Niveau, Infos)
                         Spacer(modifier = Modifier.height(18.dp))
-                        SecondaryTabRow(
+                        ScrollableTabRow(
                             selectedTabIndex = selectedTab,
                             containerColor = MaterialTheme.colorScheme.background,
                             contentColor = MaterialTheme.colorScheme.primary,
+                            edgePadding = 0.dp,
                             divider = {}
                         ) {
                             Tab(
                                 selected = selectedTab == 0,
                                 onClick = { selectedTab = 0 },
-                                text = { Text("Publications", fontWeight = FontWeight.Bold) },
+                                text = { Text("Publications", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
                                 icon = { Icon(Icons.Outlined.Feed, contentDescription = "Publications", modifier = Modifier.size(18.dp)) }
                             )
                             Tab(
                                 selected = selectedTab == 1,
                                 onClick = { selectedTab = 1 },
-                                text = { Text("Médias", fontWeight = FontWeight.Bold) },
+                                text = { Text("Médias", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
                                 icon = { Icon(Icons.Outlined.GridOn, contentDescription = "Médias", modifier = Modifier.size(18.dp)) }
                             )
                             Tab(
                                 selected = selectedTab == 2,
                                 onClick = { selectedTab = 2 },
-                                text = { Text("Niveau", fontWeight = FontWeight.Bold) },
-                                icon = { Icon(Icons.Outlined.MilitaryTech, contentDescription = "Niveau", modifier = Modifier.size(18.dp)) }
+                                text = { Text("Wings 🎵", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                                icon = { Icon(Icons.Outlined.GraphicEq, contentDescription = "Wings", modifier = Modifier.size(18.dp)) }
                             )
                             Tab(
                                 selected = selectedTab == 3,
                                 onClick = { selectedTab = 3 },
-                                text = { Text("Infos", fontWeight = FontWeight.Bold) },
+                                text = { Text("Niveau", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                                icon = { Icon(Icons.Outlined.MilitaryTech, contentDescription = "Niveau", modifier = Modifier.size(18.dp)) }
+                            )
+                            Tab(
+                                selected = selectedTab == 4,
+                                onClick = { selectedTab = 4 },
+                                text = { Text("Infos", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
                                 icon = { Icon(Icons.Outlined.Info, contentDescription = "Infos", modifier = Modifier.size(18.dp)) }
                             )
                         }
@@ -1053,8 +1079,69 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                 }
             }
 
-            // Tab Content 2: Gamified Level, Streak & Trophies Showcase
+            // Tab Content 2: Wings (Sounds & Vidéos)
             if (selectedTab == 2) {
+                if (wingsActfiles.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp, horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Outlined.GraphicEq,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                                modifier = Modifier.size(52.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Aucun Wings (Sound / Vidéo) publié",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Les publications contenant des sons, musiques ou vidéos apparaîtront dans cette section Wings.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    items(wingsActfiles, key = { "wing_${it.id}" }) { actfile ->
+                        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            ActfileCard(
+                                actfile = actfile,
+                                onLike = { viewModel.likeActfile(it) },
+                                onView = { viewModel.incrementView(it) },
+                                targetLanguageName = targetLanguage,
+                                isAiReady = aiState == com.example.utils.AiModelState.READY,
+                                onLinkClick = { url ->
+                                    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                                    navController.navigate("browser/$encodedUrl")
+                                },
+                                onUserClick = {},
+                                onComment = { navController.navigate("discussion/$it") },
+                                onDelete = { viewModel.deleteActfile(it) },
+                                onMentionClick = { username ->
+                                    scope.launch {
+                                        val u = viewModel.getUserByUsername(username)
+                                        if (u != null) {
+                                            navController.navigate("profile/${u.id}")
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Tab Content 3: Gamified Level, Streak & Trophies Showcase
+            if (selectedTab == 3) {
                 item {
                     Column(
                         modifier = Modifier
@@ -1135,8 +1222,8 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                 }
             }
 
-            // Tab Content 3: About & Contact Details Card (Facebook / Viber Info style)
-            if (selectedTab == 3) {
+            // Tab Content 4: About & Contact Details Card (Facebook / Viber Info style)
+            if (selectedTab == 4) {
                 item {
                     Column(
                         modifier = Modifier
@@ -1903,6 +1990,29 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                 ) {
                     Text("Annuler")
                 }
+            }
+        )
+    }
+
+    // 11. Universal Portfolio Share Modal
+    if (showSharePortfolioModal) {
+        val totalActs = userActfiles.size
+        val totalVideos = userActfiles.count { it.content.contains(".mp4") }
+        UniversalShareModal(
+            payload = SharePayload(
+                type = ShareEntityType.PROFILE,
+                idOrSlug = user.username,
+                title = user.username,
+                subtitle = "@${user.username}",
+                description = user.bio,
+                imageUrl = user.avatarUrl,
+                isVerified = user.isVerified,
+                extraStat = "$totalActs publications · $totalVideos vidéos · ${user.followersCount} abonnés"
+            ),
+            conversations = conversations,
+            onDismiss = { showSharePortfolioModal = false },
+            onSendToConversation = { receiverId, msg ->
+                viewModel.sendMessage(receiverId, msg)
             }
         )
     }

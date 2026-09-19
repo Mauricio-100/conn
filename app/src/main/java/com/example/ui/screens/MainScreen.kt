@@ -869,6 +869,28 @@ fun MainScreen(viewModel: IddetViewModel) {
                     ReelsFeedScreen(viewModel, navController)
                 }
                 composable(
+                    "sound/{soundId}",
+                    arguments = listOf(navArgument("soundId") { type = NavType.StringType }),
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) }
+                ) { backStackEntry ->
+                    val soundId = backStackEntry.arguments?.getString("soundId") ?: return@composable
+                    SoundDetailScreen(soundId, viewModel, navController)
+                }
+                composable(
+                    "video/{videoId}",
+                    arguments = listOf(navArgument("videoId") { type = NavType.StringType }),
+                    enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },
+                    popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
+                    popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) }
+                ) { backStackEntry ->
+                    val videoId = backStackEntry.arguments?.getString("videoId") ?: return@composable
+                    VideoDetailScreen(videoId, viewModel, navController)
+                }
+                composable(
                     "music",
                     enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)) },
                     exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300)) },

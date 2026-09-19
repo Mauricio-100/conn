@@ -738,8 +738,8 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
 
         return com.example.utils.MusicTrack(
             id = id,
-            title = if (title.isNotBlank()) title else "Piste Musicale IDDET",
-            artist = if (!author_username.isNullOrBlank()) author_username else "Artiste IDDET",
+            title = if (title.isNotBlank()) title else "Piste Audio",
+            artist = if (!author_username.isNullOrBlank()) author_username else if (!author_id.isNullOrBlank()) author_id else "Artiste",
             albumArt = fixedCoverUrl,
             audioUrl = fixedAudioUrl,
             durationFormatted = formattedDuration,
@@ -1202,12 +1202,44 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
         category: String? = null,
         communityId: String? = null,
         channelId: String? = null,
-        postAsIddet: Boolean = false
+        postAsIddet: Boolean = false,
+        soundId: String? = null,
+        soundTitle: String? = null,
+        soundAuthor: String? = null,
+        soundAudioUrl: String? = null,
+        soundCoverUrl: String? = null,
+        communityName: String? = null,
+        communityIconUrl: String? = null
     ) {
         viewModelScope.launch {
-            repository.publishActfile(content, tags, category, communityId, channelId, postAsIddet)
+            repository.publishActfile(
+                content = content,
+                tags = tags,
+                category = category,
+                communityId = communityId,
+                channelId = channelId,
+                postAsIddet = postAsIddet,
+                soundId = soundId,
+                soundTitle = soundTitle,
+                soundAuthor = soundAuthor,
+                soundAudioUrl = soundAudioUrl,
+                soundCoverUrl = soundCoverUrl,
+                communityName = communityName,
+                communityIconUrl = communityIconUrl
+            )
             repository.refreshActfiles()
         }
+    }
+
+    private val _attachedComposerSound = MutableStateFlow<com.example.utils.MusicTrack?>(null)
+    val attachedComposerSound: StateFlow<com.example.utils.MusicTrack?> = _attachedComposerSound.asStateFlow()
+
+    fun setAttachedComposerSound(track: com.example.utils.MusicTrack?) {
+        _attachedComposerSound.value = track
+    }
+
+    suspend fun getSoundDetails(soundId: String): SoundNetwork? {
+        return repository.getSoundDetails(soundId)
     }
 
     fun deleteActfile(id: String) {

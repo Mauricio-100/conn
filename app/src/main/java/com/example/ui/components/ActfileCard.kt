@@ -30,11 +30,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.ActfileWithUser
+import com.example.data.ActfileMetadataHelper
+import com.example.data.AttachedSound
 import com.example.data.getCategoryDefaultIcon
+import com.example.utils.MusicPlayerManager
+import com.example.utils.MusicTrack
 import com.example.ui.components.VerificationBadge
 import com.example.ui.components.CopyableUserId
 import com.example.ui.components.MarkdownContent
@@ -115,6 +120,80 @@ fun ActfileCard(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
+            // 1. Community Label & Icon Banner (if published in a community, visible in home feed)
+            val parsedComm = remember(actfile.content) { ActfileMetadataHelper.parseCommunity(actfile.content) }
+            val effectiveCommunityName = actfile.communityName?.ifBlank { null } ?: parsedComm?.first?.ifBlank { null } ?: actfile.channelName?.ifBlank { null }
+            val effectiveCommunitySlug = actfile.communityId?.ifBlank { null } ?: actfile.channelSlug?.ifBlank { null } ?: if (actfile.content.contains("@c/")) {
+                Regex("@c/([a-zA-Z0-9_-]+)").find(actfile.content)?.groupValues?.get(1)
+            } else null
+            val effectiveCommunityIcon = actfile.communityIconUrl?.ifBlank { null } ?: parsedComm?.second?.ifBlank { null } ?: (if (!effectiveCommunitySlug.isNullOrBlank()) getCategoryDefaultIcon(actfile.category ?: "general") else null)
+            val hasCommunityInfo = !effectiveCommunityName.isNullOrBlank() || !effectiveCommunitySlug.isNullOrBlank()
+
+            if (hasCommunityInfo) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                        .clickable {
+                            val target = effectiveCommunitySlug ?: effectiveCommunityName ?: ""
+                            onCategoryClick?.invoke(target)
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (!effectiveCommunityIcon.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = effectiveCommunityIcon,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Group,
+                                    contentDescription = "Communauté",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Communauté",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "•",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = effectiveCommunityName ?: "c/$effectiveCommunitySlug",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
             
             // Header Section
             Row(
@@ -133,8 +212,17 @@ fun ActfileCard(
                         contentAlignment = Alignment.Center
                     ) {
                         if (!actfile.avatarUrl.isNullOrBlank()) {
+                            val context = LocalContext.current
+                            val avatarModel = remember(actfile.avatarUrl) {
+                                coil.request.ImageRequest.Builder(context)
+                                    .data(com.example.utils.UrlHelper.fixCloudinaryUrl(actfile.avatarUrl))
+                                    .crossfade(true)
+                                    .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                                    .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                                    .build()
+                            }
                             AsyncImage(
-                                model = actfile.avatarUrl?.let { com.example.utils.UrlHelper.fixCloudinaryUrl(it) },
+                                model = avatarModel,
                                 contentDescription = "Avatar de ${actfile.username}",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
@@ -191,22 +279,21 @@ fun ActfileCard(
 
                 } else {
                     // CAS 2 : Publication communautaire
-                    val commIconUrl = remember(actfile.category) {
-                        getCategoryDefaultIcon(actfile.category ?: "general")
-                    }
+                    val commIconUrl = actfile.communityIconUrl?.ifBlank { null }
+                        ?: remember(actfile.category) { getCategoryDefaultIcon(actfile.category ?: "general") }
 
                     Box(
                         modifier = Modifier
                             .size(avatarSize)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.secondaryContainer)
-                            .clickable { onCategoryClick?.invoke(actfile.channelSlug ?: "") },
+                            .clip(CircleShape)
+                            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .clickable { onCategoryClick?.invoke(actfile.communityId ?: actfile.channelSlug ?: "") },
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
                             model = commIconUrl,
-                            contentDescription = "Communauté ${actfile.channelSlug}",
+                            contentDescription = "Communauté ${actfile.communityName ?: actfile.channelSlug}",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
@@ -218,17 +305,22 @@ fun ActfileCard(
                     Column(
                         modifier = Modifier.weight(1f)
                     ) {
-                        // Line 1: c/slug in bold + optional channel chip
+                        // Line 1: Community Name or c/slug in bold + optional channel chip
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            val displayCommName = actfile.communityName?.ifBlank { null }
+                                ?: if (!actfile.communityId.isNullOrBlank()) "c/${actfile.communityId}"
+                                else if (!actfile.channelSlug.isNullOrBlank()) "c/${actfile.channelSlug}"
+                                else "Communauté"
+
                             Text(
-                                text = "c/${actfile.channelSlug ?: "communaute"}",
+                                text = displayCommName,
                                 fontWeight = FontWeight.ExtraBold,
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.clickable { onCategoryClick?.invoke(actfile.channelSlug ?: "") }
+                                modifier = Modifier.clickable { onCategoryClick?.invoke(actfile.communityId ?: actfile.channelSlug ?: "") }
                             )
 
                             if (!actfile.channelName.isNullOrBlank()) {
@@ -388,8 +480,11 @@ fun ActfileCard(
                 }
             }
 
+            // Cleaned content without embedded metadata tags
+            val cleanedRawContent = remember(actfile.content) { ActfileMetadataHelper.cleanContent(actfile.content) }
+
             MarkdownContent(
-                content = (if (showOriginal) actfile.content else translatedContent) ?: actfile.content,
+                content = (if (showOriginal) cleanedRawContent else translatedContent) ?: cleanedRawContent,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onComment(actfile.id) }
@@ -399,6 +494,129 @@ fun ActfileCard(
                 onMentionClick = onMentionClick,
                 onLinkClick = onLinkClick
             )
+
+            // Attached Sound Player Card (with > to play, || to pause, sound title & creator name)
+            val attachedSound = remember(actfile) {
+                if (!actfile.soundTitle.isNullOrBlank()) {
+                    AttachedSound(
+                        id = actfile.soundId ?: "",
+                        title = actfile.soundTitle ?: "",
+                        author = actfile.soundAuthor ?: "",
+                        audioUrl = actfile.soundAudioUrl ?: "",
+                        coverUrl = actfile.soundCoverUrl ?: ""
+                    )
+                } else {
+                    ActfileMetadataHelper.parseSound(actfile.content)
+                }
+            }
+
+            val playerState by MusicPlayerManager.state.collectAsState()
+            val isPlayingThisSound = playerState.isPlaying && attachedSound != null && (
+                (attachedSound.id.isNotBlank() && playerState.currentTrack?.id == attachedSound.id) ||
+                (attachedSound.title.isNotBlank() && playerState.currentTrack?.title == attachedSound.title)
+            )
+
+            if (attachedSound != null && attachedSound.title.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        width = 1.dp,
+                        color = if (isPlayingThisSound) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Play (>) or Pause (||)
+                        FilledIconButton(
+                            onClick = {
+                                val soundUrl = if (attachedSound.audioUrl.isNotBlank()) {
+                                    attachedSound.audioUrl
+                                } else if (attachedSound.id.isNotBlank()) {
+                                    "https://hoosthubs-g.onrender.com/api/sounds/${attachedSound.id}/short/stream"
+                                } else ""
+
+                                val track = MusicTrack(
+                                    id = if (attachedSound.id.isNotBlank()) attachedSound.id else actfile.id,
+                                    title = attachedSound.title,
+                                    artist = if (attachedSound.author.isNotBlank()) attachedSound.author else "Créateur",
+                                    albumArt = attachedSound.coverUrl,
+                                    audioUrl = soundUrl,
+                                    durationFormatted = "03:00",
+                                    genre = "Actfile Sound",
+                                    likesCount = 0
+                                )
+                                if (isPlayingThisSound) {
+                                    MusicPlayerManager.togglePlayPause()
+                                } else {
+                                    MusicPlayerManager.playTrack(track)
+                                }
+                            },
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = if (isPlayingThisSound) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = if (isPlayingThisSound) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isPlayingThisSound) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlayingThisSound) "Pause" else "Lancer le son",
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.MusicNote,
+                                    contentDescription = null,
+                                    tint = if (isPlayingThisSound) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = attachedSound.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "par @${attachedSound.author.ifBlank { "créateur" }}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        if (isPlayingThisSound) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    text = "🎵 En écoute",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             // Dynamic tags rendering above action bar
             val tagsList = remember(actfile.content, actfile.tags) {
@@ -511,17 +729,13 @@ fun ActfileCard(
                                 if (onShare != null) {
                                     onShare(actfile.id)
                                 } else {
-                                    val sendIntent = android.content.Intent().apply {
-                                        action = android.content.Intent.ACTION_SEND
-                                        putExtra(
-                                            android.content.Intent.EXTRA_TEXT,
-                                            "Découvrez cette publication sur bit :\n" +
-                                            "👉 https://bit.gopu.inc/s/actfile/${actfile.id}"
-                                        )
-                                        type = "text/plain"
-                                    }
-                                    val shareIntent = android.content.Intent.createChooser(sendIntent, "Partager")
-                                    context.startActivity(shareIntent)
+                                    com.example.utils.ShareHelper.shareActfile(
+                                        context = context,
+                                        actfileId = actfile.id,
+                                        authorUsername = actfile.username,
+                                        content = actfile.content,
+                                        category = actfile.category
+                                    )
                                 }
                             }
                     ) {

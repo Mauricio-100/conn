@@ -58,19 +58,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Support Deep Linking for shared Actfiles -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-                <data android:host="bit.gopu.inc" />
-                <data android:host="iddet.gopu.inc" />
-                <data android:pathPrefix="/s/actfile" />
-            </intent-filter>
-
-            <!-- Support Deep Linking for Communities via iddet:// protocol -->
+            <!-- Support Deep Linking via iddet:// custom scheme (Profiles, Communities, Actfiles, Sounds, Videos) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -78,15 +66,25 @@
                 <data android:scheme="iddet" />
             </intent-filter>
 
-            <!-- Support Deep Linking for Communities via Web OpenGraph Links -->
+            <!-- Support Deep Linking via Web URLs (hoosthubs-g.onrender.com & iddet.app) -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="http" />
                 <data android:scheme="https" />
-                <data android:host="hoosthubs-g.onrender.com" android:pathPrefix="/c/" />
-                <data android:host="iddet.app" android:pathPrefix="/c/" />
+                <data android:host="hoosthubs-g.onrender.com" />
+                <data android:host="iddet.app" />
+                <data android:host="bit.gopu.inc" />
+                <data android:host="iddet.gopu.inc" />
+                <data android:pathPrefix="/u/" />
+                <data android:pathPrefix="/c/" />
+                <data android:pathPrefix="/community/" />
+                <data android:pathPrefix="/actfile/" />
+                <data android:pathPrefix="/sounds/" />
+                <data android:pathPrefix="/video/" />
+                <data android:pathPrefix="/messages/" />
+                <data android:pathPrefix="/s/" />
             </intent-filter>
         </activity>
 
