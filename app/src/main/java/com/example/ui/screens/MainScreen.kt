@@ -558,6 +558,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                         Triple("Reels & Vidéos 🎬", "reels", Icons.Outlined.VideoLibrary),
                         Triple("Studio Musique 🎵", "music", Icons.Outlined.MusicNote),
                         Triple("Google Actualités 📰", "google_news", Icons.Outlined.Newspaper),
+                        Triple("IDDET Ads Manager 📢", "iddet_ads", Icons.Outlined.Campaign),
                         Triple("Iddet Plus VIP ✨", "iddet_plus", Icons.Outlined.Star),
                         Triple("Hide It Pro Studio 🐱", "hide_it_pro", Icons.Outlined.VisibilityOff),
                         Triple("Radar des Potes 🗺️", "friends_map", Icons.Outlined.Place),
@@ -855,6 +856,7 @@ fun MainScreen(viewModel: IddetViewModel) {
                 }
                 composable("notifications") { NotificationsScreen(viewModel, navController) }
                 composable("history") { HistoryScreen(viewModel, navController) }
+                composable("iddet_ads") { IddetAdsManagerScreen(viewModel, navController) }
                 composable("settings") { SettingsScreen(viewModel, navController) }
                 composable("marketplace") { MarketplaceScreen(navController) }
                 composable("iddet_plus") { IddetPlusScreen(viewModel, navController) }

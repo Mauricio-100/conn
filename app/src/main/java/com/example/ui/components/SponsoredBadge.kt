@@ -33,42 +33,81 @@ import com.example.data.ActfileWithUser
 // Official IDDET Ads gold color
 val IddetAdsGold = Color(0xFFFFCC00)
 val IddetAdsGoldDark = Color(0xFF1A1A1A)
+val IddetAdsWarmBg = Color(0xFFFEF3C7)
+val IddetAdsTextDark = Color(0xFF92400E)
+val IddetAdsBorder = Color(0xFFD97706)
 
 /**
  * Badge "Sponsorisé" officiel IDDET Ads.
- * Calqué fidèlement sur la classe `.sponsored-badge` du serveur.
+ * Design épuré, ultra-compact ("plus petit" et "plus propre") placé en bas à gauche de la publication.
  */
 @Composable
 fun SponsoredBadge(
     modifier: Modifier = Modifier,
     isPending: Boolean = false,
+    moneyText: String = "$5.00",
     onClick: (() -> Unit)? = null
 ) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val isDark = MaterialTheme.colorScheme.background.let { it.red < 0.5f }
+
+    val bgColor = if (isPending) {
+        if (isDark) Color(0xFF261E0A) else Color(0xFFFFFBEB)
+    } else {
+        if (isDark) Color(0xFF2A2007) else Color(0xFFFEF3C7)
+    }
+    val borderColor = if (isPending) {
+        IddetAdsGold.copy(alpha = 0.35f)
+    } else {
+        IddetAdsBorder.copy(alpha = 0.45f)
+    }
+    val contentColor = if (isPending) {
+        if (isDark) Color(0xFFFDE68A) else Color(0xFFB45309)
+    } else {
+        if (isDark) Color(0xFFFACC15) else Color(0xFF92400E)
+    }
+
     Surface(
         shape = RoundedCornerShape(5.dp),
-        color = if (isPending) IddetAdsGold.copy(alpha = 0.2f) else IddetAdsGold,
-        border = if (isPending) BorderStroke(1.dp, IddetAdsGold) else null,
+        color = bgColor,
+        border = BorderStroke(0.6.dp, borderColor),
         modifier = modifier
             .testTag("sponsored_badge")
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        onClick = {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            onClick()
+                        }
+                    )
+                } else Modifier
+            )
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Campaign,
                 contentDescription = "Sponsorisé",
-                tint = if (isPending) IddetAdsGold else IddetAdsGoldDark,
-                modifier = Modifier.size(11.dp)
+                tint = contentColor,
+                modifier = Modifier.size(10.dp)
             )
-            Spacer(modifier = Modifier.width(3.5.dp))
+            Spacer(modifier = Modifier.width(3.dp))
             Text(
-                text = if (isPending) "ADS EN ATTENTE" else "SPONSORISÉ",
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.4.sp,
-                color = if (isPending) IddetAdsGold else IddetAdsGoldDark
+                text = if (isPending) "En attente" else "Sponsorisé",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.2.sp,
+                color = contentColor
+            )
+            Spacer(modifier = Modifier.width(2.5.dp))
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                tint = contentColor.copy(alpha = 0.65f),
+                modifier = Modifier.size(8.dp)
             )
         }
     }

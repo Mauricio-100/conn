@@ -56,7 +56,9 @@ data class Actfile(
     // IDDET Ads (Sponsored post)
     val isSponsored: Boolean = false,
     val adCampaignId: String? = null,
-    val adStatus: String? = "none"
+    val adStatus: String? = "none",
+    val adBudget: Double? = null,
+    val adCurrency: String? = null
 )
 
 @Entity(tableName = "messages")
@@ -112,7 +114,9 @@ data class ActfileWithUser(
     // IDDET Ads (Sponsored post)
     val isSponsored: Boolean = false,
     val adCampaignId: String? = null,
-    val adStatus: String? = "none"
+    val adStatus: String? = "none",
+    val adBudget: Double? = null,
+    val adCurrency: String? = null
 )
 
 data class AttachedSound(

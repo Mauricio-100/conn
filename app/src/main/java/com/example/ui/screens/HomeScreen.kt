@@ -40,6 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import android.widget.Toast
 import com.example.ui.components.PromoteActfileDialog
+import com.example.ui.components.IddetAdsGold
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -163,8 +165,11 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                 }
             } // Personnalisé (Pour Toi)
             1 -> filteredFollowed // Abonnements
-            2 -> filteredActfiles.sortedByDescending { it.likesCount + it.commentsCount * 2 + it.viewsCount } // Populaires
+            2 -> filteredActfiles.sortedByDescending { 
+                (it.likesCount + it.commentsCount * 2 + it.viewsCount) + (if (it.isSponsored) 100000 else 0)
+            } // Populaires
             3 -> filteredActfiles.shuffled(java.util.Random(discoverySeed.toLong())) // Découverte
+            4 -> filteredActfiles.filter { it.isSponsored } // Sponsorisés
             else -> filteredActfiles
         }
         val sortedList = baseList
@@ -210,6 +215,16 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { navController.navigate("iddet_ads") },
+                        modifier = Modifier.testTag("ads_manager_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Campaign,
+                            contentDescription = "IDDET Ads Manager",
+                            tint = IddetAdsGold
+                        )
+                    }
                     IconButton(
                         onClick = { navController.navigate("reels") },
                         modifier = Modifier.testTag("reels_button")
@@ -295,6 +310,28 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                                 viewModel.setFeedTab(3)
                             },
                             label = { Text("🎲 Découverte", fontSize = 13.sp, fontWeight = if (feedTab == 3) FontWeight.Bold else FontWeight.Normal) }
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = feedTab == 4,
+                            onClick = { viewModel.setFeedTab(4) },
+                            label = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Campaign,
+                                        contentDescription = null,
+                                        tint = if (feedTab == 4) Color.Black else IddetAdsGold,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("📢 Sponsorisés", fontSize = 13.sp, fontWeight = if (feedTab == 4) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = IddetAdsGold,
+                                selectedLabelColor = Color.Black
+                            )
                         )
                     }
                     if (selectedCategoryFilter != null) {

@@ -340,10 +340,12 @@ class IddetRepository(
                             soundCoverUrl = parsedSound?.coverUrl,
                             communityName = effectiveCommName,
                             communityIconUrl = effectiveCommIcon,
-                            communityIsVerified = (net.community_is_verified ?: false) || (effectiveCommSlug?.lowercase() in listOf("iddet", "mshop")),
+                            communityIsVerified = (net.community_is_verified ?: false),
                             isSponsored = net.is_sponsored ?: false,
                             adCampaignId = net.ad_campaign_id,
-                            adStatus = net.ad_status ?: "none"
+                            adStatus = net.ad_status ?: "none",
+                            adBudget = net.ad_budget,
+                            adCurrency = net.ad_currency
                         )
                     )
                 }
@@ -367,28 +369,43 @@ class IddetRepository(
             currentToken = response.access_token
             prefs.edit().putString("auth_token", currentToken).apply()
             
-            val profile = RetrofitClient.apiService.getMyProfile("Bearer $currentToken")
-            val existing = userDao.getUserById(profile.id ?: "")
-            val user = if (existing != null) {
-                existing.copy(
-                    username = profile.username,
-                    avatarUrl = profile.avatar_url,
-                    bio = profile.bio ?: existing.bio,
-                    isVerified = profile.is_verified,
-                    followingCount = profile.following_count,
-                    followersCount = profile.followers_count
-                )
-            } else {
-                User(
-                    id = profile.id ?: "",
-                    username = profile.username,
+            val user = try {
+                val profile = RetrofitClient.apiService.getMyProfile("Bearer $currentToken")
+                val existing = userDao.getUserById(profile.id ?: "")
+                if (existing != null) {
+                    existing.copy(
+                        username = profile.username,
+                        avatarUrl = profile.avatar_url,
+                        bio = profile.bio ?: existing.bio,
+                        isVerified = profile.is_verified,
+                        followingCount = profile.following_count,
+                        followersCount = profile.followers_count
+                    )
+                } else {
+                    User(
+                        id = profile.id ?: java.util.UUID.randomUUID().toString(),
+                        username = profile.username,
+                        passwordHash = "mocked",
+                        avatarUrl = profile.avatar_url,
+                        bio = profile.bio ?: "Welcome to my profile!",
+                        isVerified = profile.is_verified,
+                        followingCount = profile.following_count,
+                        followersCount = profile.followers_count,
+                        isGiant = (profile.username.length > 5)
+                    )
+                }
+            } catch (profileError: Exception) {
+                profileError.printStackTrace()
+                // Fallback: If server throws 500 on /api/users/me, use local cached user or synthesize one so login succeeds
+                val existing = userDao.getUserByUsername(username)
+                existing ?: User(
+                    id = java.util.UUID.randomUUID().toString(),
+                    username = username,
                     passwordHash = "mocked",
-                    avatarUrl = profile.avatar_url,
-                    bio = profile.bio ?: "Welcome to my profile!",
-                    isVerified = profile.is_verified,
-                    followingCount = profile.following_count,
-                    followersCount = profile.followers_count,
-                    isGiant = (profile.username.length > 5)
+                    avatarUrl = null,
+                    bio = "Welcome to Iddet!",
+                    isVerified = false,
+                    isGiant = (username.length > 5)
                 )
             }
             userDao.insertUser(user)
@@ -528,29 +545,41 @@ class IddetRepository(
         prefs.edit().putString("auth_token", token).apply()
         
         try {
-            val profile = RetrofitClient.apiService.getMyProfile("Bearer $token")
-            val existing = userDao.getUserById(profile.id ?: "")
-            val user = if (existing != null) {
-                existing.copy(
-                    username = profile.username,
-                    avatarUrl = profile.avatar_url,
-                    bio = profile.bio ?: existing.bio,
-                    isVerified = profile.is_verified,
-                    followingCount = profile.following_count,
-                    followersCount = profile.followers_count
-                )
-            } else {
-                User(
-                    id = profile.id ?: "",
-                    username = profile.username,
-                    passwordHash = "mocked",
-                    avatarUrl = profile.avatar_url,
-                    bio = profile.bio ?: "Welcome to my profile!",
-                    isVerified = profile.is_verified,
-                    followingCount = profile.following_count,
-                    followersCount = profile.followers_count,
-                    isGiant = (profile.username.length > 5)
-                )
+            val user = try {
+                val profile = RetrofitClient.apiService.getMyProfile("Bearer $token")
+                val existing = userDao.getUserById(profile.id ?: "")
+                if (existing != null) {
+                    existing.copy(
+                        username = profile.username,
+                        avatarUrl = profile.avatar_url,
+                        bio = profile.bio ?: existing.bio,
+                        isVerified = profile.is_verified,
+                        followingCount = profile.following_count,
+                        followersCount = profile.followers_count
+                    )
+                } else {
+                    User(
+                        id = profile.id ?: java.util.UUID.randomUUID().toString(),
+                        username = profile.username,
+                        passwordHash = "mocked",
+                        avatarUrl = profile.avatar_url,
+                        bio = profile.bio ?: "Welcome to my profile!",
+                        isVerified = profile.is_verified,
+                        followingCount = profile.following_count,
+                        followersCount = profile.followers_count,
+                        isGiant = (profile.username.length > 5)
+                    )
+                }
+            } catch (profileError: Exception) {
+                profileError.printStackTrace()
+                val savedUid = prefs.getString("user_id", null)
+                val existing = if (savedUid != null) userDao.getUserById(savedUid) else null
+                existing ?: run {
+                    val savedAcc = savedAccountDao.getAccountByToken(token)
+                    if (savedAcc != null) {
+                        userDao.getUserByUsername(savedAcc.username)
+                    } else null
+                } ?: throw profileError
             }
             userDao.insertUser(user)
             _currentUser.value = user
@@ -610,10 +639,11 @@ class IddetRepository(
         soundCoverUrl: String? = null,
         communityName: String? = null,
         communityIconUrl: String? = null
-    ) {
-        val user = _currentUser.value ?: return
+    ): String? {
+        val user = _currentUser.value ?: return null
         val validCategory = normalizeCategory(category)
         val targetUserId = user.id
+        var createdActfileId: String? = null
 
         val embeddedContent = buildString {
             append(content)
@@ -644,55 +674,31 @@ class IddetRepository(
                         channel_slug = channelId?.takeIf { it.isNotBlank() }
                     )
                 )
-                actfileDao.insertActfile(
-                    Actfile(
-                        id = netActfile.id,
-                        userId = if (netActfile.user_id.isNotBlank()) netActfile.user_id else targetUserId,
-                        content = if (netActfile.content.isNotBlank()) netActfile.content else embeddedContent,
-                        tags = tags,
-                        likesCount = netActfile.likes_count,
-                        viewsCount = netActfile.views_count,
-                        createdAt = if (netActfile.created_at.isNotBlank()) parseIso(netActfile.created_at) else System.currentTimeMillis(),
-                        category = netActfile.category ?: validCategory,
-                        communityId = netActfile.community_id ?: communityId,
-                        channelId = netActfile.channel_id ?: channelId,
-                        channelSlug = netActfile.channel_slug,
-                        channelName = netActfile.channel_name,
-                        soundId = soundId,
-                        soundTitle = soundTitle,
-                        soundAuthor = soundAuthor,
-                        soundAudioUrl = soundAudioUrl,
-                        soundCoverUrl = soundCoverUrl,
-                        communityName = communityName,
-                        communityIconUrl = communityIconUrl
-                    )
+                val toInsert = Actfile(
+                    id = netActfile.id,
+                    userId = if (netActfile.user_id.isNotBlank()) netActfile.user_id else targetUserId,
+                    content = if (netActfile.content.isNotBlank()) netActfile.content else embeddedContent,
+                    tags = tags,
+                    likesCount = netActfile.likes_count,
+                    viewsCount = netActfile.views_count,
+                    createdAt = if (netActfile.created_at.isNotBlank()) parseIso(netActfile.created_at) else System.currentTimeMillis(),
+                    category = netActfile.category ?: validCategory,
+                    communityId = netActfile.community_id ?: communityId,
+                    channelId = netActfile.channel_id ?: channelId,
+                    channelSlug = netActfile.channel_slug,
+                    channelName = netActfile.channel_name,
+                    soundId = soundId,
+                    soundTitle = soundTitle,
+                    soundAuthor = soundAuthor,
+                    soundAudioUrl = soundAudioUrl,
+                    soundCoverUrl = soundCoverUrl,
+                    communityName = communityName,
+                    communityIconUrl = communityIconUrl
                 )
+                actfileDao.insertActfile(toInsert)
+                createdActfileId = toInsert.id
             } else {
-                actfileDao.insertActfile(
-                    Actfile(
-                        userId = targetUserId,
-                        content = embeddedContent,
-                        tags = tags,
-                        category = validCategory,
-                        communityId = communityId,
-                        channelId = channelId,
-                        channelSlug = communityId,
-                        channelName = communityName,
-                        soundId = soundId,
-                        soundTitle = soundTitle,
-                        soundAuthor = soundAuthor,
-                        soundAudioUrl = soundAudioUrl,
-                        soundCoverUrl = soundCoverUrl,
-                        communityName = communityName,
-                        communityIconUrl = communityIconUrl
-                    )
-                )
-            }
-        } catch(e: Exception) {
-            e.printStackTrace()
-            // fallback
-            actfileDao.insertActfile(
-                Actfile(
+                val toInsert = Actfile(
                     userId = targetUserId,
                     content = embeddedContent,
                     tags = tags,
@@ -709,7 +715,31 @@ class IddetRepository(
                     communityName = communityName,
                     communityIconUrl = communityIconUrl
                 )
+                actfileDao.insertActfile(toInsert)
+                createdActfileId = toInsert.id
+            }
+        } catch(e: Exception) {
+            e.printStackTrace()
+            // fallback
+            val toInsert = Actfile(
+                userId = targetUserId,
+                content = embeddedContent,
+                tags = tags,
+                category = validCategory,
+                communityId = communityId,
+                channelId = channelId,
+                channelSlug = communityId,
+                channelName = communityName,
+                soundId = soundId,
+                soundTitle = soundTitle,
+                soundAuthor = soundAuthor,
+                soundAudioUrl = soundAudioUrl,
+                soundCoverUrl = soundCoverUrl,
+                communityName = communityName,
+                communityIconUrl = communityIconUrl
             )
+            actfileDao.insertActfile(toInsert)
+            createdActfileId = toInsert.id
         }
 
         // Simple mock leveling up logic
@@ -722,6 +752,7 @@ class IddetRepository(
         val updatedUser = user.copy(xp = newXp, level = newLevel, badges = newBadges)
         userDao.updateUser(updatedUser)
         _currentUser.value = updatedUser
+        return createdActfileId
     }
 
     suspend fun deleteActfile(actfileId: String) {
@@ -1849,9 +1880,14 @@ class IddetRepository(
                     channelId = net.channel_id,
                     channelSlug = net.channel_slug,
                     channelName = net.channel_name,
+                    communityName = net.community_name,
+                    communityIconUrl = net.community_icon_url,
+                    communityIsVerified = net.community_is_verified ?: false,
                     isSponsored = net.is_sponsored ?: false,
                     adCampaignId = net.ad_campaign_id,
-                    adStatus = net.ad_status ?: "none"
+                    adStatus = net.ad_status ?: "none",
+                    adBudget = net.ad_budget,
+                    adCurrency = net.ad_currency
                 )
             }
             val combined = (mapped + localList).distinctBy { it.id }.sortedByDescending { it.createdAt }
@@ -2937,10 +2973,14 @@ class IddetRepository(
             
             val existing = actfileDao.getActfileRaw(actfileId)
             if (existing != null) {
+                val status = resp.status ?: "active"
                 actfileDao.insertActfile(
                     existing.copy(
+                        isSponsored = status == "active" || existing.isSponsored,
                         adCampaignId = resp.campaign_id ?: existing.adCampaignId,
-                        adStatus = resp.status ?: "pending"
+                        adStatus = status,
+                        adBudget = budget,
+                        adCurrency = currency
                     )
                 )
             }

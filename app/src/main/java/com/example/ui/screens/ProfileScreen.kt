@@ -837,6 +837,14 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                 onClick = { navController.navigate("iddet_plus") }
                             )
 
+                            // Highlight: IDDET Ads Manager
+                            HighlightCircleItem(
+                                icon = Icons.Outlined.Campaign,
+                                label = "IDDET Ads",
+                                color = com.example.ui.components.IddetAdsGold,
+                                onClick = { navController.navigate("iddet_ads") }
+                            )
+
                             // Highlight 2: Trophies & Badges
                             HighlightCircleItem(
                                 icon = Icons.Outlined.EmojiEvents,

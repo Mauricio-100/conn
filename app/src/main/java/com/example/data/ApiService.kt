@@ -156,7 +156,9 @@ data class ActfileNetwork(
     val channel_name: String? = null,
     val is_sponsored: Boolean? = false,
     val ad_campaign_id: String? = null,
-    val ad_status: String? = null
+    val ad_status: String? = null,
+    val ad_budget: Double? = null,
+    val ad_currency: String? = null
 )
 
 data class AdCampaignRequest(

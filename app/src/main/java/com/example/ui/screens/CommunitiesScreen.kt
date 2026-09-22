@@ -814,7 +814,7 @@ fun FeaturedCommunityCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (community.isVerified || community.slug.lowercase() in listOf("iddet", "mshop")) {
+                    if (community.isVerified) {
                         Spacer(modifier = Modifier.width(4.dp))
                         VerificationBadge(
                             userName = community.name,
@@ -979,7 +979,7 @@ fun CommunityCardItem(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (community.isVerified || community.slug.lowercase() in listOf("iddet", "mshop")) {
+                        if (community.isVerified) {
                             Spacer(modifier = Modifier.width(4.dp))
                             VerificationBadge(
                                 userName = community.name,

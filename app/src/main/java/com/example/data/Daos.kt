@@ -71,7 +71,7 @@ interface ActfileDao {
 
     @Query("""
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
-        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus, a.adBudget, a.adCurrency
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         WHERE (a.content NOT LIKE '%@#%')
@@ -81,7 +81,7 @@ interface ActfileDao {
 
     @Query("""
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
-        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus, a.adBudget, a.adCurrency
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         WHERE (a.userId = :userId OR u.username = :userId OR u.id = :userId) AND (a.content NOT LIKE '%@#%')
@@ -91,7 +91,7 @@ interface ActfileDao {
 
     @Query("""
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
-        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus, a.adBudget, a.adCurrency
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         WHERE (a.content LIKE '%' || :query || '%' OR a.tags LIKE '%' || :query || '%') AND (a.content NOT LIKE '%@#%')
@@ -119,7 +119,7 @@ interface ActfileDao {
 
     @Query("""
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
-        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus, a.adBudget, a.adCurrency
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         WHERE (a.communityId = :communityId OR a.communityId = :slug OR a.channelSlug = :slug OR a.content LIKE '%@c/' || :slug || '%') AND (a.content NOT LIKE '%@#%')
@@ -129,7 +129,7 @@ interface ActfileDao {
 
     @Query("""
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
-        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus, a.adBudget, a.adCurrency
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         WHERE (a.communityId = :communityId OR a.communityId = :slug OR a.channelSlug = :slug OR a.content LIKE '%@c/' || :slug || '%') AND (a.content NOT LIKE '%@#%')
@@ -139,7 +139,7 @@ interface ActfileDao {
 
     @Query("""
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
-        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus, a.adBudget, a.adCurrency
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         WHERE a.id = :actfileId
@@ -149,7 +149,7 @@ interface ActfileDao {
 
     @Query("""
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
-        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus, a.adBudget, a.adCurrency
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         WHERE a.isLikedByMe = 1 AND (a.content NOT LIKE '%@#%')
@@ -159,7 +159,7 @@ interface ActfileDao {
 
     @Query("""
         SELECT DISTINCT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
-        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus, a.adBudget, a.adCurrency
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username) 
         INNER JOIN actfile_comments c ON a.id = c.actfileId
@@ -237,7 +237,7 @@ interface FollowDao {
 
     @Query("""
         SELECT a.id, a.userId, COALESCE(u.username, 'Utilisateur') AS username, u.avatarUrl, COALESCE(u.isVerified, 0) AS isVerified, a.content, a.tags, a.likesCount, a.viewsCount, a.commentsCount, a.createdAt, a.isLikedByMe AS isLikedByMe, a.category, a.communityId, a.channelId, a.channelSlug, a.channelName,
-        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus
+        a.soundId, a.soundTitle, a.soundAuthor, a.soundAudioUrl, a.soundCoverUrl, a.communityName, a.communityIconUrl, a.communityIsVerified, a.isSponsored, a.adCampaignId, a.adStatus, a.adBudget, a.adCurrency
         FROM actfiles a 
         LEFT JOIN users u ON (a.userId = u.id OR a.userId = u.username)
         WHERE (
@@ -316,6 +316,9 @@ interface NotificationDao {
 interface SavedAccountDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSavedAccount(account: SavedAccount)
+
+    @Query("SELECT * FROM saved_accounts WHERE token = :token LIMIT 1")
+    suspend fun getAccountByToken(token: String): SavedAccount?
 
     @Query("SELECT * FROM saved_accounts ORDER BY savedAt DESC")
     fun getAllSavedAccounts(): Flow<List<SavedAccount>>

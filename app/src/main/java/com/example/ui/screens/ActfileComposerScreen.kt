@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,6 +50,8 @@ import com.example.data.Community
 import com.example.ui.IddetViewModel
 import com.example.ui.components.APP_CATEGORIES
 import com.example.ui.components.CategoryInfo
+import com.example.ui.components.IddetAdsGold
+import com.example.ui.components.SponsoredBadge
 import com.example.ui.components.MarkdownActfile
 import com.example.utils.LocalAiManager
 import com.example.utils.MusicPlayerManager
@@ -198,6 +201,13 @@ fun ActfileComposerScreen(
     var postAsIddet by remember { mutableStateOf(false) }
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     var tags by remember { mutableStateOf("") }
+
+    // IDDET Ads integration
+    var promoteWithAds by remember { mutableStateOf(false) }
+    var adBudget by remember { mutableDoubleStateOf(5.0) }
+    var adCurrency by remember { mutableStateOf("USD") }
+    var adDaily by remember { mutableStateOf(true) }
+    var adTargetCountry by remember { mutableStateOf<String?>("CD") }
 
     // Attached Sound integration
     val attachedSoundFromVm by viewModel.attachedComposerSound.collectAsStateWithLifecycle()
@@ -447,7 +457,37 @@ fun ActfileComposerScreen(
                                                 "$textContent\n\n@c/${selectedCommunity!!.slug}"
                                             } else textContent
                                             viewModel.setAttachedComposerSound(null)
-                                            onPublish(finalContent, tags, selectedCategory, postAsIddet, attachedSound, selectedCommunity)
+                                            if (promoteWithAds) {
+                                                viewModel.publishAndPromoteActfile(
+                                                    content = finalContent,
+                                                    tags = tags,
+                                                    category = selectedCategory,
+                                                    communityId = selectedCommunity?.id,
+                                                    channelId = null,
+                                                    postAsIddet = postAsIddet,
+                                                    soundId = attachedSound?.id,
+                                                    soundTitle = attachedSound?.title,
+                                                    soundAuthor = attachedSound?.artist,
+                                                    soundAudioUrl = attachedSound?.audioUrl,
+                                                    soundCoverUrl = attachedSound?.albumArt,
+                                                    communityName = selectedCommunity?.name,
+                                                    communityIconUrl = selectedCommunity?.iconUrl,
+                                                    budget = adBudget,
+                                                    currency = adCurrency,
+                                                    daily = adDaily,
+                                                    targetCountry = adTargetCountry,
+                                                    onSuccess = { checkoutUrl ->
+                                                        Toast.makeText(context, "Actfile publié et sponsorisé avec succès !", Toast.LENGTH_SHORT).show()
+                                                        onDismiss()
+                                                    },
+                                                    onError = { err ->
+                                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                                        onDismiss()
+                                                    }
+                                                )
+                                            } else {
+                                                onPublish(finalContent, tags, selectedCategory, postAsIddet, attachedSound, selectedCommunity)
+                                            }
                                         } else {
                                             safetyError = "⚠️ Ce contenu enfreint les règles de la communauté Iddet."
                                         }
@@ -960,6 +1000,159 @@ fun ActfileComposerScreen(
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                         fontWeight = FontWeight.Bold
                                     )
+                                }
+                            }
+                        }
+
+                        // IDDET Ads integration section
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (promoteWithAds) IddetAdsGold.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (promoteWithAds) IddetAdsGold else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(IddetAdsGold.copy(alpha = 0.2f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Campaign,
+                                                contentDescription = null,
+                                                tint = IddetAdsGold,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = "Sponsoriser (IDDET Ads)",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                SponsoredBadge()
+                                            }
+                                            Text(
+                                                text = "+50 000 pts boost algo Pour Toi",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    Switch(
+                                        checked = promoteWithAds,
+                                        onCheckedChange = { promoteWithAds = it },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = IddetAdsGold,
+                                            checkedTrackColor = IddetAdsGold.copy(alpha = 0.4f)
+                                        )
+                                    )
+                                }
+
+                                if (promoteWithAds) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    HorizontalDivider(color = IddetAdsGold.copy(alpha = 0.3f))
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Currency toggle
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Devise",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            listOf("USD", "CDF").forEach { curr ->
+                                                FilterChip(
+                                                    selected = adCurrency == curr,
+                                                    onClick = {
+                                                        adCurrency = curr
+                                                        adBudget = if (curr == "CDF") 10000.0 else 5.0
+                                                    },
+                                                    label = { Text(if (curr == "USD") "USD ($)" else "CDF (FC)") }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Budget options
+                                    Text(
+                                        text = "Budget publicitaire (${if (adDaily) "/ jour" else "total"}) :",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    val budgetOptions = if (adCurrency == "USD") listOf(2.0, 5.0, 10.0, 25.0) else listOf(5000.0, 10000.0, 25000.0, 50000.0)
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        items(budgetOptions) { amount ->
+                                            val isSelected = adBudget == amount
+                                            SuggestionChip(
+                                                onClick = { adBudget = amount },
+                                                label = {
+                                                    Text(
+                                                        text = if (adCurrency == "USD") "$${amount.toInt()}" else "${amount.toInt()} FC",
+                                                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.Normal
+                                                    )
+                                                },
+                                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                                    containerColor = if (isSelected) IddetAdsGold.copy(alpha = 0.25f) else Color.Transparent
+                                                ),
+                                                border = SuggestionChipDefaults.suggestionChipBorder(
+                                                    enabled = true,
+                                                    borderColor = if (isSelected) IddetAdsGold else MaterialTheme.colorScheme.outlineVariant
+                                                )
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Country targeting
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Ciblage :",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            listOf("CD" to "🇨🇩 RDC", "FR" to "🇫🇷 FR", null to "🌍 Global").forEach { (code, label) ->
+                                                FilterChip(
+                                                    selected = adTargetCountry == code,
+                                                    onClick = { adTargetCountry = code },
+                                                    label = { Text(label, fontSize = 11.sp) }
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

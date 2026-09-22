@@ -19,19 +19,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import com.example.data.ActfileWithUser
 import com.example.ui.IddetViewModel
 import com.example.ui.components.ActfileCard
+import com.example.ui.components.PromoteActfileDialog
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(viewModel: IddetViewModel, navController: NavController) {
+    val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     
     val likedActfiles by viewModel.likedActfiles.collectAsState()
     val commentedActfiles by viewModel.commentedActfiles.collectAsState()
     val currentUserId = viewModel.currentUser.collectAsState().value?.id
+
+    var actfileToPromote by remember { mutableStateOf<ActfileWithUser?>(null) }
+    var isLoadingAdAction by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -152,6 +160,7 @@ fun HistoryScreen(viewModel: IddetViewModel, navController: NavController) {
                                 navController.navigate("discussion/$actfileId")
                             },
                             onDelete = if (isMine) { { viewModel.deleteActfile(it) } } else null,
+                            onPromote = if (isMine) { { actfileToPromote = it } } else null,
                             onLinkClick = { url ->
                                 val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
                                 navController.navigate("browser/$encodedUrl")
@@ -169,6 +178,49 @@ fun HistoryScreen(viewModel: IddetViewModel, navController: NavController) {
                     }
                 }
             }
+        }
+
+        actfileToPromote?.let { targetActfile ->
+            PromoteActfileDialog(
+                actfile = targetActfile,
+                isLoading = isLoadingAdAction,
+                onDismiss = { actfileToPromote = null },
+                onPromote = { budget, currency, daily, targetCountry ->
+                    isLoadingAdAction = true
+                    viewModel.promoteActfile(
+                        actfileId = targetActfile.id,
+                        budget = budget,
+                        currency = currency,
+                        daily = daily,
+                        targetCountry = targetCountry,
+                        onSuccess = { checkoutUrl ->
+                            isLoadingAdAction = false
+                            actfileToPromote = null
+                            Toast.makeText(context, "Campagne lancée !", Toast.LENGTH_SHORT).show()
+                            if (!checkoutUrl.isNullOrBlank()) {
+                                val encoded = java.net.URLEncoder.encode(checkoutUrl, "UTF-8")
+                                navController.navigate("browser/$encoded")
+                            }
+                        },
+                        onError = { err ->
+                            isLoadingAdAction = false
+                            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                        }
+                    )
+                },
+                onCancelAd = {
+                    isLoadingAdAction = true
+                    viewModel.cancelActfileAd(targetActfile.id) { success ->
+                        isLoadingAdAction = false
+                        actfileToPromote = null
+                        if (success) {
+                            Toast.makeText(context, "Sponsorisation arrêtée", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Échec de l'annulation", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            )
         }
     }
 }

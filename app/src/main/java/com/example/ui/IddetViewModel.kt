@@ -1231,6 +1231,60 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
         }
     }
 
+    fun publishAndPromoteActfile(
+        content: String,
+        tags: String = "",
+        category: String? = null,
+        communityId: String? = null,
+        channelId: String? = null,
+        postAsIddet: Boolean = false,
+        soundId: String? = null,
+        soundTitle: String? = null,
+        soundAuthor: String? = null,
+        soundAudioUrl: String? = null,
+        soundCoverUrl: String? = null,
+        communityName: String? = null,
+        communityIconUrl: String? = null,
+        budget: Double,
+        currency: String = "USD",
+        daily: Boolean = true,
+        targetCountry: String? = null,
+        onSuccess: (checkoutUrl: String?) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val createdId = repository.publishActfile(
+                content = content,
+                tags = tags,
+                category = category,
+                communityId = communityId,
+                channelId = channelId,
+                postAsIddet = postAsIddet,
+                soundId = soundId,
+                soundTitle = soundTitle,
+                soundAuthor = soundAuthor,
+                soundAudioUrl = soundAudioUrl,
+                soundCoverUrl = soundCoverUrl,
+                communityName = communityName,
+                communityIconUrl = communityIconUrl
+            )
+            if (createdId != null) {
+                val res = repository.promoteActfile(createdId, budget, currency, daily, targetCountry)
+                repository.refreshActfiles()
+                res.fold(
+                    onSuccess = { response ->
+                        onSuccess(response.checkout_url)
+                    },
+                    onFailure = { err ->
+                        onError(err.message ?: "Actfile publié mais échec de la sponsorisation")
+                    }
+                )
+            } else {
+                onError("Impossible de créer l'actfile")
+            }
+        }
+    }
+
     private val _attachedComposerSound = MutableStateFlow<com.example.utils.MusicTrack?>(null)
     val attachedComposerSound: StateFlow<com.example.utils.MusicTrack?> = _attachedComposerSound.asStateFlow()
 

@@ -33,6 +33,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -112,19 +113,30 @@ fun ActfileCard(
     val avatarSize = if (isDetailView) 52.dp else 42.dp
     val miniAvatarSize = 20.dp
 
+    val moneyDisplay = remember(actfile.adBudget, actfile.adCurrency) {
+        val b = actfile.adBudget ?: 5.0
+        val c = actfile.adCurrency ?: "USD"
+        if (c.equals("CDF", true) || c.equals("FC", true)) {
+            "${b.toInt()} FC"
+        } else {
+            if (b % 1.0 == 0.0) "$${b.toInt()}.00" else String.format(java.util.Locale.US, "$%.2f", b)
+        }
+    }
+    var showSponsoredInfoDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .then(
                 if (actfile.isSponsored) {
-                    Modifier.border(1.dp, IddetAdsGold.copy(alpha = 0.35f))
+                    Modifier.border(0.6.dp, Color(0xFFEAB308).copy(alpha = 0.22f))
                 } else {
                     Modifier
                 }
             )
             .background(
                 if (actfile.isSponsored) {
-                    IddetAdsGold.copy(alpha = 0.03f)
+                    Color(0xFFFEF3C7).copy(alpha = 0.08f)
                 } else {
                     MaterialTheme.colorScheme.surface
                 }
@@ -136,14 +148,15 @@ fun ActfileCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(3.dp)
+                    .height(1.5.dp)
                     .background(
                         androidx.compose.ui.graphics.Brush.horizontalGradient(
                             listOf(
-                                IddetAdsGold.copy(alpha = 0.4f),
-                                IddetAdsGold,
-                                Color(0xFFFFE082),
-                                IddetAdsGold
+                                Color(0xFFEAB308).copy(alpha = 0.0f),
+                                Color(0xFFEAB308).copy(alpha = 0.7f),
+                                Color(0xFFFDE047),
+                                Color(0xFFEAB308).copy(alpha = 0.7f),
+                                Color(0xFFEAB308).copy(alpha = 0.0f)
                             )
                         )
                     )
@@ -228,12 +241,15 @@ fun ActfileCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        VerificationBadge(
-                            userName = effectiveCommunityName ?: effectiveCommunitySlug ?: "",
-                            isVerified = true,
-                            modifier = Modifier.size(14.dp)
-                        )
+                        if (actfile.communityIsVerified) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            VerificationBadge(
+                                userName = effectiveCommunityName ?: effectiveCommunitySlug ?: "",
+                                isVerified = true,
+                                isCommunity = true,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
                         if (!actfile.channelName.isNullOrBlank()) {
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
@@ -315,13 +331,6 @@ fun ActfileCard(
                                 isVerified = actfile.isVerified,
                                 modifier = Modifier.size(16.dp)
                             )
-                            if (actfile.isSponsored) {
-                                Spacer(modifier = Modifier.width(5.dp))
-                                SponsoredBadge(onClick = onPromote?.let { { it(actfile) } })
-                            } else if (actfile.adStatus == "pending") {
-                                Spacer(modifier = Modifier.width(5.dp))
-                                SponsoredBadge(isPending = true, onClick = onPromote?.let { { it(actfile) } })
-                            }
                         }
                         
                         Text(
@@ -384,13 +393,13 @@ fun ActfileCard(
 
                             Spacer(modifier = Modifier.width(4.dp))
 
-                            val isCommVerified = actfile.communityIsVerified || (displayCommName.lowercase().removePrefix("c/") in listOf("iddet", "mshop"))
-                            if (isCommVerified) {
+                            if (actfile.communityIsVerified) {
+                                Spacer(modifier = Modifier.width(4.dp))
                                 VerificationBadge(
                                     userName = displayCommName,
                                     isVerified = true,
                                     isCommunity = true,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
 
@@ -462,14 +471,6 @@ fun ActfileCard(
                                 isVerified = actfile.isVerified,
                                 modifier = Modifier.size(12.dp)
                             )
-
-                            if (actfile.isSponsored) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                SponsoredBadge(onClick = onPromote?.let { { it(actfile) } })
-                            } else if (actfile.adStatus == "pending") {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                SponsoredBadge(isPending = true, onClick = onPromote?.let { { it(actfile) } })
-                            }
 
                             Spacer(modifier = Modifier.width(4.dp))
 
@@ -742,7 +743,27 @@ fun ActfileCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            // 8. Sponsored Badge - En bas à gauche (plus petit et plus propre)
+            if (actfile.isSponsored || actfile.adStatus == "pending") {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Start,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SponsoredBadge(
+                        isPending = actfile.adStatus == "pending",
+                        moneyText = moneyDisplay,
+                        onClick = {
+                            val msg = "Ce projet a été sponsorisé par IDDET pour $moneyDisplay"
+                            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                            showSponsoredInfoDialog = true
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Horizontal bottom action bar & Category badge aligned to the right
             Row(
@@ -934,6 +955,75 @@ fun ActfileCard(
         }
         if (!isDetailView) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        }
+
+        // Dialogue informatif IDDET Ads au clic sur le badge sponsorisé
+        if (showSponsoredInfoDialog) {
+            AlertDialog(
+                onDismissRequest = { showSponsoredInfoDialog = false },
+                icon = {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFEF3C7)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Campaign,
+                            contentDescription = null,
+                            tint = Color(0xFFD97706),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                },
+                title = {
+                    Text(
+                        text = "IDDET Ads • Sponsorisé",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                },
+                text = {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Ce projet a été sponsorisé par IDDET pour $moneyDisplay",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Cette publication bénéficie d'une visibilité amplifiée dans le flux d'actualités grâce au programme publicitaire IDDET Ads.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showSponsoredInfoDialog = false }) {
+                        Text("Compris", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = if (onPromote != null) {
+                    {
+                        TextButton(
+                            onClick = {
+                                showSponsoredInfoDialog = false
+                                onPromote(actfile)
+                            }
+                        ) {
+                            Text("Gérer l'annonce")
+                        }
+                    }
+                } else null
+            )
         }
     }
 }
