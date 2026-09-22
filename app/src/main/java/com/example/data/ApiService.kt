@@ -153,7 +153,30 @@ data class ActfileNetwork(
     val community_is_verified: Boolean? = false,
     val channel_id: String? = null,
     val channel_slug: String? = null,
-    val channel_name: String? = null
+    val channel_name: String? = null,
+    val is_sponsored: Boolean? = false,
+    val ad_campaign_id: String? = null,
+    val ad_status: String? = null
+)
+
+data class AdCampaignRequest(
+    val budget_amount: Double,
+    val currency: String = "USD",
+    val daily: Boolean = true,
+    val target_country: String? = null
+)
+
+data class AdCampaignResponse(
+    val campaign_id: String? = null,
+    val checkout_url: String? = null,
+    val status: String? = null
+)
+
+data class AdStatusResponse(
+    val campaign_id: String? = null,
+    val ad_status: String? = null,
+    val is_sponsored: Boolean = false,
+    val ad_expires_at: String? = null
 )
 
 data class PublishActfileRequest(
@@ -421,6 +444,25 @@ interface ApiService {
 
     @retrofit2.http.DELETE("/api/actfile/{id}")
     suspend fun deleteActfile(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String
+    ): Map<String, Any>
+
+    @POST("/api/actfile/{id}/ads")
+    suspend fun createActfileAd(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String,
+        @Body request: AdCampaignRequest
+    ): AdCampaignResponse
+
+    @retrofit2.http.GET("/api/actfile/{id}/ads")
+    suspend fun getActfileAdStatus(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String
+    ): AdStatusResponse
+
+    @retrofit2.http.DELETE("/api/actfile/{id}/ads")
+    suspend fun cancelActfileAd(
         @retrofit2.http.Header("Authorization") token: String?,
         @retrofit2.http.Path("id") id: String
     ): Map<String, Any>

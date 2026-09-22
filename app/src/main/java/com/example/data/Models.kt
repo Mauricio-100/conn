@@ -52,7 +52,11 @@ data class Actfile(
     // Attached Community info
     val communityName: String? = null,
     val communityIconUrl: String? = null,
-    val communityIsVerified: Boolean = false
+    val communityIsVerified: Boolean = false,
+    // IDDET Ads (Sponsored post)
+    val isSponsored: Boolean = false,
+    val adCampaignId: String? = null,
+    val adStatus: String? = "none"
 )
 
 @Entity(tableName = "messages")
@@ -104,7 +108,11 @@ data class ActfileWithUser(
     // Attached Community info
     val communityName: String? = null,
     val communityIconUrl: String? = null,
-    val communityIsVerified: Boolean = false
+    val communityIsVerified: Boolean = false,
+    // IDDET Ads (Sponsored post)
+    val isSponsored: Boolean = false,
+    val adCampaignId: String? = null,
+    val adStatus: String? = "none"
 )
 
 data class AttachedSound(

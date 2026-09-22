@@ -2015,4 +2015,47 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
     fun getUserLevelFlow(userId: String): Flow<com.example.data.UserLevelResponse?> = flow {
         emit(repository.getUserLevel(userId))
     }
+
+    // ── IDDET ADS (Sponsorisation d'Actfiles) ──
+    fun promoteActfile(
+        actfileId: String,
+        budget: Double,
+        currency: String = "USD",
+        daily: Boolean = true,
+        targetCountry: String? = null,
+        onSuccess: (checkoutUrl: String?) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val res = repository.promoteActfile(actfileId, budget, currency, daily, targetCountry)
+            res.fold(
+                onSuccess = { response ->
+                    onSuccess(response.checkout_url)
+                },
+                onFailure = { err ->
+                    onError(err.message ?: "Impossible de créer la campagne publicitaire")
+                }
+            )
+        }
+    }
+
+    fun getActfileAdStatus(
+        actfileId: String,
+        onResult: (com.example.data.AdStatusResponse?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val res = repository.getActfileAdStatus(actfileId)
+            onResult(res.getOrNull())
+        }
+    }
+
+    fun cancelActfileAd(
+        actfileId: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val res = repository.cancelActfileAd(actfileId)
+            onResult(res.getOrDefault(false))
+        }
+    }
 }

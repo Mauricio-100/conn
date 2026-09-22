@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
+import com.example.ui.components.PromoteActfileDialog
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -131,6 +132,8 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
     }
 
     var selectedTab by remember { mutableIntStateOf(0) }
+    var actfileToPromote by remember { mutableStateOf<com.example.data.ActfileWithUser?>(null) }
+    var isPromotingLoading by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showVerificationDialog by remember { mutableStateOf(false) }
     var showImageOptions by remember { mutableStateOf(false) }
@@ -959,6 +962,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                 onUserClick = {},
                                 onComment = { navController.navigate("discussion/$it") },
                                 onDelete = { viewModel.deleteActfile(it) },
+                                onPromote = { actfileToPromote = it },
                                 onMentionClick = { username ->
                                     scope.launch {
                                         val u = viewModel.getUserByUsername(username)
@@ -1126,6 +1130,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                 onUserClick = {},
                                 onComment = { navController.navigate("discussion/$it") },
                                 onDelete = { viewModel.deleteActfile(it) },
+                                onPromote = { actfileToPromote = it },
                                 onMentionClick = { username ->
                                     scope.launch {
                                         val u = viewModel.getUserByUsername(username)
@@ -2013,6 +2018,49 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
             onDismiss = { showSharePortfolioModal = false },
             onSendToConversation = { receiverId, msg ->
                 viewModel.sendMessage(receiverId, msg)
+            }
+        )
+    }
+
+    actfileToPromote?.let { targetActfile ->
+        PromoteActfileDialog(
+            actfile = targetActfile,
+            isLoading = isPromotingLoading,
+            onDismiss = { actfileToPromote = null },
+            onPromote = { budget, currency, daily, targetCountry ->
+                isPromotingLoading = true
+                viewModel.promoteActfile(
+                    actfileId = targetActfile.id,
+                    budget = budget,
+                    currency = currency,
+                    daily = daily,
+                    targetCountry = targetCountry,
+                    onSuccess = { checkoutUrl ->
+                        isPromotingLoading = false
+                        actfileToPromote = null
+                        Toast.makeText(context, "Campagne publicitaire IDDET Ads créée !", Toast.LENGTH_SHORT).show()
+                        if (!checkoutUrl.isNullOrBlank()) {
+                            val encoded = java.net.URLEncoder.encode(checkoutUrl, "UTF-8")
+                            navController.navigate("browser/$encoded")
+                        }
+                    },
+                    onError = { err ->
+                        isPromotingLoading = false
+                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                    }
+                )
+            },
+            onCancelAd = {
+                isPromotingLoading = true
+                viewModel.cancelActfileAd(targetActfile.id) { success ->
+                    isPromotingLoading = false
+                    actfileToPromote = null
+                    if (success) {
+                        Toast.makeText(context, "Sponsorisation retirée", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Impossible d'annuler la sponsorisation", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         )
     }

@@ -38,6 +38,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import android.widget.Toast
+import com.example.ui.components.PromoteActfileDialog
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -76,6 +78,7 @@ import com.example.data.Story
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDrawer: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val actfiles by viewModel.actfiles.collectAsStateWithLifecycle()
     val followedActfiles by viewModel.followedActfiles.collectAsStateWithLifecycle()
     val recommendedUsers by viewModel.giants.collectAsStateWithLifecycle()
@@ -109,6 +112,8 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
     }
 
     var discoverySeed by remember { mutableStateOf((1..100000).random()) }
+    var actfileToPromote by remember { mutableStateOf<ActfileWithUser?>(null) }
+    var isPromotingLoading by remember { mutableStateOf(false) }
     
     LaunchedEffect(feedTab) {
         if (feedTab == 0) {
@@ -142,6 +147,9 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                 val prefCat = preferredCategory.split(",").map { it.trim().lowercase() }
                 filteredActfiles.sortedByDescending { actfile ->
                     var score = (actfile.likesCount * 3 + actfile.commentsCount * 5 + actfile.viewsCount).toDouble()
+                    if (actfile.isSponsored) {
+                        score += 50000.0 // Priority boost for sponsored IDDET Ads
+                    }
                     if (actfile.userId in followedIds) {
                         score += 10000.0 // Huge boost for followed users
                     }
@@ -377,6 +385,7 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                                 navController.navigate("discussion/$actfileId")
                             },
                             onDelete = if (isMine) { { viewModel.deleteActfile(it) } } else null,
+                            onPromote = if (isMine || actfile.isSponsored) { { actfileToPromote = it } } else null,
                             onMentionClick = { username ->
                                 scope.launch {
                                     val u = viewModel.getUserByUsername(username)
@@ -507,6 +516,49 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
             StoryCreatorDialog(
                 viewModel = viewModel,
                 onDismiss = { showStoryCreator = false }
+            )
+        }
+
+        actfileToPromote?.let { targetActfile ->
+            PromoteActfileDialog(
+                actfile = targetActfile,
+                isLoading = isPromotingLoading,
+                onDismiss = { actfileToPromote = null },
+                onPromote = { budget, currency, daily, targetCountry ->
+                    isPromotingLoading = true
+                    viewModel.promoteActfile(
+                        actfileId = targetActfile.id,
+                        budget = budget,
+                        currency = currency,
+                        daily = daily,
+                        targetCountry = targetCountry,
+                        onSuccess = { checkoutUrl ->
+                            isPromotingLoading = false
+                            actfileToPromote = null
+                            Toast.makeText(context, "Campagne publicitaire IDDET Ads lancée !", Toast.LENGTH_SHORT).show()
+                            if (!checkoutUrl.isNullOrBlank()) {
+                                val encoded = java.net.URLEncoder.encode(checkoutUrl, "UTF-8")
+                                navController.navigate("browser/$encoded")
+                            }
+                        },
+                        onError = { err ->
+                            isPromotingLoading = false
+                            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                        }
+                    )
+                },
+                onCancelAd = {
+                    isPromotingLoading = true
+                    viewModel.cancelActfileAd(targetActfile.id) { success ->
+                        isPromotingLoading = false
+                        actfileToPromote = null
+                        if (success) {
+                            Toast.makeText(context, "Sponsorisation arrêtée avec succès", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Impossible d'annuler la sponsorisation", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
             )
         }
     }

@@ -340,7 +340,10 @@ class IddetRepository(
                             soundCoverUrl = parsedSound?.coverUrl,
                             communityName = effectiveCommName,
                             communityIconUrl = effectiveCommIcon,
-                            communityIsVerified = (net.community_is_verified ?: false) || (effectiveCommSlug?.lowercase() in listOf("iddet", "mshop"))
+                            communityIsVerified = (net.community_is_verified ?: false) || (effectiveCommSlug?.lowercase() in listOf("iddet", "mshop")),
+                            isSponsored = net.is_sponsored ?: false,
+                            adCampaignId = net.ad_campaign_id,
+                            adStatus = net.ad_status ?: "none"
                         )
                     )
                 }
@@ -1845,7 +1848,10 @@ class IddetRepository(
                     communityId = net.community_id,
                     channelId = net.channel_id,
                     channelSlug = net.channel_slug,
-                    channelName = net.channel_name
+                    channelName = net.channel_name,
+                    isSponsored = net.is_sponsored ?: false,
+                    adCampaignId = net.ad_campaign_id,
+                    adStatus = net.ad_status ?: "none"
                 )
             }
             val combined = (mapped + localList).distinctBy { it.id }.sortedByDescending { it.createdAt }
@@ -2907,6 +2913,85 @@ class IddetRepository(
             Result.success(res)
         } catch (e: Exception) {
             Log.e("IddetRepository", "Error uploading video to server", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun promoteActfile(
+        actfileId: String,
+        budget: Double,
+        currency: String = "USD",
+        daily: Boolean = true,
+        targetCountry: String? = null
+    ): Result<AdCampaignResponse> = withContext(Dispatchers.IO) {
+        try {
+            val token = currentToken ?: prefs.getString("auth_token", null)
+            val header = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+            val request = AdCampaignRequest(
+                budget_amount = budget,
+                currency = currency,
+                daily = daily,
+                target_country = targetCountry
+            )
+            val resp = RetrofitClient.apiService.createActfileAd(header, actfileId, request)
+            
+            val existing = actfileDao.getActfileRaw(actfileId)
+            if (existing != null) {
+                actfileDao.insertActfile(
+                    existing.copy(
+                        adCampaignId = resp.campaign_id ?: existing.adCampaignId,
+                        adStatus = resp.status ?: "pending"
+                    )
+                )
+            }
+            Result.success(resp)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getActfileAdStatus(actfileId: String): Result<AdStatusResponse> = withContext(Dispatchers.IO) {
+        try {
+            val token = currentToken ?: prefs.getString("auth_token", null)
+            val header = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+            val resp = RetrofitClient.apiService.getActfileAdStatus(header, actfileId)
+            
+            val existing = actfileDao.getActfileRaw(actfileId)
+            if (existing != null) {
+                actfileDao.insertActfile(
+                    existing.copy(
+                        isSponsored = resp.is_sponsored,
+                        adCampaignId = resp.campaign_id ?: existing.adCampaignId,
+                        adStatus = resp.ad_status ?: existing.adStatus
+                    )
+                )
+            }
+            Result.success(resp)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
+    suspend fun cancelActfileAd(actfileId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val token = currentToken ?: prefs.getString("auth_token", null)
+            val header = token?.let { if (it.startsWith("Bearer ")) it else "Bearer $it" }
+            RetrofitClient.apiService.cancelActfileAd(header, actfileId)
+            
+            val existing = actfileDao.getActfileRaw(actfileId)
+            if (existing != null) {
+                actfileDao.insertActfile(
+                    existing.copy(
+                        isSponsored = false,
+                        adStatus = "cancelled"
+                    )
+                )
+            }
+            Result.success(true)
+        } catch (e: Exception) {
+            e.printStackTrace()
             Result.failure(e)
         }
     }

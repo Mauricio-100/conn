@@ -82,7 +82,8 @@ fun ActfileCard(
     onMentionClick: ((String) -> Unit)? = null,
     onCategoryClick: ((String) -> Unit)? = null,
     onShare: ((String) -> Unit)? = null,
-    isDetailView: Boolean = false
+    isDetailView: Boolean = false,
+    onPromote: ((ActfileWithUser) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var translatedContent by remember { mutableStateOf<String?>(null) }
@@ -114,10 +115,40 @@ fun ActfileCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
+            .then(
+                if (actfile.isSponsored) {
+                    Modifier.border(1.dp, IddetAdsGold.copy(alpha = 0.35f))
+                } else {
+                    Modifier
+                }
+            )
+            .background(
+                if (actfile.isSponsored) {
+                    IddetAdsGold.copy(alpha = 0.03f)
+                } else {
+                    MaterialTheme.colorScheme.surface
+                }
+            )
             .clickable { onView(actfile.id) }
             .testTag("actfile_card_${actfile.id}")
     ) {
+        if (actfile.isSponsored) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            listOf(
+                                IddetAdsGold.copy(alpha = 0.4f),
+                                IddetAdsGold,
+                                Color(0xFFFFE082),
+                                IddetAdsGold
+                            )
+                        )
+                    )
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -284,6 +315,13 @@ fun ActfileCard(
                                 isVerified = actfile.isVerified,
                                 modifier = Modifier.size(16.dp)
                             )
+                            if (actfile.isSponsored) {
+                                Spacer(modifier = Modifier.width(5.dp))
+                                SponsoredBadge(onClick = onPromote?.let { { it(actfile) } })
+                            } else if (actfile.adStatus == "pending") {
+                                Spacer(modifier = Modifier.width(5.dp))
+                                SponsoredBadge(isPending = true, onClick = onPromote?.let { { it(actfile) } })
+                            }
                         }
                         
                         Text(
@@ -425,6 +463,14 @@ fun ActfileCard(
                                 modifier = Modifier.size(12.dp)
                             )
 
+                            if (actfile.isSponsored) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                SponsoredBadge(onClick = onPromote?.let { { it(actfile) } })
+                            } else if (actfile.adStatus == "pending") {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                SponsoredBadge(isPending = true, onClick = onPromote?.let { { it(actfile) } })
+                            }
+
                             Spacer(modifier = Modifier.width(4.dp))
 
                             Text(
@@ -464,6 +510,21 @@ fun ActfileCard(
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+
+                // Promote / Ads campaign button
+                if (onPromote != null) {
+                    IconButton(
+                        onClick = { onPromote(actfile) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Campaign,
+                            contentDescription = if (actfile.isSponsored) "Campagne publicitaire active" else "Sponsoriser (IDDET Ads)",
+                            tint = if (actfile.isSponsored) IddetAdsGold else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
