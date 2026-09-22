@@ -412,6 +412,90 @@ object NotificationHelper {
         }
     }
 
+    suspend fun showDiscoveryNotification(
+        context: Context,
+        notificationId: String,
+        title: String,
+        text: String,
+        route: String,
+        subText: String = "IDDET Découverte",
+        avatarUrl: String? = null
+    ) {
+        withContext(Dispatchers.IO) {
+            initChannels(context)
+
+            val idHash = notificationId.hashCode()
+
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("route", route)
+            }
+
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingIntent = PendingIntent.getActivity(context, idHash, intent, flags)
+
+            val appLogo = getAppLogoBitmap(context)
+            val smallIconRes = R.drawable.ic_notification
+            val brandColor = Color.parseColor("#DC2626")
+
+            val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val savedUriString = prefs.getString("notification_ringtone_uri", null)
+            val vibrationEnabled = prefs.getBoolean("notification_vibration_enabled", true)
+            val meowEnabled = prefs.getBoolean("notification_meow_enabled", true)
+
+            val customSoundUri: android.net.Uri? = if (savedUriString == "silent") {
+                null
+            } else if (!savedUriString.isNullOrEmpty()) {
+                android.net.Uri.parse(savedUriString)
+            } else {
+                android.net.Uri.parse("android.resource://${context.packageName}/${R.raw.cat_law}")
+            }
+
+            val bigTextStyle = NotificationCompat.BigTextStyle()
+                .setBigContentTitle(title)
+                .bigText(text)
+                .setSummaryText(subText)
+
+            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(smallIconRes)
+                .setLargeIcon(appLogo)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(bigTextStyle)
+                .setColor(brandColor)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setSubText(subText)
+
+            if (customSoundUri != null) {
+                builder.setSound(customSoundUri)
+            }
+            if (vibrationEnabled) {
+                builder.setVibrate(longArrayOf(0, 200, 150, 200))
+            } else {
+                builder.setVibrate(longArrayOf(0))
+            }
+
+            try {
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.notify(idHash, builder.build())
+            } catch (e: Exception) {
+                android.util.Log.e("NotificationHelper", "Failed to show discovery notification", e)
+            }
+
+            if (meowEnabled) {
+                CatSoundPlayer.playCuteMeow()
+            }
+        }
+    }
+
     private fun getAppLogoBitmap(context: Context): Bitmap? {
         return HideItProManager.getNotificationLargeIconBitmap(context)
     }

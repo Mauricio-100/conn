@@ -432,6 +432,16 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                             )
                         }
 
+                        // Zodiac Sign & Origin Highlight Card
+                        if (!profileUser.zodiacSign.isNullOrBlank() || !profileUser.country.isNullOrBlank() || !profileUser.birthDate.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            ZodiacProfileHighlightCard(
+                                zodiacSign = profileUser.zodiacSign,
+                                country = profileUser.country,
+                                birthDate = profileUser.birthDate
+                            )
+                        }
+
                         // Metric Stats Row (Instagram / Twitter style)
                         Spacer(modifier = Modifier.height(14.dp))
                         Surface(
@@ -788,6 +798,9 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                                 navController.navigate("profile/${u.id}")
                                             }
                                         }
+                                    },
+                                    onCommunityClick = { slug ->
+                                        navController.navigate("community/$slug")
                                     }
                                 )
                             }
@@ -938,6 +951,9 @@ fun OtherProfileScreen(viewModel: IddetViewModel, navController: NavController, 
                                                 navController.navigate("profile/${u.id}")
                                             }
                                         }
+                                    },
+                                    onCommunityClick = { slug ->
+                                        navController.navigate("community/$slug")
                                     }
                                 )
                             }

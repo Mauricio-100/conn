@@ -82,11 +82,23 @@ fun ActfileCard(
     onDelete: ((String) -> Unit)? = null,
     onMentionClick: ((String) -> Unit)? = null,
     onCategoryClick: ((String) -> Unit)? = null,
+    onCommunityClick: ((String) -> Unit)? = null,
     onShare: ((String) -> Unit)? = null,
     isDetailView: Boolean = false,
     onPromote: ((ActfileWithUser) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val localCommunityHandler = LocalCommunityClickHandler.current
+    val effectiveCommunityClick: (String) -> Unit = { target ->
+        val cleanSlug = target.removePrefix("@c/").removePrefix("c/").removePrefix("/").trim()
+        if (onCommunityClick != null) {
+            onCommunityClick(cleanSlug)
+        } else if (localCommunityHandler != null) {
+            localCommunityHandler(cleanSlug)
+        } else {
+            onCategoryClick?.invoke(cleanSlug)
+        }
+    }
     var translatedContent by remember { mutableStateOf<String?>(null) }
     var isTranslating by remember { mutableStateOf(false) }
     var showOriginal by remember { mutableStateOf(true) }
@@ -200,7 +212,7 @@ fun ActfileCard(
                             indication = ripple(),
                             onClick = {
                                 val target = effectiveCommunitySlug ?: effectiveCommunityName ?: ""
-                                onCategoryClick?.invoke(target)
+                                effectiveCommunityClick(target)
                             }
                         )
                 ) {
@@ -356,7 +368,7 @@ fun ActfileCard(
                             .clip(CircleShape)
                             .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), CircleShape)
                             .background(MaterialTheme.colorScheme.primaryContainer)
-                            .clickable { onCategoryClick?.invoke(actfile.communityId ?: actfile.channelSlug ?: "") },
+                            .clickable { effectiveCommunityClick(actfile.communityId ?: actfile.channelSlug ?: "") },
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
@@ -388,7 +400,7 @@ fun ActfileCard(
                                 fontWeight = FontWeight.ExtraBold,
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.clickable { onCategoryClick?.invoke(actfile.communityId ?: actfile.channelSlug ?: "") }
+                                modifier = Modifier.clickable { effectiveCommunityClick(actfile.communityId ?: actfile.channelSlug ?: "") }
                             )
 
                             Spacer(modifier = Modifier.width(4.dp))

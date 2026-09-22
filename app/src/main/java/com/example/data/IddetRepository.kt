@@ -446,6 +446,7 @@ class IddetRepository(
         phoneNumber: String? = null,
         birthDate: String? = null,
         zodiacSign: String? = null,
+        country: String? = null,
         preferredCategory: String? = null
     ) {
         val user = _currentUser.value ?: return
@@ -458,6 +459,7 @@ class IddetRepository(
             phoneNumber = phoneNumber ?: user.phoneNumber,
             birthDate = birthDate ?: user.birthDate,
             zodiacSign = zodiacSign ?: user.zodiacSign,
+            country = country ?: user.country,
             preferredCategory = preferredCategory ?: user.preferredCategory
         )
         userDao.updateUser(updatedUser)
@@ -471,9 +473,15 @@ class IddetRepository(
                     token = "Bearer $token",
                     request = UpdateProfileRequest(
                         bio = bio,
-                        username = username,
-                        avatar_url = avatarUrl,
-                        preferred_category = preferredCategory ?: user.preferredCategory
+                        username = username ?: user.username,
+                        avatar_url = avatarUrl ?: user.avatarUrl,
+                        preferred_category = preferredCategory ?: user.preferredCategory,
+                        phone_number = phoneNumber ?: user.phoneNumber,
+                        privacy_setting = privacySetting,
+                        email = email ?: user.email,
+                        birth_date = birthDate ?: user.birthDate,
+                        zodiac_sign = zodiacSign ?: user.zodiacSign,
+                        country = country ?: user.country
                     )
                 )
             }
@@ -555,7 +563,10 @@ class IddetRepository(
                         bio = profile.bio ?: existing.bio,
                         isVerified = profile.is_verified,
                         followingCount = profile.following_count,
-                        followersCount = profile.followers_count
+                        followersCount = profile.followers_count,
+                        country = profile.country ?: existing.country,
+                        birthDate = profile.birth_date ?: existing.birthDate,
+                        zodiacSign = profile.zodiac_sign ?: existing.zodiacSign
                     )
                 } else {
                     User(
@@ -567,6 +578,9 @@ class IddetRepository(
                         isVerified = profile.is_verified,
                         followingCount = profile.following_count,
                         followersCount = profile.followers_count,
+                        country = profile.country,
+                        birthDate = profile.birth_date,
+                        zodiacSign = profile.zodiac_sign,
                         isGiant = (profile.username.length > 5)
                     )
                 }
@@ -972,7 +986,10 @@ class IddetRepository(
                     bio = res.bio ?: existing.bio,
                     isVerified = res.is_verified,
                     followersCount = res.followers_count,
-                    followingCount = res.following_count
+                    followingCount = res.following_count,
+                    country = res.country ?: existing.country,
+                    birthDate = res.birth_date ?: existing.birthDate,
+                    zodiacSign = res.zodiac_sign ?: existing.zodiacSign
                 )
             } else {
                 User(
@@ -983,7 +1000,10 @@ class IddetRepository(
                     bio = res.bio ?: "",
                     isVerified = res.is_verified,
                     followersCount = res.followers_count,
-                    followingCount = res.following_count
+                    followingCount = res.following_count,
+                    country = res.country,
+                    birthDate = res.birth_date,
+                    zodiacSign = res.zodiac_sign
                 )
             }
             userDao.insertUser(user)
@@ -1038,6 +1058,72 @@ class IddetRepository(
             current.add(0, newConv)
         }
         _conversations.value = current
+    }
+
+    // ── Location & Radar Map Methods ──
+    suspend fun sendLocationUpdate(lat: Double, lng: Double, isSharing: Boolean = true, detectCountry: Boolean = true): LocationUpdateResponse? {
+        val token = currentToken ?: return null
+        return try {
+            val response = RetrofitClient.apiService.updateLocation(
+                token = "Bearer $token",
+                request = LocationUpdateRequest(
+                    latitude = lat,
+                    longitude = lng,
+                    is_sharing = isSharing,
+                    detect_country = detectCountry
+                )
+            )
+            FriendsLocationService.updateServerSpeed(response.speed_kmh)
+            response
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    suspend fun stopLocationSharing(): Boolean {
+        val token = currentToken ?: return false
+        return try {
+            RetrofitClient.apiService.stopLocationSharing("Bearer $token")
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun fetchNearbyFriends(limit: Int = 50): List<NearbyFriendNetwork> {
+        val token = currentToken ?: return emptyList()
+        return try {
+            RetrofitClient.apiService.getNearbyFriends("Bearer $token", limit)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun setManualCountry(countryCode: String): Boolean {
+        val token = currentToken ?: return false
+        return try {
+            RetrofitClient.apiService.setMyCountry("Bearer $token", CountryUpdateRequest(countryCode))
+            _currentUser.value?.id?.let { refreshUserProfile(it) }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun redetectAutoCountry(): Boolean {
+        val token = currentToken ?: return false
+        return try {
+            RetrofitClient.apiService.redetectMyCountryAuto("Bearer $token")
+            _currentUser.value?.id?.let { refreshUserProfile(it) }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
     }
 
     suspend fun getCategories(): List<String> {

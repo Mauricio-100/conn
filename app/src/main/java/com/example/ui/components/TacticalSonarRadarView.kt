@@ -48,6 +48,9 @@ fun TacticalSonarRadarView(
     onRandomMatch: () -> Unit,
     scanRadiusKm: Double,
     onRadiusChange: (Double) -> Unit,
+    serverSpeedKmh: Double = 0.0,
+    isServerSynced: Boolean = false,
+    trafficJamAlerts: List<com.example.ui.IddetViewModel.TrafficJamAlert> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -308,6 +311,49 @@ fun TacticalSonarRadarView(
                         }
                     }
                 }
+
+                // Render Traffic Jam Hazard Blips on Radar
+                trafficJamAlerts.forEach { alert ->
+                    val deltaLat = (alert.latitude - userLat)
+                    val deltaLng = (alert.longitude - userLng)
+                    var angleRad = atan2(deltaLat, deltaLng)
+                    if (angleRad.isNaN()) angleRad = 0.0
+
+                    val dist = com.example.data.RealLocationProvider.calculateDistanceKm(userLat, userLng, alert.latitude, alert.longitude)
+                    val distRatio = (dist / scanRadiusKm).coerceIn(0.2, 0.95)
+                    val blipRadius = (maxR * distRatio).dp
+
+                    val xOffset = cX + (blipRadius.value * cos(angleRad).toFloat()).dp - 18.dp
+                    val yOffset = cY - (blipRadius.value * sin(angleRad).toFloat()).dp - 18.dp
+
+                    Box(
+                        modifier = Modifier
+                            .offset(x = xOffset, y = yOffset)
+                            .size(36.dp)
+                            .clickable {
+                                android.widget.Toast.makeText(context, alert.message, android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFEF4444).copy(alpha = 0.3f))
+                        )
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFEF4444),
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White),
+                            modifier = Modifier.size(26.dp),
+                            shadowElevation = 6.dp
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("🚗", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -318,61 +364,96 @@ fun TacticalSonarRadarView(
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .align(Alignment.TopCenter),
             shape = RoundedCornerShape(16.dp),
-            color = Color(0xFF0F172A).copy(alpha = 0.90f),
+            color = Color(0xFF0F172A).copy(alpha = 0.92f),
             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF06B6D4).copy(alpha = 0.4f)),
             shadowElevation = 8.dp
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF10B981))
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isServerSynced) Color(0xFF10B981) else Color(0xFFF59E0B))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isServerSynced) "RADAR SYNCHRONISÉ SERVEUR" else "RADAR ACTIF 360°",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF38BDF8),
+                                letterSpacing = 0.8.sp
+                            )
+                        }
                         Text(
-                            text = "RADAR ACTIF 360°",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF38BDF8),
-                            letterSpacing = 1.sp
+                            text = "${inRangeFriends.size} utilisateurs • ${inRangeSpots.size} spots détectés",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontWeight = FontWeight.Medium
                         )
                     }
-                    Text(
-                        text = "${inRangeFriends.size} utilisateurs & ${inRangeSpots.size} spots détectés",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.8f),
-                        fontWeight = FontWeight.Medium
-                    )
+
+                    // Radius Filter Selector
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf(1.0, 3.0, 5.0, 10.0).forEach { radius ->
+                            val isSelected = scanRadiusKm == radius
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) Color(0xFF06B6D4) else Color(0xFF1E293B),
+                                modifier = Modifier.clickable { onRadiusChange(radius) }
+                            ) {
+                                Text(
+                                    text = "${radius.toInt()}km",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) Color.Black else Color.White
+                                )
+                            }
+                        }
+                    }
                 }
 
-                // Radius Filter Selector
+                // Live Speed & Movement Status Telemetry
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF1E293B).copy(alpha = 0.7f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    listOf(1.0, 3.0, 5.0).forEach { radius ->
-                        val isSelected = scanRadiusKm == radius
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) Color(0xFF06B6D4) else Color(0xFF1E293B),
-                            modifier = Modifier.clickable { onRadiusChange(radius) }
-                        ) {
-                            Text(
-                                text = "${radius.toInt()}km",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color.Black else Color.White
-                            )
+                    val movementLabel = when {
+                        serverSpeedKmh > 25.0 -> "🚗 Véhicule (${String.format(java.util.Locale.US, "%.1f", serverSpeedKmh)} km/h)"
+                        serverSpeedKmh > 8.0 -> "🚲 En déplacement (${String.format(java.util.Locale.US, "%.1f", serverSpeedKmh)} km/h)"
+                        serverSpeedKmh > 1.0 -> "🚶 Marche (${String.format(java.util.Locale.US, "%.1f", serverSpeedKmh)} km/h)"
+                        else -> "📍 Stationnaire (0 km/h)"
+                    }
+                    Text(
+                        text = "Vitesse estimée : $movementLabel",
+                        fontSize = 11.sp,
+                        color = Color(0xFF94A3B8),
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    if (trafficJamAlerts.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("⚠️ ${trafficJamAlerts.size} ralenti(s)", fontSize = 11.sp, color = Color(0xFFFCA5A5), fontWeight = FontWeight.Bold)
                         }
                     }
                 }

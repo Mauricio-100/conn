@@ -277,6 +277,71 @@ object FriendsLocationService {
     )
     val currentUserVibe: StateFlow<UserVibe> = _currentUserVibe.asStateFlow()
 
+    private val _isServerSynced = MutableStateFlow(false)
+    val isServerSynced: StateFlow<Boolean> = _isServerSynced.asStateFlow()
+
+    private val _serverSpeedKmh = MutableStateFlow(0.0)
+    val serverSpeedKmh: StateFlow<Double> = _serverSpeedKmh.asStateFlow()
+
+    private val _lastServerSyncTime = MutableStateFlow<Long>(0L)
+    val lastServerSyncTime: StateFlow<Long> = _lastServerSyncTime.asStateFlow()
+
+    fun updateServerSpeed(speed: Double) {
+        _serverSpeedKmh.value = speed
+        _isServerSynced.value = true
+        _lastServerSyncTime.value = System.currentTimeMillis()
+    }
+
+    // Ingest real friends from the server (/api/friends/nearby)
+    fun syncWithServerNearbyFriends(networkFriends: List<NearbyFriendNetwork>, userLat: Double, userLng: Double) {
+        if (networkFriends.isEmpty()) {
+            _isServerSynced.value = true
+            _lastServerSyncTime.value = System.currentTimeMillis()
+            return
+        }
+
+        val serverFriendLocations = networkFriends.map { net ->
+            val dist = if (net.distance_km > 0.0) {
+                net.distance_km
+            } else {
+                RealLocationProvider.calculateDistanceKm(userLat, userLng, net.latitude, net.longitude)
+            }
+            FriendLocation(
+                id = net.user_id,
+                username = net.username,
+                displayName = net.username,
+                avatarUrl = net.avatar_url,
+                latitude = net.latitude,
+                longitude = net.longitude,
+                city = "En direct",
+                district = "Secteur live",
+                statusMessage = "Position synchronisée avec le serveur IDDET 📡",
+                statusEmoji = "🟢",
+                batteryPercent = 90,
+                isOnline = true,
+                lastSeenFormatted = "En direct",
+                distanceKm = Math.round(dist * 100.0) / 100.0,
+                activityTag = "En direct",
+                mutualFriendsCount = 1,
+                streakDays = 5,
+                isFavorite = false,
+                isVerified = true,
+                chillStatus = "En ligne sur le Radar",
+                currentlyPlayingMusic = null,
+                isIddetMember = true
+            )
+        }
+
+        // Merge: prioritize server friends and append others if not duplicate
+        val existingMap = _friends.value.associateBy { it.id }.toMutableMap()
+        serverFriendLocations.forEach { sf ->
+            existingMap[sf.id] = sf
+        }
+        _friends.value = existingMap.values.toList()
+        _isServerSynced.value = true
+        _lastServerSyncTime.value = System.currentTimeMillis()
+    }
+
     // Toggle Ghost Mode (protects user privacy)
     fun setGhostMode(enabled: Boolean) {
         _isGhostMode.value = enabled

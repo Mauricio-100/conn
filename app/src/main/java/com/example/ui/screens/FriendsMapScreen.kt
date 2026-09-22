@@ -54,24 +54,27 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class MapTileTheme(val label: String, val icon: String, val url: String, val attribution: String) {
+enum class MapTileTheme(val label: String, val icon: String, val url: String, val attribution: String, val isDark: Boolean = false) {
     SNAP_DARK(
         "Snap Dark",
         "🌙",
-        "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png",
-        "&copy; CARTO &copy; OpenStreetMap"
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "&copy; OpenStreetMap contributors",
+        isDark = true
     ),
     STREETS(
         "Rues Claires",
         "🗺️",
-        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        "&copy; OpenStreetMap contributors"
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "&copy; OpenStreetMap contributors",
+        isDark = false
     ),
     SATELLITE(
         "Hybride",
         "🛰️",
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        "&copy; Esri, Maxar, Earthstar Geographics"
+        "&copy; Esri, Maxar, Earthstar Geographics",
+        isDark = false
     )
 }
 
@@ -95,6 +98,8 @@ fun FriendsMapScreen(
     val radarScanRadiusKm by viewModel.radarScanRadiusKm.collectAsStateWithLifecycle()
     val lastChillWaveSent by viewModel.lastChillWaveSent.collectAsStateWithLifecycle()
     val trafficJamAlerts by viewModel.trafficJamAlerts.collectAsStateWithLifecycle()
+    val isServerSynced by viewModel.isServerSynced.collectAsStateWithLifecycle()
+    val serverSpeedKmh by viewModel.serverSpeedKmh.collectAsStateWithLifecycle()
 
     var radarViewMode by remember { mutableStateOf(RadarViewMode.MAP_VIEW) }
     var selectedFilter by remember { mutableStateOf(FriendActivityFilter.ALL) }
@@ -219,7 +224,8 @@ fun FriendsMapScreen(
                         '$username',
                         '$userAvatar',
                         $friendsJson,
-                        '${currentMapTheme.url}'
+                        '${currentMapTheme.url}',
+                        ${currentMapTheme.isDark}
                     );
                 }
                 if (window.updateTrafficJams) {
@@ -470,7 +476,8 @@ fun FriendsMapScreen(
                                         userLat = realLocation.latitude,
                                         userLng = realLocation.longitude,
                                         tileUrl = currentMapTheme.url,
-                                        tileAttribution = currentMapTheme.attribution
+                                        tileAttribution = currentMapTheme.attribution,
+                                        isDark = currentMapTheme.isDark
                                     ),
                                     "text/html",
                                     "UTF-8",
@@ -784,7 +791,7 @@ fun FriendsMapScreen(
                         },
                         onTriggerScan = {
                             viewModel.refreshFriendsRadar()
-                            Toast.makeText(context, "📡 Scan Sonar 360° terminé ! Signaux mis à jour.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "📡 Scan Sonar 360° en direct synchronisé avec le serveur !", Toast.LENGTH_SHORT).show()
                         },
                         onRandomMatch = {
                             if (friends.isNotEmpty()) {
@@ -796,6 +803,9 @@ fun FriendsMapScreen(
                         onRadiusChange = { radius ->
                             viewModel.setRadarScanRadius(radius)
                         },
+                        serverSpeedKmh = serverSpeedKmh,
+                        isServerSynced = isServerSynced,
+                        trafficJamAlerts = trafficJamAlerts,
                         modifier = Modifier.fillMaxSize()
                     )
 
@@ -1103,7 +1113,8 @@ private fun generateLeafletSnapMapHtml(
     userLat: Double,
     userLng: Double,
     tileUrl: String,
-    tileAttribution: String
+    tileAttribution: String,
+    isDark: Boolean = true
 ): String {
     return """
 <!DOCTYPE html>
@@ -1116,6 +1127,11 @@ private fun generateLeafletSnapMapHtml(
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body, #map { width: 100%; height: 100%; background: #0b132b; overflow: hidden; }
+        
+        /* Dark night tiles filter for Snap Dark mode (No API Key Required!) */
+        .dark-tiles .leaflet-tile {
+            filter: brightness(0.65) invert(1) contrast(2.2) hue-rotate(195deg) saturate(0.4) brightness(0.75);
+        }
         
         /* Snap Map marker styles */
         .snap-user-marker {
@@ -1254,7 +1270,7 @@ private fun generateLeafletSnapMapHtml(
     </style>
 </head>
 <body>
-    <div id="map"></div>
+    <div id="map" class="${if (isDark) "dark-tiles" else ""}"></div>
     <script>
         var map = L.map('map', {
             center: [$userLat, $userLng],
@@ -1265,16 +1281,25 @@ private fun generateLeafletSnapMapHtml(
 
         var currentTileLayer = L.tileLayer('$tileUrl', {
             maxZoom: 19,
-            subdomains: 'abcd'
+            subdomains: 'abc'
         }).addTo(map);
 
         var userMarker = null;
         var friendMarkers = {};
 
-        function updateMapData(userLat, userLng, accuracy, isGhostMode, vibeEmoji, username, avatarUrl, friends, tileUrl) {
+        function updateMapData(userLat, userLng, accuracy, isGhostMode, vibeEmoji, username, avatarUrl, friends, tileUrl, isDark) {
+            var mapEl = document.getElementById('map');
+            if (mapEl) {
+                if (isDark) {
+                    mapEl.classList.add('dark-tiles');
+                } else {
+                    mapEl.classList.remove('dark-tiles');
+                }
+            }
+
             if (currentTileLayer && tileUrl && currentTileLayer._url !== tileUrl) {
                 map.removeLayer(currentTileLayer);
-                currentTileLayer = L.tileLayer(tileUrl, { maxZoom: 19, subdomains: 'abcd' }).addTo(map);
+                currentTileLayer = L.tileLayer(tileUrl, { maxZoom: 19, subdomains: 'abc' }).addTo(map);
             }
 
             // Update user marker

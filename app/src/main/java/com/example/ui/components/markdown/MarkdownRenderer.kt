@@ -71,17 +71,9 @@ fun MarkdownRenderer(
     val hideOgPhoto = remember(content) { content.contains("<!--hide_og_photo-->") }
     val cleanedContent = remember(content) { content.replace("<!--hide_og_photo-->", "").trim() }
 
-    val displayContent = remember(cleanedContent, truncateChars) {
-        if (truncateChars != null && cleanedContent.length > truncateChars) {
-            cleanedContent.take(truncateChars) + "..."
-        } else {
-            cleanedContent
-        }
-    }
-
-    // Cache parsed Markdown AST to prevent unnecessary re-parsing on recomposition
-    val nodes = remember(displayContent) {
-        MarkdownParser.parse(displayContent)
+    // Cache parsed Markdown AST of the entire content to always detect all media (images, videos)
+    val allNodes = remember(cleanedContent) {
+        MarkdownParser.parse(cleanedContent)
     }
 
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -89,11 +81,71 @@ fun MarkdownRenderer(
     val secondaryTextColor = textColor.copy(alpha = 0.7f)
     val communityClickHandler = LocalCommunityClickHandler.current
 
+    val isFeedMode = truncateChars != null
+
+    // Reddit-style post partitioning:
+    // In feed mode, show text preview (with "Voir plus" if long), and place extracted media (images/videos) at the bottom.
+    val (displayNodes, isTextTruncated, mediaNodes) = remember(allNodes, truncateChars) {
+        if (truncateChars == null) {
+            Triple(allNodes, false, emptyList<MarkdownNode>())
+        } else {
+            val media = allNodes.filter {
+                it is MarkdownNode.ImageNode || it is MarkdownNode.CarouselNode || it is MarkdownNode.VideoNode
+            }
+            val textOnly = allNodes.filter {
+                it !is MarkdownNode.ImageNode && it !is MarkdownNode.CarouselNode && it !is MarkdownNode.VideoNode
+            }
+
+            var accumulatedLength = 0
+            val previewText = mutableListOf<MarkdownNode>()
+            var truncated = false
+
+            for (node in textOnly) {
+                val nodeLength = when (node) {
+                    is MarkdownNode.Heading -> node.text.length
+                    is MarkdownNode.Paragraph -> node.text.length
+                    is MarkdownNode.Blockquote -> node.text.length
+                    is MarkdownNode.BulletList -> node.items.sumOf { it.length }
+                    is MarkdownNode.NumberedList -> node.items.sumOf { it.length }
+                    is MarkdownNode.Checklist -> node.items.sumOf { it.text.length }
+                    is MarkdownNode.CodeBlock -> node.code.length
+                    else -> 0
+                }
+
+                if (previewText.isEmpty() && nodeLength > truncateChars) {
+                    val truncatedNode = when (node) {
+                        is MarkdownNode.Paragraph -> MarkdownNode.Paragraph(node.text.take(truncateChars).trimEnd() + "...")
+                        is MarkdownNode.Heading -> MarkdownNode.Heading(node.level, node.text.take(truncateChars).trimEnd() + "...")
+                        is MarkdownNode.Blockquote -> MarkdownNode.Blockquote(node.text.take(truncateChars).trimEnd() + "...")
+                        is MarkdownNode.CodeBlock -> MarkdownNode.CodeBlock(node.language, node.code.take(truncateChars).trimEnd() + "...")
+                        else -> node
+                    }
+                    previewText.add(truncatedNode)
+                    truncated = true
+                    break
+                } else if (accumulatedLength + nodeLength <= truncateChars) {
+                    previewText.add(node)
+                    accumulatedLength += nodeLength
+                } else {
+                    truncated = true
+                    break
+                }
+            }
+
+            if (previewText.size < textOnly.size) {
+                truncated = true
+            }
+
+            Triple(previewText, truncated, media)
+        }
+    }
+
     Column(
         modifier = modifier.testTag("markdown_renderer_container"),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        nodes.forEach { node ->
+        // 1. Text content nodes
+        displayNodes.forEach { node ->
             when (node) {
                 is MarkdownNode.Heading -> MarkdownHeadingNode(
                     node = node,
@@ -172,27 +224,63 @@ fun MarkdownRenderer(
             }
         }
 
-        if (truncateChars != null && content.length > truncateChars) {
-            Text(
-                text = "Voir plus",
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+        // 2. Reddit-style "Voir plus" button when text exceeds preview length
+        if (isTextTruncated) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
                     .clickable { onReadMoreClick?.invoke() }
+                    .padding(vertical = 2.dp)
                     .testTag("markdown_read_more_button")
-            )
+            ) {
+                Text(
+                    text = "Voir plus...",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
         }
 
-        // Extract URLs for OpenGraph cards
-        val urls = remember(displayContent) { extractUrlsFromMarkdown(displayContent) }
-        val hasVideo = remember(urls) { urls.any { VideoUrlHelper.isVideoUrl(it) } }
+        // 3. Reddit-style Media placement: In Feed mode, extracted media is rendered at the bottom of the card
+        if (isFeedMode && mediaNodes.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(2.dp))
+            mediaNodes.forEach { mediaNode ->
+                when (mediaNode) {
+                    is MarkdownNode.ImageNode -> MarkdownImageNode(node = mediaNode)
+                    is MarkdownNode.CarouselNode -> MarkdownCarouselNode(node = mediaNode)
+                    is MarkdownNode.VideoNode -> MarkdownVideoNode(node = mediaNode)
+                    else -> {}
+                }
+            }
+        }
+
+        // Extract URLs for OpenGraph cards (ignoring media already rendered)
+        val urls = remember(cleanedContent) { extractUrlsFromMarkdown(cleanedContent) }
+        val mediaUrls = remember(allNodes) {
+            allNodes.mapNotNull {
+                when (it) {
+                    is MarkdownNode.ImageNode -> it.url
+                    is MarkdownNode.VideoNode -> it.url
+                    else -> null
+                }
+            }.toSet()
+        }
+        val hasVideo = remember(urls, mediaNodes) {
+            mediaNodes.any { it is MarkdownNode.VideoNode } || urls.any { VideoUrlHelper.isVideoUrl(it) }
+        }
         
         // Extract community slugs for rich WhatsApp / OpenGraph banner
-        val communitySlugs = remember(displayContent) { 
-            com.example.utils.CommunitySlugHelper.extractCommunitySlugs(displayContent)
+        val communitySlugs = remember(cleanedContent) { 
+            com.example.utils.CommunitySlugHelper.extractCommunitySlugs(cleanedContent)
         }
-        val nonCommunityUrls = remember(urls, communitySlugs) {
-            urls.filterNot { com.example.utils.CommunitySlugHelper.isCommunityUrl(it) }
+        val nonCommunityUrls = remember(urls, communitySlugs, mediaUrls) {
+            urls.filterNot { 
+                com.example.utils.CommunitySlugHelper.isCommunityUrl(it) || 
+                it in mediaUrls ||
+                isDirectImageUrlHelper(it) ||
+                VideoUrlHelper.isVideoUrl(it)
+            }
         }
 
         if (communitySlugs.isNotEmpty()) {
@@ -213,9 +301,9 @@ fun MarkdownRenderer(
             }
         }
 
-        if (!hasVideo && nonCommunityUrls.isNotEmpty()) {
+        if (!hasVideo && !hideOgPhoto && nonCommunityUrls.isNotEmpty()) {
             Spacer(modifier = Modifier.height(4.dp))
-            nonCommunityUrls.forEach { url ->
+            nonCommunityUrls.take(1).forEach { url ->
                 OpenGraphPreview(
                     url = url,
                     compact = compactOpenGraph,
@@ -226,6 +314,13 @@ fun MarkdownRenderer(
             }
         }
     }
+}
+
+private fun isDirectImageUrlHelper(url: String): Boolean {
+    val clean = url.trim().lowercase()
+    return clean.endsWith(".jpg") || clean.endsWith(".jpeg") || clean.endsWith(".png") ||
+            clean.endsWith(".webp") || clean.endsWith(".gif") || clean.endsWith(".bmp") ||
+            (clean.contains("cloudinary.com") && (clean.contains("/image/upload") || clean.contains("/upload/")))
 }
 
 @Composable
@@ -665,6 +760,8 @@ private fun MarkdownImageNode(
         )
     } else {
         val context = LocalContext.current
+        var showFullPreview by remember { mutableStateOf(false) }
+
         val imageModel = remember(node.url) {
             coil.request.ImageRequest.Builder(context)
                 .data(com.example.utils.UrlHelper.fixCloudinaryUrl(node.url))
@@ -678,17 +775,43 @@ private fun MarkdownImageNode(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                .clickable { showFullPreview = true }
                 .testTag("markdown_image_node"),
             contentAlignment = Alignment.Center
         ) {
             AsyncImage(
                 model = imageModel,
                 contentDescription = node.altText ?: "Markdown Image",
-                modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.FillWidth
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 140.dp, max = 380.dp),
+                contentScale = ContentScale.Crop
             )
+        }
+
+        if (showFullPreview) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { showFullPreview = false }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.95f))
+                        .clickable { showFullPreview = false },
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = imageModel,
+                        contentDescription = node.altText,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+            }
         }
     }
 }

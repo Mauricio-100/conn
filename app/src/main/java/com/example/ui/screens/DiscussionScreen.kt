@@ -145,6 +145,9 @@ fun DiscussionScreen(
                             onCategoryClick = { channelSlug ->
                                 navController.navigate("community/$channelSlug")
                             },
+                            onCommunityClick = { slug ->
+                                navController.navigate("community/$slug")
+                            },
                             onMentionClick = { mention ->
                                 if (mention.startsWith("@")) {
                                     coroutineScope.launch {

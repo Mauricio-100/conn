@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
@@ -645,6 +646,16 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                             )
                         }
 
+                        // Zodiac Sign & Origin Highlight Card
+                        if (!user.zodiacSign.isNullOrBlank() || !user.country.isNullOrBlank() || !user.birthDate.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            ZodiacProfileHighlightCard(
+                                zodiacSign = user.zodiacSign,
+                                country = user.country,
+                                birthDate = user.birthDate
+                            )
+                        }
+
                         // Verification Prompt if unverified
                         if (!user.isVerified) {
                             Spacer(modifier = Modifier.height(10.dp))
@@ -978,6 +989,9 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                             navController.navigate("profile/${u.id}")
                                         }
                                     }
+                                },
+                                onCommunityClick = { slug ->
+                                    navController.navigate("community/$slug")
                                 }
                             )
                         }
@@ -1146,6 +1160,9 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                                             navController.navigate("profile/${u.id}")
                                         }
                                     }
+                                },
+                                onCommunityClick = { slug ->
+                                    navController.navigate("community/$slug")
                                 }
                             )
                         }
@@ -1399,7 +1416,15 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
         var editedPrivacy by remember { mutableStateOf(user.privacySetting) }
         var editedEmail by remember { mutableStateOf(user.email ?: "") }
         var editedPhone by remember { mutableStateOf(user.phoneNumber ?: "") }
+        var editedCountry by remember { mutableStateOf(user.country ?: "") }
         var editedBirthDate by remember { mutableStateOf(user.birthDate ?: "") }
+
+        val dynamicZodiacSign = remember(editedBirthDate) {
+            ZodiacHelper.parseFromDateString(editedBirthDate)
+        }
+        val dynamicZodiacInfo = remember(dynamicZodiacSign) {
+            dynamicZodiacSign?.let { ZodiacHelper.getInfo(it) }
+        }
 
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
@@ -1414,7 +1439,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 440.dp)
+                        .heightIn(max = 480.dp)
                         .verticalScroll(androidx.compose.foundation.rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -1435,6 +1460,101 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                         minLines = 2,
                         shape = RoundedCornerShape(12.dp)
                     )
+
+                    // Country / Pays field + Quick Suggestions
+                    OutlinedTextField(
+                        value = editedCountry,
+                        onValueChange = { editedCountry = it },
+                        label = { Text("Pays / Origine") },
+                        leadingIcon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+                        placeholder = { Text("ex: RDC, France, Canada...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Quick Country Chips
+                    val suggestedCountries = listOf("🇨🇩 RDC", "🇨🇬 Congo", "🇫🇷 France", "🇧🇪 Belgique", "🇨🇦 Canada", "🇨🇮 Côte d'Ivoire", "🇸🇳 Sénégal", "🇨🇲 Cameroun", "🇨🇭 Suisse", "🇺🇸 USA")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        suggestedCountries.forEach { c ->
+                            val cleanName = c.substringAfter(" ")
+                            FilterChip(
+                                selected = editedCountry.equals(cleanName, ignoreCase = true) || editedCountry.equals(c, ignoreCase = true),
+                                onClick = { editedCountry = cleanName },
+                                label = { Text(c, fontSize = 11.sp) },
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
+                    }
+
+                    // Birth date field
+                    OutlinedTextField(
+                        value = editedBirthDate,
+                        onValueChange = { editedBirthDate = it },
+                        label = { Text("Date de naissance (JJ/MM/AAAA)") },
+                        leadingIcon = { Icon(Icons.Outlined.Cake, contentDescription = null) },
+                        placeholder = { Text("15/08/1998") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Live Zodiac Sign Preview Card
+                    if (dynamicZodiacInfo != null) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = dynamicZodiacInfo.primaryColor.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, dynamicZodiacInfo.primaryColor.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(dynamicZodiacInfo.primaryColor)
+                                        .padding(5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    ZodiacVectorIcon(
+                                        sign = dynamicZodiacInfo.sign,
+                                        modifier = Modifier.fillMaxSize(),
+                                        tint = Color.White
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "Signe : ${dynamicZodiacInfo.sign}",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "(${dynamicZodiacInfo.element})",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = dynamicZodiacInfo.elementColor
+                                        )
+                                    }
+                                    Text(
+                                        text = dynamicZodiacInfo.dateRange,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
                         value = editedEmail,
                         onValueChange = { editedEmail = it },
@@ -1448,15 +1568,6 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                         onValueChange = { editedPhone = it },
                         label = { Text("Téléphone") },
                         leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    OutlinedTextField(
-                        value = editedBirthDate,
-                        onValueChange = { editedBirthDate = it },
-                        label = { Text("Date de naissance (JJ/MM/AAAA)") },
-                        leadingIcon = { Icon(Icons.Outlined.Cake, contentDescription = null) },
-                        placeholder = { Text("15/08/1998") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     )
@@ -1497,17 +1608,7 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
             confirmButton = {
                 Button(
                     onClick = {
-                        var calculatedZodiac: String? = null
-                        try {
-                            val parts = editedBirthDate.split("/")
-                            if (parts.size == 3) {
-                                val day = parts[0].trim().toIntOrNull()
-                                val month = parts[1].trim().toIntOrNull()
-                                if (day != null && month != null && day in 1..31 && month in 1..12) {
-                                    calculatedZodiac = getZodiacSign(day, month)
-                                }
-                            }
-                        } catch (e: Exception) {}
+                        val calculatedZodiac = dynamicZodiacSign ?: ZodiacHelper.parseFromDateString(editedBirthDate)
 
                         viewModel.updateProfile(
                             username = editedUsername,
@@ -1517,7 +1618,8 @@ fun ProfileScreen(viewModel: IddetViewModel, navController: NavController) {
                             email = editedEmail,
                             phoneNumber = editedPhone,
                             birthDate = editedBirthDate,
-                            zodiacSign = calculatedZodiac
+                            zodiacSign = calculatedZodiac,
+                            country = editedCountry
                         )
                         Toast.makeText(context, "Profil mis à jour", Toast.LENGTH_SHORT).show()
                         showEditDialog = false

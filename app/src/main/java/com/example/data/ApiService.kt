@@ -200,7 +200,9 @@ data class UserProfileNetwork(
     val is_online: Boolean = false,
     val email: String? = null,
     val phone_number: String? = null,
+    val birth_date: String? = null,
     val zodiac_sign: String? = null,
+    val country: String? = null,
     val created_at: String? = null,
     val last_seen: String? = null,
     val is_iddet_plus: Boolean = false,
@@ -318,7 +320,8 @@ data class UpdateProfileRequest(
     val privacy_setting: String? = null,
     val email: String? = null,
     val birth_date: String? = null,
-    val zodiac_sign: String? = null
+    val zodiac_sign: String? = null,
+    val country: String? = null
 )
 
 data class MessageReactionRequest(
@@ -1014,12 +1017,28 @@ interface ApiService {
         @retrofit2.http.Header("Authorization") token: String,
         @retrofit2.http.Query("limit") limit: Int = 50
     ): List<NearbyFriendNetwork>
+
+    @retrofit2.http.PUT("/api/users/me/country")
+    suspend fun setMyCountry(
+        @retrofit2.http.Header("Authorization") token: String,
+        @retrofit2.http.Body request: CountryUpdateRequest
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @retrofit2.http.POST("/api/users/me/country/auto")
+    suspend fun redetectMyCountryAuto(
+        @retrofit2.http.Header("Authorization") token: String
+    ): Map<String, @JvmSuppressWildcards Any>
 }
+
+data class CountryUpdateRequest(
+    val country: String
+)
 
 data class LocationUpdateRequest(
     val latitude: Double,
     val longitude: Double,
-    val is_sharing: Boolean? = true
+    val is_sharing: Boolean? = true,
+    val detect_country: Boolean = true
 )
 
 data class LocationUpdateResponse(

@@ -24,6 +24,7 @@ data class User(
     val phoneNumber: String? = null,
     val birthDate: String? = null,
     val zodiacSign: String? = null,
+    val country: String? = null,
     val preferredCategory: String? = "@(fun)"
 )
 

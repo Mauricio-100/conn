@@ -173,7 +173,8 @@ fun HistoryScreen(viewModel: IddetViewModel, navController: NavController) {
                                     }
                                 }
                             },
-                            onCategoryClick = { /* Do nothing or navigate */ }
+                            onCategoryClick = { slug -> navController.navigate("community/$slug") },
+                            onCommunityClick = { slug -> navController.navigate("community/$slug") }
                         )
                     }
                 }

@@ -147,6 +147,19 @@ object MarkdownParser {
                 continue
             }
 
+            // Standalone Direct Media URL on its own line
+            if ((trimmedLine.startsWith("http://") || trimmedLine.startsWith("https://")) && !trimmedLine.contains(" ")) {
+                if (com.example.ui.components.VideoUrlHelper.isVideoUrl(trimmedLine)) {
+                    blocks.add(MarkdownNode.VideoNode(trimmedLine, null))
+                    i++
+                    continue
+                } else if (isDirectImageUrl(trimmedLine)) {
+                    blocks.add(MarkdownNode.ImageNode(trimmedLine, null))
+                    i++
+                    continue
+                }
+            }
+
             // 9. Standard Paragraph (with embedded visual image & video inline parsing)
             if (trimmedLine.isNotEmpty()) {
                 val mixedNodes = parseMixedParagraph(line)
@@ -156,6 +169,13 @@ object MarkdownParser {
         }
 
         return postProcessCarousels(blocks)
+    }
+
+    private fun isDirectImageUrl(url: String): Boolean {
+        val clean = url.trim().lowercase()
+        return clean.endsWith(".jpg") || clean.endsWith(".jpeg") || clean.endsWith(".png") ||
+                clean.endsWith(".webp") || clean.endsWith(".gif") || clean.endsWith(".bmp") ||
+                (clean.contains("cloudinary.com") && (clean.contains("/image/upload") || clean.contains("/upload/")))
     }
 
     private fun postProcessCarousels(nodes: List<MarkdownNode>): List<MarkdownNode> {

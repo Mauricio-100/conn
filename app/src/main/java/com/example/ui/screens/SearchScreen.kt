@@ -366,6 +366,9 @@ fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
                                             navController.navigate("profile/${u.id}")
                                         }
                                     }
+                                },
+                                onCommunityClick = { slug ->
+                                    navController.navigate("community/$slug")
                                 }
                             )
                         }
@@ -447,6 +450,9 @@ fun SearchScreen(viewModel: IddetViewModel, navController: NavController) {
                                             navController.navigate("profile/${u.id}")
                                         }
                                     }
+                                },
+                                onCommunityClick = { slug ->
+                                    navController.navigate("community/$slug")
                                 }
                             )
                         }

@@ -449,6 +449,9 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
     val currentUserVibe = com.example.data.FriendsLocationService.currentUserVibe
     val radarScanRadiusKm = com.example.data.FriendsLocationService.radarScanRadiusKm
     val lastChillWaveSent = com.example.data.FriendsLocationService.lastChillWaveSent
+    val isServerSynced = com.example.data.FriendsLocationService.isServerSynced
+    val serverSpeedKmh = com.example.data.FriendsLocationService.serverSpeedKmh
+    val lastServerSyncTime = com.example.data.FriendsLocationService.lastServerSyncTime
 
     data class TrafficJamAlert(
         val id: String = java.util.UUID.randomUUID().toString(),
@@ -485,14 +488,14 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
                     if (!token.isNullOrBlank() && loc.isRealGpsAcquired) {
                         viewModelScope.launch(Dispatchers.IO) {
                             try {
-                                com.example.data.RetrofitClient.apiService.updateLocation(
-                                    token = "Bearer $token",
-                                    request = com.example.data.LocationUpdateRequest(
-                                        latitude = loc.latitude,
-                                        longitude = loc.longitude,
-                                        is_sharing = !isGhostMode.value
-                                    )
+                                repository.sendLocationUpdate(
+                                    lat = loc.latitude,
+                                    lng = loc.longitude,
+                                    isSharing = !isGhostMode.value,
+                                    detectCountry = true
                                 )
+                                val nearby = repository.fetchNearbyFriends(50)
+                                com.example.data.FriendsLocationService.syncWithServerNearbyFriends(nearby, loc.latitude, loc.longitude)
                             } catch (_: Exception) {}
                         }
                     }
@@ -518,16 +521,13 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
             viewModelScope.launch(Dispatchers.IO) {
                 try {
                     if (enabled) {
-                        com.example.data.RetrofitClient.apiService.stopLocationSharing("Bearer $token")
+                        repository.stopLocationSharing()
                     } else {
                         val loc = _realLocation.value
-                        com.example.data.RetrofitClient.apiService.updateLocation(
-                            token = "Bearer $token",
-                            request = com.example.data.LocationUpdateRequest(
-                                latitude = loc.latitude,
-                                longitude = loc.longitude,
-                                is_sharing = true
-                            )
+                        repository.sendLocationUpdate(
+                            lat = loc.latitude,
+                            lng = loc.longitude,
+                            isSharing = true
                         )
                     }
                 } catch (_: Exception) {}
@@ -579,7 +579,30 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
     }
 
     fun refreshFriendsRadar() {
-        com.example.data.FriendsLocationService.simulateRadarPing()
+        viewModelScope.launch {
+            val loc = _realLocation.value
+            val token = repository.userToken
+            if (!token.isNullOrBlank()) {
+                try {
+                    repository.sendLocationUpdate(loc.latitude, loc.longitude, !isGhostMode.value)
+                    val nearby = repository.fetchNearbyFriends(50)
+                    com.example.data.FriendsLocationService.syncWithServerNearbyFriends(nearby, loc.latitude, loc.longitude)
+                } catch (_: Exception) {}
+            }
+            com.example.data.FriendsLocationService.simulateRadarPing()
+        }
+    }
+
+    fun setManualCountry(code: String) {
+        viewModelScope.launch {
+            repository.setManualCountry(code)
+        }
+    }
+
+    fun redetectAutoCountry() {
+        viewModelScope.launch {
+            repository.redetectAutoCountry()
+        }
     }
 
     fun setFeedTab(tab: Int) {
@@ -1142,10 +1165,11 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
         phoneNumber: String? = null,
         birthDate: String? = null,
         zodiacSign: String? = null,
+        country: String? = null,
         preferredCategory: String? = null
     ) {
         viewModelScope.launch {
-            repository.updateProfile(username, avatarUrl, bio, privacySetting, email, phoneNumber, birthDate, zodiacSign, preferredCategory)
+            repository.updateProfile(username, avatarUrl, bio, privacySetting, email, phoneNumber, birthDate, zodiacSign, country, preferredCategory)
         }
     }
 

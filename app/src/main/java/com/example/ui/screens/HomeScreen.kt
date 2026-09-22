@@ -433,6 +433,9 @@ fun HomeScreen(viewModel: IddetViewModel, navController: NavController, onOpenDr
                             },
                             onCategoryClick = { categoryId ->
                                 viewModel.setSelectedCategoryFilter(categoryId)
+                            },
+                            onCommunityClick = { slug ->
+                                navController.navigate("community/$slug")
                             }
                         )
 
