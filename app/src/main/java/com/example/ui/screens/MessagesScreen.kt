@@ -278,7 +278,7 @@ private fun LegacyMessagesScreen(viewModel: IddetViewModel, navController: NavCo
                     }
                 }
             } else {
-                items(filteredConversations, key = { it.id }) { conv ->
+                items(filteredConversations, key = { it.id ?: it.user_id }) { conv ->
                     ConversationItem(
                         conv = conv,
                         onClick = { navController.navigate("chat/${conv.user_id}") }

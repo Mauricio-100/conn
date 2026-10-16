@@ -77,43 +77,77 @@ class ChatThreadViewModel(
     private val _isUploading = MutableStateFlow(false)
     val isUploading: StateFlow<Boolean> = _isUploading.asStateFlow()
 
+    private val _disappearingTimer = MutableStateFlow(0L)
+    val disappearingTimer: StateFlow<Long> = _disappearingTimer.asStateFlow()
+
+    fun setDisappearingTimer(durationMs: Long) {
+        _disappearingTimer.value = durationMs
+    }
+
+    fun addReactionToMessage(messageId: String, emoji: String) {
+        val updated = _directServerMessages.value.map { msg ->
+            if (msg.id == messageId) {
+                val currentReactions = msg.reactions.toMutableList()
+                val existing = currentReactions.find { it.emoji == emoji }
+                if (existing != null) {
+                    currentReactions.remove(existing)
+                    currentReactions.add(existing.copy(count = existing.count + 1, hasReacted = true))
+                } else {
+                    currentReactions.add(ReactionUiGroup(emoji = emoji, count = 1, hasReacted = true))
+                }
+                msg.copy(reactions = currentReactions)
+            } else {
+                msg
+            }
+        }
+        _directServerMessages.value = updated
+    }
+
     val socketConnectionState: StateFlow<SocketConnectionState> = socketClient.connectionState
 
-    // Live messages from repository Flow
+    private val _directServerMessages = MutableStateFlow<List<ChatMessageUiModel>>(emptyList())
+    private val _isLoadingMessages = MutableStateFlow(true)
+    private var resolvedPartnerId: String = partnerUserId
+
+    // Live messages from repository Flow as offline fallback
     private val roomMessagesFlow = repository.getMessagesWith(partnerUserId)
 
-    val uiState: StateFlow<ChatThreadUiState> = combine(
-        roomMessagesFlow,
-        _optimisticMessages,
-        _partnerInfo,
-        socketConnectionState
-    ) { roomList, pendingList, partner, connState ->
-        val currentUserId = repository.currentUser.value?.id ?: ""
+    private val _flow1 = combine(_directServerMessages, roomMessagesFlow, _optimisticMessages) { s, r, p -> Triple(s, r, p) }
+    private val _flow2 = combine(_partnerInfo, _isLoadingMessages, socketConnectionState) { p, l, c -> Triple(p, l, c) }
 
-        // Merge room messages and pending/optimistic messages
+    val uiState: StateFlow<ChatThreadUiState> = combine(_flow1, _flow2) { (serverList, roomList, pendingList), (partner, isLoading, connState) ->
+        val currentUserId = repository.currentUser.value?.id ?: ""
+        val currentUsername = repository.currentUser.value?.username ?: ""
+
+        // Merge messages: Prefer direct server list, otherwise use local Room list
         val combined = mutableListOf<ChatMessageUiModel>()
 
-        roomList.filterNot { it.id.startsWith("conv_") }.forEach { m ->
-            val isMine = m.senderId == currentUserId
-            val reactions = parseReactions(m.reaction)
-            combined.add(
-                ChatMessageUiModel(
-                    id = m.id,
-                    senderId = m.senderId,
-                    receiverId = m.receiverId,
-                    content = m.content,
-                    type = m.type,
-                    isMine = isMine,
-                    isRead = m.isRead,
-                    createdAt = m.createdAt,
-                    reactions = reactions,
-                    isSending = false,
-                    isFailed = false
+        if (serverList.isNotEmpty()) {
+            combined.addAll(serverList)
+        } else {
+            roomList.filterNot { it.id.startsWith("conv_") }.forEach { m ->
+                val isMine = (currentUserId.isNotBlank() && m.senderId == currentUserId) ||
+                        (m.senderId != partnerUserId && m.senderId != resolvedPartnerId)
+                val reactions = parseReactions(m.reaction)
+                combined.add(
+                    ChatMessageUiModel(
+                        id = m.id,
+                        senderId = m.senderId,
+                        receiverId = m.receiverId,
+                        content = m.content,
+                        type = m.type,
+                        isMine = isMine,
+                        isRead = m.isRead,
+                        createdAt = m.createdAt,
+                        reactions = reactions,
+                        isSending = false,
+                        isFailed = false
+                    )
                 )
-            )
+            }
         }
 
-        // Add pending messages if not already present in room messages
+        // Add pending/optimistic messages if not already present
         pendingList.forEach { pending ->
             if (combined.none { it.id == pending.id || (it.content == pending.content && it.isMine && Math.abs(it.createdAt - pending.createdAt) < 5000) }) {
                 combined.add(pending)
@@ -126,7 +160,9 @@ class ChatThreadViewModel(
         // Compute grouping, avatars, and last in group
         val grouped = groupMessages(combined)
 
-        if (grouped.isEmpty()) {
+        if (isLoading && grouped.isEmpty()) {
+            ChatThreadUiState.Loading
+        } else if (grouped.isEmpty()) {
             ChatThreadUiState.Empty
         } else {
             ChatThreadUiState.Success(
@@ -142,7 +178,7 @@ class ChatThreadViewModel(
     )
 
     init {
-        val cachedConv = repository.conversations.value.find { it.user_id == partnerUserId }
+        val cachedConv = repository.conversations.value.find { it.user_id == partnerUserId || it.id == partnerUserId }
         if (cachedConv != null) {
             _partnerInfo.value = _partnerInfo.value.copy(
                 username = cachedConv.username,
@@ -152,21 +188,90 @@ class ChatThreadViewModel(
             )
         }
         loadPartnerDetails()
+        loadServerMessages()
         observeWebSocketEvents()
         connectSocketIfLoggedIn()
         markMessagesRead()
         startPeriodicSync()
+
+        // Safety timeout: Never stay stuck in loading spinner if server has no messages
+        viewModelScope.launch {
+            delay(1200)
+            _isLoadingMessages.value = false
+        }
+    }
+
+    private fun loadServerMessages() {
+        viewModelScope.launch {
+            try {
+                val remote = repository.getDirectMessages(partnerUserId)
+                if (remote.isNotEmpty()) {
+                    updateServerMessages(remote)
+                }
+            } catch (e: Exception) {
+                Log.e("ChatThreadVM", "Failed to fetch direct messages: ${e.message}")
+            } finally {
+                _isLoadingMessages.value = false
+            }
+        }
+    }
+
+    private fun updateServerMessages(remote: List<com.example.data.MessageNetwork>) {
+        val currentUserId = repository.currentUser.value?.id ?: ""
+        val currentUsername = repository.currentUser.value?.username ?: ""
+
+        // Resolve real partner ID if routed by username
+        remote.forEach { m ->
+            if (m.sender_id.isNotBlank() && m.sender_id != currentUserId) {
+                resolvedPartnerId = m.sender_id
+            } else if (m.receiver_id.isNotBlank() && m.receiver_id != currentUserId) {
+                resolvedPartnerId = m.receiver_id
+            }
+        }
+
+        val mapped = remote.map { net ->
+            val isMine = (currentUserId.isNotBlank() && net.sender_id == currentUserId) ||
+                    (currentUsername.isNotBlank() && !net.sender_username.isNullOrBlank() && net.sender_username.equals(currentUsername, ignoreCase = true)) ||
+                    (net.sender_id != partnerUserId && net.sender_id != resolvedPartnerId && !net.sender_username.equals(_partnerInfo.value.username, ignoreCase = true) && !net.sender_username.equals(partnerUserId, ignoreCase = true))
+
+            val parsedTime = try {
+                val cleanDate = net.created_at.replace("Z", "+0000")
+                val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ", java.util.Locale.US)
+                format.parse(cleanDate)?.time ?: java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", java.util.Locale.US).parse(cleanDate)?.time ?: System.currentTimeMillis()
+            } catch (_: Exception) {
+                System.currentTimeMillis()
+            }
+
+            val reactions = parseReactions(net.reaction)
+
+            ChatMessageUiModel(
+                id = net.id.ifBlank { UUID.randomUUID().toString() },
+                senderId = net.sender_id,
+                receiverId = net.receiver_id,
+                content = net.content,
+                type = if (com.example.utils.AudioMessageHelper.isAudioContent(net.content, net.type)) "audio" else net.type,
+                isMine = isMine,
+                isRead = net.read,
+                createdAt = parsedTime,
+                reactions = reactions,
+                isSending = false,
+                isFailed = false
+            )
+        }
+        _directServerMessages.value = mapped
+        _isLoadingMessages.value = false
     }
 
     private fun startPeriodicSync() {
         viewModelScope.launch {
             while (isActive) {
-                delay(4000)
+                delay(2500)
                 try {
-                    repository.refreshMessagesWith(partnerUserId)
-                } catch (e: Exception) {
-                    // Ignore transient network errors
-                }
+                    val remote = repository.getDirectMessages(partnerUserId)
+                    if (remote.isNotEmpty()) {
+                        updateServerMessages(remote)
+                    }
+                } catch (_: Exception) {}
             }
         }
     }
@@ -248,61 +353,44 @@ class ChatThreadViewModel(
                 when (event) {
                     is WebSocketEvent.NewMessage -> {
                         val currentUserId = repository.currentUser.value?.id ?: ""
-                        if (event.senderId == partnerUserId || (event.senderId == currentUserId && event.messageId.isNotBlank())) {
-                            // Insert into Room
+                        if (event.senderId == partnerUserId || event.senderId == resolvedPartnerId || (event.senderId == currentUserId && event.messageId.isNotBlank())) {
                             val msg = Message(
                                 id = event.messageId,
                                 senderId = event.senderId,
-                                receiverId = if (event.senderId == currentUserId) partnerUserId else currentUserId,
+                                receiverId = if (event.senderId == currentUserId) resolvedPartnerId else currentUserId,
                                 content = event.content,
                                 type = event.msgType,
                                 isRead = false,
                                 createdAt = System.currentTimeMillis()
                             )
                             repository.insertMessageLocal(msg)
+                            loadServerMessages()
 
-                            // Remove matching optimistic message if any
                             _optimisticMessages.value = _optimisticMessages.value.filter {
                                 it.id != event.messageId && !(it.content == event.content && it.isMine)
                             }
 
-                            if (event.senderId == partnerUserId) {
+                            if (event.senderId == partnerUserId || event.senderId == resolvedPartnerId) {
                                 markMessagesRead()
                             }
                         }
                     }
 
                     is WebSocketEvent.MessageSent -> {
-                        val currentUserId = repository.currentUser.value?.id ?: ""
-                        val msgType = if (event.msgType.isNotBlank()) event.msgType else "text"
-                        val msg = Message(
-                            id = event.messageId,
-                            senderId = currentUserId,
-                            receiverId = partnerUserId,
-                            content = event.content,
-                            type = msgType,
-                            isRead = false,
-                            createdAt = System.currentTimeMillis()
-                        )
-                        repository.insertMessageLocal(msg)
-                        repository.updateConversationLastMessage(
-                            otherUserId = partnerUserId,
-                            content = if (com.example.utils.AudioMessageHelper.isAudioContent(event.content, msgType)) "🎤 Message vocal" else event.content,
-                            type = msgType,
-                            isIncoming = false
-                        )
+                        loadServerMessages()
                         _optimisticMessages.value = _optimisticMessages.value.filter {
-                            it.id != event.messageId && !(it.type == msgType && it.isSending)
+                            it.id != event.messageId && !(it.content == event.content && it.isMine)
                         }
                     }
 
                     is WebSocketEvent.MessageDeleted -> {
                         repository.deleteMessageLocal(event.messageId)
                         _optimisticMessages.value = _optimisticMessages.value.filter { it.id != event.messageId }
+                        loadServerMessages()
                     }
                     
                     is WebSocketEvent.TypingStatus -> {
-                        if (event.senderId == partnerUserId) {
+                        if (event.senderId == partnerUserId || event.senderId == resolvedPartnerId) {
                             _isPartnerTyping.value = event.isTyping
                             partnerTypingTimeoutJob?.let { it.cancel() }
                             if (event.isTyping) {
@@ -327,11 +415,12 @@ class ChatThreadViewModel(
         _inputText.value = ""
         val currentUserId = repository.currentUser.value?.id ?: ""
         val tempId = UUID.randomUUID().toString()
+        val targetPeer = if (resolvedPartnerId.isNotBlank()) resolvedPartnerId else partnerUserId
 
         val optimistic = ChatMessageUiModel(
             id = tempId,
             senderId = currentUserId,
-            receiverId = partnerUserId,
+            receiverId = targetPeer,
             content = text,
             type = "text",
             isMine = true,
@@ -344,12 +433,11 @@ class ChatThreadViewModel(
 
         viewModelScope.launch {
             try {
-                repository.sendMessage(partnerUserId, text, "text")
-                // Success: remove optimistic entry once confirmed or keep until Room emits
+                repository.sendMessage(targetPeer, text, "text")
                 _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }
+                loadServerMessages()
             } catch (e: Exception) {
                 Log.e("ChatThreadVM", "Failed to send message", e)
-                // Mark failed
                 _optimisticMessages.value = _optimisticMessages.value.map {
                     if (it.id == tempId) it.copy(isSending = false, isFailed = true) else it
                 }
@@ -362,11 +450,12 @@ class ChatThreadViewModel(
         _inputText.value = ""
         val currentUserId = repository.currentUser.value?.id ?: ""
         val tempId = UUID.randomUUID().toString()
+        val targetPeer = if (resolvedPartnerId.isNotBlank()) resolvedPartnerId else partnerUserId
 
         val optimistic = ChatMessageUiModel(
             id = tempId,
             senderId = currentUserId,
-            receiverId = partnerUserId,
+            receiverId = targetPeer,
             content = customText,
             type = "text",
             isMine = true,
@@ -379,8 +468,9 @@ class ChatThreadViewModel(
 
         viewModelScope.launch {
             try {
-                repository.sendMessage(partnerUserId, customText, "text")
+                repository.sendMessage(targetPeer, customText, "text")
                 _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }
+                loadServerMessages()
             } catch (e: Exception) {
                 Log.e("ChatThreadVM", "Failed to send custom message", e)
                 _optimisticMessages.value = _optimisticMessages.value.map {
@@ -394,11 +484,12 @@ class ChatThreadViewModel(
         val currentUserId = repository.currentUser.value?.id ?: ""
         val myUsername = repository.currentUser.value?.username ?: "Moi"
         val tempId = "voice_" + UUID.randomUUID().toString()
+        val targetPeer = if (resolvedPartnerId.isNotBlank()) resolvedPartnerId else partnerUserId
 
         val optimistic = ChatMessageUiModel(
             id = tempId,
             senderId = currentUserId,
-            receiverId = partnerUserId,
+            receiverId = targetPeer,
             content = file.absolutePath,
             type = "audio",
             isMine = true,
@@ -414,9 +505,9 @@ class ChatThreadViewModel(
                 if (file.exists() && file.length() > 0) {
                     val bytes = file.readBytes()
                     val audioB64 = "data:audio/mp4;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    sent = socketClient.sendVoiceMessage(partnerUserId, audioB64, myUsername)
+                    sent = socketClient.sendVoiceMessage(targetPeer, audioB64, myUsername)
                     if (!sent) {
-                        repository.sendMessage(partnerUserId, audioB64, "audio")
+                        repository.sendMessage(targetPeer, audioB64, "audio")
                         sent = true
                     }
                 }
@@ -425,7 +516,7 @@ class ChatThreadViewModel(
             }
 
             repository.updateConversationLastMessage(
-                otherUserId = partnerUserId,
+                otherUserId = targetPeer,
                 content = "🎤 Message vocal",
                 type = "audio",
                 isIncoming = false
@@ -433,6 +524,7 @@ class ChatThreadViewModel(
 
             if (sent) {
                 _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }
+                loadServerMessages()
             } else {
                 _optimisticMessages.value = _optimisticMessages.value.map {
                     if (it.id == tempId) it.copy(isSending = false, isFailed = false) else it
@@ -445,11 +537,12 @@ class ChatThreadViewModel(
         val currentUserId = repository.currentUser.value?.id ?: ""
         val myUsername = repository.currentUser.value?.username ?: "Moi"
         val tempId = "voice_" + UUID.randomUUID().toString()
+        val targetPeer = if (resolvedPartnerId.isNotBlank()) resolvedPartnerId else partnerUserId
 
         val optimistic = ChatMessageUiModel(
             id = tempId,
             senderId = currentUserId,
-            receiverId = partnerUserId,
+            receiverId = targetPeer,
             content = audioB64,
             type = "audio",
             isMine = true,
@@ -462,14 +555,14 @@ class ChatThreadViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             var sent = false
             try {
-                sent = socketClient.sendVoiceMessage(partnerUserId, audioB64, myUsername)
+                sent = socketClient.sendVoiceMessage(targetPeer, audioB64, myUsername)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
 
             if (!sent) {
                 try {
-                    repository.sendMessage(partnerUserId, audioB64, "audio")
+                    repository.sendMessage(targetPeer, audioB64, "audio")
                     sent = true
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -477,7 +570,7 @@ class ChatThreadViewModel(
             }
 
             repository.updateConversationLastMessage(
-                otherUserId = partnerUserId,
+                otherUserId = targetPeer,
                 content = "🎤 Message vocal",
                 type = "audio",
                 isIncoming = false
@@ -485,6 +578,7 @@ class ChatThreadViewModel(
 
             if (sent) {
                 _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }
+                loadServerMessages()
             } else {
                 _optimisticMessages.value = _optimisticMessages.value.map {
                     if (it.id == tempId) it.copy(isSending = false, isFailed = false) else it
@@ -542,9 +636,11 @@ class ChatThreadViewModel(
             }
 
             val finalUrl = uploadedUrl ?: mediaUri.toString()
+            val targetPeer = if (resolvedPartnerId.isNotBlank()) resolvedPartnerId else partnerUserId
             try {
-                repository.sendMessage(partnerUserId, finalUrl, type)
+                repository.sendMessage(targetPeer, finalUrl, type)
                 _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }
+                loadServerMessages()
             } catch (e: Exception) {
                 _optimisticMessages.value = _optimisticMessages.value.map {
                     if (it.id == tempId) it.copy(isSending = false, isFailed = true) else it
@@ -557,11 +653,12 @@ class ChatThreadViewModel(
         val currentUserId = repository.currentUser.value?.id ?: ""
         val type = if (isVideo) "video" else "image"
         val tempId = UUID.randomUUID().toString()
+        val targetPeer = if (resolvedPartnerId.isNotBlank()) resolvedPartnerId else partnerUserId
 
         val optimistic = ChatMessageUiModel(
             id = tempId,
             senderId = currentUserId,
-            receiverId = partnerUserId,
+            receiverId = targetPeer,
             content = url,
             type = type,
             isMine = true,
@@ -573,8 +670,9 @@ class ChatThreadViewModel(
 
         viewModelScope.launch {
             try {
-                repository.sendMessage(partnerUserId, url, type)
+                repository.sendMessage(targetPeer, url, type)
                 _optimisticMessages.value = _optimisticMessages.value.filter { it.id != tempId }
+                loadServerMessages()
             } catch (e: Exception) {
                 _optimisticMessages.value = _optimisticMessages.value.map {
                     if (it.id == tempId) it.copy(isSending = false, isFailed = true) else it

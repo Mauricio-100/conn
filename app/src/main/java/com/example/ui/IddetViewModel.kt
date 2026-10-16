@@ -1159,8 +1159,8 @@ class IddetViewModel(val repository: IddetRepository) : ViewModel() {
     fun updateProfile(
         username: String? = null,
         avatarUrl: String? = null,
-        bio: String,
-        privacySetting: String,
+        bio: String = currentUser.value?.bio ?: "",
+        privacySetting: String = currentUser.value?.privacySetting ?: "Public",
         email: String? = null,
         phoneNumber: String? = null,
         birthDate: String? = null,

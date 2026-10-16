@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import com.example.ui.theme.AppTheme
@@ -122,37 +123,43 @@ class IddetRepository(
             IddetAccountManager.purgeSimulatedIddetAccount(userDao, actfileDao)
         }
         val savedUserId = prefs.getString("user_id", null)
-        if (savedUserId != null) {
+        val savedUsername = prefs.getString("username", null)
+        if (savedUserId != null || currentToken != null) {
             repositoryScope.launch {
-                val user = userDao.getUserById(savedUserId)
+                val effectiveId = savedUserId ?: "user_${System.currentTimeMillis()}"
+                var user = userDao.getUserById(effectiveId)
+                if (user == null) {
+                    val savedAccounts = try { savedAccountDao.getAllSavedAccounts().first() } catch (_: Exception) { emptyList() }
+                    val acc = savedAccounts.firstOrNull()
+                    val uname = acc?.username ?: savedUsername ?: "Moi"
+                    user = User(
+                        id = effectiveId,
+                        username = uname,
+                        passwordHash = "mocked",
+                        avatarUrl = acc?.avatarUrl,
+                        isVerified = acc?.isVerified ?: false
+                    )
+                    try { userDao.insertUser(user) } catch (_: Exception) {}
+                }
                 _currentUser.value = user
                 try {
                     val token = currentToken
                     if (token != null) {
                         val profile = RetrofitClient.apiService.getMyProfile("Bearer $token")
-                        val updatedUser = user?.copy(
-                            username = profile.username,
-                            avatarUrl = profile.avatar_url,
+                        val updatedUser = user.copy(
+                            id = profile.id ?: user.id,
+                            username = profile.username.ifBlank { user.username },
+                            avatarUrl = profile.avatar_url ?: user.avatarUrl,
                             bio = profile.bio ?: user.bio,
                             isVerified = profile.is_verified,
                             followingCount = profile.following_count,
                             followersCount = profile.followers_count
-                        ) ?: User(
-                            id = profile.id ?: savedUserId ?: "",
-                            username = profile.username,
-                            passwordHash = "mocked",
-                            avatarUrl = profile.avatar_url,
-                            bio = profile.bio ?: "Welcome to my profile!",
-                            isVerified = profile.is_verified,
-                            followingCount = profile.following_count,
-                            followersCount = profile.followers_count,
-                            isGiant = (profile.username.length > 5)
                         )
                         userDao.insertUser(updatedUser)
                         _currentUser.value = updatedUser
                     }
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    // Ignore 500 error on /api/users/me, user is safely initialized above
                 }
             }
         }
@@ -172,7 +179,12 @@ class IddetRepository(
                         bio = profile.bio ?: existing.bio,
                         isVerified = profile.is_verified,
                         followingCount = profile.following_count,
-                        followersCount = profile.followers_count
+                        followersCount = profile.followers_count,
+                        email = profile.email ?: existing.email,
+                        phoneNumber = profile.actualPhone ?: existing.phoneNumber,
+                        birthDate = profile.actualBirthDate ?: existing.birthDate,
+                        zodiacSign = profile.zodiac_sign ?: existing.zodiacSign,
+                        country = profile.country ?: existing.country
                     )
                 } else {
                     User(
@@ -184,7 +196,12 @@ class IddetRepository(
                         isVerified = profile.is_verified,
                         followingCount = profile.following_count,
                         followersCount = profile.followers_count,
-                        isGiant = (profile.username.length > 5)
+                        isGiant = (profile.username.length > 5),
+                        email = profile.email,
+                        phoneNumber = profile.actualPhone,
+                        birthDate = profile.actualBirthDate,
+                        zodiacSign = profile.zodiac_sign,
+                        country = profile.country
                     )
                 }
                 userDao.insertUser(updatedUser)
@@ -195,19 +212,21 @@ class IddetRepository(
         }
     }
 
-    private fun parseIso(date: String?): Long {
-        if (date == null) return System.currentTimeMillis()
+    fun parseIso(date: String?): Long {
+        if (date.isNullOrBlank()) return System.currentTimeMillis()
         return try {
-            val cleanDate = date.replace("Z", "+0000")
-            val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", java.util.Locale.US)
-            format.parse(cleanDate)?.time ?: System.currentTimeMillis()
-        } catch (e1: Exception) {
+            java.time.OffsetDateTime.parse(date).toInstant().toEpochMilli()
+        } catch (_: Exception) {
             try {
-                val cleanDate = date.replace("Z", "+0000")
-                val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", java.util.Locale.US)
-                format.parse(cleanDate)?.time ?: System.currentTimeMillis()
-            } catch (e2: Exception) {
-                System.currentTimeMillis()
+                java.time.Instant.parse(date).toEpochMilli()
+            } catch (_: Exception) {
+                try {
+                    val cleanDate = date.replace("Z", "+0000")
+                    val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+                    format.parse(cleanDate.substringBefore("."))?.time ?: System.currentTimeMillis()
+                } catch (_: Exception) {
+                    System.currentTimeMillis()
+                }
             }
         }
     }
@@ -369,13 +388,19 @@ class IddetRepository(
             currentToken = response.access_token
             prefs.edit().putString("auth_token", currentToken).apply()
             
+            val serverUserId = response.user_id?.ifBlank { null }
+            val serverUsername = response.username?.ifBlank { null } ?: username
+            val serverAvatar = response.avatar_url?.ifBlank { null }
+            val serverVerified = response.is_verified
+
             val user = try {
                 val profile = RetrofitClient.apiService.getMyProfile("Bearer $currentToken")
-                val existing = userDao.getUserById(profile.id ?: "")
+                val resolvedId = profile.id ?: serverUserId ?: java.util.UUID.randomUUID().toString()
+                val existing = userDao.getUserById(resolvedId)
                 if (existing != null) {
                     existing.copy(
                         username = profile.username,
-                        avatarUrl = profile.avatar_url,
+                        avatarUrl = profile.avatar_url ?: serverAvatar,
                         bio = profile.bio ?: existing.bio,
                         isVerified = profile.is_verified,
                         followingCount = profile.following_count,
@@ -383,10 +408,10 @@ class IddetRepository(
                     )
                 } else {
                     User(
-                        id = profile.id ?: java.util.UUID.randomUUID().toString(),
+                        id = resolvedId,
                         username = profile.username,
                         passwordHash = "mocked",
-                        avatarUrl = profile.avatar_url,
+                        avatarUrl = profile.avatar_url ?: serverAvatar,
                         bio = profile.bio ?: "Welcome to my profile!",
                         isVerified = profile.is_verified,
                         followingCount = profile.following_count,
@@ -395,22 +420,29 @@ class IddetRepository(
                     )
                 }
             } catch (profileError: Exception) {
-                profileError.printStackTrace()
-                // Fallback: If server throws 500 on /api/users/me, use local cached user or synthesize one so login succeeds
-                val existing = userDao.getUserByUsername(username)
-                existing ?: User(
-                    id = java.util.UUID.randomUUID().toString(),
-                    username = username,
+                // If /api/users/me throws 500, resolve ID from login response or search
+                val resolvedId = serverUserId ?: try {
+                    val search = RetrofitClient.apiService.search("Bearer $currentToken", username, "users")
+                    search.results.firstOrNull { it.username.equals(username, ignoreCase = true) }?.id
+                } catch (_: Exception) { null } ?: (userDao.getUserByUsername(username)?.id) ?: java.util.UUID.randomUUID().toString()
+
+                val existing = userDao.getUserById(resolvedId) ?: userDao.getUserByUsername(username)
+                existing?.copy(id = resolvedId, avatarUrl = serverAvatar ?: existing.avatarUrl) ?: User(
+                    id = resolvedId,
+                    username = serverUsername,
                     passwordHash = "mocked",
-                    avatarUrl = null,
+                    avatarUrl = serverAvatar,
                     bio = "Welcome to Iddet!",
-                    isVerified = false,
-                    isGiant = (username.length > 5)
+                    isVerified = serverVerified,
+                    isGiant = (serverUsername.length > 5)
                 )
             }
             userDao.insertUser(user)
             _currentUser.value = user
-            prefs.edit().putString("user_id", user.id).apply()
+            prefs.edit()
+                .putString("user_id", user.id)
+                .putString("username", user.username)
+                .apply()
             
             // Immediately store or update the account in saved accounts
             savedAccountDao.insertSavedAccount(
@@ -467,25 +499,66 @@ class IddetRepository(
 
         // Sync with server if possible
         try {
-            val token = currentToken
+            val token = currentToken ?: prefs.getString("auth_token", null) ?: prefs.getString("token", null)
             if (token != null) {
-                RetrofitClient.apiService.updateProfile(
-                    token = "Bearer $token",
-                    request = UpdateProfileRequest(
-                        bio = bio,
-                        username = username ?: user.username,
-                        avatar_url = avatarUrl ?: user.avatarUrl,
-                        preferred_category = preferredCategory ?: user.preferredCategory,
-                        phone_number = phoneNumber ?: user.phoneNumber,
-                        privacy_setting = privacySetting,
-                        email = email ?: user.email,
-                        birth_date = birthDate ?: user.birthDate,
-                        zodiac_sign = zodiacSign ?: user.zodiacSign,
-                        country = country ?: user.country
-                    )
+                val resolvedPhone = phoneNumber ?: user.phoneNumber
+                val resolvedBirthDate = birthDate ?: user.birthDate
+                val resolvedCountry = country ?: user.country
+                val request = UpdateProfileRequest(
+                    bio = bio,
+                    username = username ?: user.username,
+                    avatar_url = avatarUrl ?: user.avatarUrl,
+                    preferred_category = preferredCategory ?: user.preferredCategory,
+                    phone_number = resolvedPhone,
+                    phone = resolvedPhone,
+                    privacy_setting = privacySetting,
+                    email = email ?: user.email,
+                    birth_date = resolvedBirthDate,
+                    birthdate = resolvedBirthDate,
+                    zodiac_sign = zodiacSign ?: user.zodiacSign,
+                    country = resolvedCountry
                 )
+                Log.d("IddetRepository", "Updating profile: $request")
+                val response = try {
+                    RetrofitClient.apiService.updateProfile(
+                        token = "Bearer $token",
+                        request = request
+                    )
+                } catch (e: Exception) {
+                    Log.w("IddetRepository", "updateProfile POST failed, trying PUT /api/users/me", e)
+                    RetrofitClient.apiService.updateMyProfilePut(
+                        token = "Bearer $token",
+                        request = request
+                    )
+                }
+                Log.d("IddetRepository", "Profile updated successfully: $response")
+
+                if (!resolvedCountry.isNullOrBlank()) {
+                    try {
+                        RetrofitClient.apiService.setMyCountry("Bearer $token", CountryUpdateRequest(resolvedCountry))
+                    } catch (e: Exception) {
+                        Log.w("IddetRepository", "setMyCountry error", e)
+                    }
+                }
+
+                val finalUser = updatedUser.copy(
+                    username = response.username.ifBlank { updatedUser.username },
+                    avatarUrl = response.avatar_url ?: updatedUser.avatarUrl,
+                    bio = response.bio ?: updatedUser.bio,
+                    isVerified = response.is_verified,
+                    followersCount = response.followers_count,
+                    followingCount = response.following_count,
+                    email = response.email ?: updatedUser.email,
+                    phoneNumber = response.actualPhone ?: updatedUser.phoneNumber,
+                    birthDate = response.actualBirthDate ?: updatedUser.birthDate,
+                    zodiacSign = response.zodiac_sign ?: updatedUser.zodiacSign,
+                    country = response.country ?: updatedUser.country
+                )
+                userDao.insertUser(finalUser)
+                _currentUser.value = finalUser
             }
         } catch (e: Exception) {
+            Log.e("IddetRepository", "Failed to update profile", e)
             e.printStackTrace()
         }
     }
@@ -1159,117 +1232,69 @@ class IddetRepository(
         }
     }
 
-    suspend fun refreshConversations() {
-        val userId = _currentUser.value?.id ?: return
-        try {
-            val header = currentToken?.let { "Bearer $it" }
-            if (header != null) {
-                val res = RetrofitClient.apiService.getConversations(header)
-                val enriched = res.map { conv ->
-                    val existing = userDao.getUserById(conv.user_id)
-                    val effectiveAvatar = if (!conv.avatar_url.isNullOrBlank()) {
-                        conv.avatar_url
-                    } else {
-                        existing?.avatarUrl
-                    }
-                    val effectiveUsername = if (conv.username.isNotBlank()) conv.username else (existing?.username ?: "Utilisateur")
-                    val updatedConv = conv.copy(
-                        username = effectiveUsername,
-                        avatar_url = effectiveAvatar
-                    )
-
-                    val partnerUser = if (existing != null) {
-                        existing.copy(
-                            username = effectiveUsername,
-                            avatarUrl = effectiveAvatar ?: existing.avatarUrl
-                        )
-                    } else {
-                        User(
-                            id = conv.user_id,
-                            username = effectiveUsername,
-                            passwordHash = "mocked",
-                            avatarUrl = effectiveAvatar,
-                            isVerified = conv.is_verified
-                        )
-                    }
-                    userDao.insertUser(partnerUser)
-                    updatedConv
+    suspend fun refreshConversations(): List<ConversationNetwork> {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: prefs.getString("token", null) ?: return _conversations.value
+        return try {
+            val header = "Bearer $token"
+            val res = RetrofitClient.apiService.getConversations(header)
+            val enriched = res.map { conv ->
+                val effectiveId = if (conv.user_id.isNotBlank()) conv.user_id else (conv.id ?: "")
+                val existing = try { userDao.getUserById(effectiveId) } catch (_: Exception) { null }
+                val effectiveAvatar = if (!conv.avatar_url.isNullOrBlank()) {
+                    conv.avatar_url
+                } else {
+                    existing?.avatarUrl
                 }
-                _conversations.value = enriched
-
-                // Background fetch for any conversation still missing an avatar
-                enriched.filter { it.avatar_url.isNullOrBlank() }.forEach { conv ->
-                    repositoryScope.launch {
-                        try {
-                            val prof = RetrofitClient.apiService.getUserProfile(header, conv.user_id)
-                            if (!prof.avatar_url.isNullOrBlank()) {
-                                _conversations.value = _conversations.value.map { c ->
-                                    if (c.user_id == conv.user_id) c.copy(avatar_url = prof.avatar_url) else c
-                                }
-                                val u = userDao.getUserById(conv.user_id)
-                                if (u != null) {
-                                    userDao.insertUser(u.copy(avatarUrl = prof.avatar_url))
-                                }
-                            }
-                        } catch (e: Exception) {
-                            // ignore background fetch failure
-                        }
-                    }
-                }
-
-                // Purge any legacy placeholder conversation messages
-                messageDao.deletePlaceholderConvMessages()
+                val effectiveUsername = if (conv.username.isNotBlank()) conv.username else (existing?.username ?: "Utilisateur")
+                conv.copy(
+                    user_id = effectiveId,
+                    username = effectiveUsername,
+                    avatar_url = effectiveAvatar
+                )
             }
+            if (enriched.isNotEmpty() || _conversations.value.isEmpty()) {
+                _conversations.value = enriched
+            }
+            enriched
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("IddetRepository", "refreshConversations error: ${e.message}")
+            _conversations.value
         }
     }
 
     suspend fun getConversations(): List<ConversationNetwork> {
-        refreshConversations()
-        return _conversations.value
+        val refreshed = refreshConversations()
+        return if (refreshed.isNotEmpty()) refreshed else _conversations.value
     }
 
     suspend fun markMessagesRead(userId: String) {
         try {
-            val header = currentToken?.let { "Bearer $it" }
+            val token = currentToken ?: prefs.getString("auth_token", null) ?: prefs.getString("token", null)
+            val header = token?.let { "Bearer $it" }
             if (header != null) {
                 RetrofitClient.apiService.markMessagesRead(header, userId)
             }
+        } catch (_: Exception) {}
+    }
+
+    suspend fun getDirectMessages(otherUserId: String): List<MessageNetwork> {
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: prefs.getString("token", null) ?: return emptyList()
+        return try {
+            val header = "Bearer $token"
+            val res = RetrofitClient.apiService.getMessages(header, otherUserId)
+            res
         } catch (e: Exception) {
-            // ignore
+            android.util.Log.e("IddetRepository", "getDirectMessages error for $otherUserId: ${e.message}")
+            emptyList()
         }
     }
 
     suspend fun refreshMessagesWith(otherUserId: String) {
-        try {
-            messageDao.deletePlaceholderConvMessages()
-            val header = currentToken?.let { "Bearer $it" }
-            if (header != null) {
-                val res = RetrofitClient.apiService.getMessages(header, otherUserId)
-                val msgs = res.map {
-                    val localMsg = messageDao.getMessageById(it.id)
-                    val effectiveReaction = it.reaction ?: localMsg?.reaction
-                    Message(
-                        id = it.id,
-                        senderId = it.sender_id,
-                        receiverId = it.receiver_id,
-                        content = it.content,
-                        type = if (com.example.utils.AudioMessageHelper.isAudioContent(it.content, it.type)) "audio" else it.type,
-                        isRead = it.read,
-                        createdAt = parseIso(it.created_at),
-                        reaction = effectiveReaction
-                    )
-                }
-                msgs.forEach { messageDao.insertMessage(it) }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        getDirectMessages(otherUserId)
     }
 
     fun getChatPartners(): Flow<List<User>> {
-        val userId = _currentUser.value?.id ?: ""
+        val userId = _currentUser.value?.id ?: prefs.getString("user_id", "") ?: ""
         repositoryScope.launch {
             refreshConversations()
         }
@@ -1277,35 +1302,26 @@ class IddetRepository(
     }
 
     fun getMessagesWith(otherUserId: String): Flow<List<Message>> {
-        val myId = _currentUser.value?.id ?: ""
         repositoryScope.launch {
             refreshMessagesWith(otherUserId)
         }
-        return messageDao.getMessagesBetween(myId, otherUserId)
+        return messageDao.getMessagesWithPartner(otherUserId)
     }
 
     suspend fun sendMessage(receiverId: String, content: String, type: String = "text") {
-        try {
-            val header = currentToken?.let { "Bearer $it" }
-            if (header != null) {
-                val res = RetrofitClient.apiService.sendMessage(header, SendMessageRequest(content = content, receiver_id = receiverId, type = type))
-                messageDao.insertMessage(Message(
-                    id = res.id,
-                    senderId = res.sender_id,
-                    receiverId = res.receiver_id,
-                    content = res.content,
-                    type = res.type,
-                    isRead = res.read,
-                    createdAt = parseIso(res.created_at),
-                    reaction = res.reaction
-                ))
-            } else {
-                android.util.Log.e("IddetRepository", "Cannot send message: No token")
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            android.util.Log.e("IddetRepository", "Error sending message: ${e.message}")
+        val token = currentToken ?: prefs.getString("auth_token", null) ?: prefs.getString("token", null)
+        if (token == null) {
+            android.util.Log.e("IddetRepository", "Cannot send message: No token")
+            throw Exception("Non authentifié")
         }
+        val header = "Bearer $token"
+        val res = RetrofitClient.apiService.sendMessage(header, SendMessageRequest(content = content, receiver_id = receiverId, type = type))
+        updateConversationLastMessage(
+            otherUserId = receiverId,
+            content = content,
+            type = type,
+            isIncoming = false
+        )
     }
 
     // Removed sendAudioMessageMultipart
@@ -1562,17 +1578,31 @@ class IddetRepository(
         try {
             val token = currentToken ?: prefs.getString("auth_token", null) ?: prefs.getString("token", null)
             if (token != null) {
+                Log.d("IddetRepository", "Following user: $resolvedOtherId")
                 try {
-                    RetrofitClient.apiService.followUser("Bearer $token", resolvedOtherId)
-                } catch (_: Exception) {
+                    val res = RetrofitClient.apiService.followUser("Bearer $token", resolvedOtherId)
+                    Log.d("IddetRepository", "Follow successful: $res")
+                } catch (e: Exception) {
+                    Log.e("IddetRepository", "Failed to follow user $resolvedOtherId", e)
                     if (resolvedOtherId != otherUserId) {
                         try {
-                            RetrofitClient.apiService.followUser("Bearer $token", otherUserId)
-                        } catch (_: Exception) {}
+                            val res2 = RetrofitClient.apiService.followUser("Bearer $token", otherUserId)
+                            Log.d("IddetRepository", "Follow successful with raw id: $res2")
+                        } catch (e2: Exception) {
+                            Log.e("IddetRepository", "Failed to follow user with raw id", e2)
+                        }
                     }
+                }
+                // Refresh both profiles from server to guarantee sync
+                try {
+                    refreshUserProfile(resolvedOtherId)
+                    refreshProfile()
+                } catch (e: Exception) {
+                    Log.w("IddetRepository", "Failed to refresh profiles after follow", e)
                 }
             }
         } catch (e: Exception) {
+            Log.e("IddetRepository", "General error in followUser", e)
             e.printStackTrace()
         }
     }
@@ -1610,20 +1640,47 @@ class IddetRepository(
         try {
             val token = currentToken ?: prefs.getString("auth_token", null) ?: prefs.getString("token", null)
             if (token != null) {
+                Log.d("IddetRepository", "Unfollowing user: $resolvedOtherId")
+                var success = false
                 try {
-                    RetrofitClient.apiService.unfollowUser("Bearer $token", resolvedOtherId)
-                } catch (_: Exception) {
-                    if (resolvedOtherId != otherUserId) {
+                    val res = RetrofitClient.apiService.unfollowUser("Bearer $token", resolvedOtherId)
+                    Log.d("IddetRepository", "Unfollow successful: $res")
+                    success = true
+                } catch (e: Exception) {
+                    Log.w("IddetRepository", "POST unfollow failed, trying DELETE follow: $resolvedOtherId", e)
+                    try {
+                        val resDel = RetrofitClient.apiService.unfollowUserDelete("Bearer $token", resolvedOtherId)
+                        Log.d("IddetRepository", "DELETE unfollow successful: $resDel")
+                        success = true
+                    } catch (e2: Exception) {
+                        Log.e("IddetRepository", "Failed DELETE unfollow", e2)
+                    }
+                }
+
+                if (!success && resolvedOtherId != otherUserId) {
+                    try {
+                        RetrofitClient.apiService.unfollowUser("Bearer $token", otherUserId)
+                    } catch (_: Exception) {
                         try {
-                            RetrofitClient.apiService.unfollowUser("Bearer $token", otherUserId)
+                            RetrofitClient.apiService.unfollowUserDelete("Bearer $token", otherUserId)
                         } catch (_: Exception) {}
                     }
                 }
+
+                // Refresh both profiles from server to guarantee sync
+                try {
+                    refreshUserProfile(resolvedOtherId)
+                    refreshProfile()
+                } catch (e: Exception) {
+                    Log.w("IddetRepository", "Failed to refresh profiles after unfollow", e)
+                }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("IddetRepository", "General error in unfollowUser", e)
         }
     }
+
+
 
     fun getLikedActfiles(): Flow<List<ActfileWithUser>> {
         return actfileDao.getLikedActfiles()

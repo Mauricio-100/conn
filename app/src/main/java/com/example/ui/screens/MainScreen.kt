@@ -38,6 +38,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.res.painterResource
 import com.example.ui.IddetViewModel
+import com.example.ui.AuthViewModel
 import com.example.ui.screens.CustomBrowserScreen
 import com.example.ui.components.LocalCommunityClickHandler
 import com.example.ui.components.LocalChannelClickHandler
@@ -857,7 +858,10 @@ fun MainScreen(viewModel: IddetViewModel) {
                 composable("notifications") { NotificationsScreen(viewModel, navController) }
                 composable("history") { HistoryScreen(viewModel, navController) }
                 composable("iddet_ads") { IddetAdsManagerScreen(viewModel, navController) }
-                composable("settings") { SettingsScreen(viewModel, navController) }
+                composable("settings") { 
+                    val authViewModel: AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+                    SettingsScreen(viewModel, authViewModel, navController) 
+                }
                 composable("marketplace") { MarketplaceScreen(navController) }
                 composable("iddet_plus") { IddetPlusScreen(viewModel, navController) }
                 composable("hide_it_pro") { HideItProScreen(navController) }

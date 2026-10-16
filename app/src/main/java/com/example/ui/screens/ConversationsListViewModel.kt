@@ -11,7 +11,7 @@ import com.example.utils.SocketConnectionState
 import com.example.utils.WebSocketEvent
 import com.example.utils.WebSocketManager
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 
 enum class ConversationFilter {
     ALL,
@@ -34,8 +34,8 @@ class ConversationsListViewModel(
     private val socketClient: ChatSocketClient = WebSocketManager
 ) : ViewModel() {
 
-    private val _rawConversations = MutableStateFlow<List<ConversationNetwork>>(emptyList())
-    private val _isLoading = MutableStateFlow(true)
+    private val _rawConversations = MutableStateFlow<List<ConversationNetwork>>(repository.conversations.value)
+    private val _isLoading = MutableStateFlow(repository.conversations.value.isEmpty())
     private val _errorMessage = MutableStateFlow<String?>(null)
 
     private val _searchQuery = MutableStateFlow("")
@@ -85,11 +85,17 @@ class ConversationsListViewModel(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = ConversationsUiState.Loading
+        initialValue = if (repository.conversations.value.isNotEmpty()) {
+            ConversationsUiState.Success(repository.conversations.value)
+        } else {
+            ConversationsUiState.Loading
+        }
     )
 
     init {
         loadConversations()
+        startPeriodicSync()
+        observeRepositoryConversations()
         observeWebSocketEvents()
         connectSocketIfLoggedIn()
     }
@@ -106,17 +112,49 @@ class ConversationsListViewModel(
         loadConversations()
     }
 
+    private fun startPeriodicSync() {
+        viewModelScope.launch {
+            while (currentCoroutineContext().isActive) {
+                kotlinx.coroutines.delay(2500)
+                try {
+                    val list = repository.refreshConversations()
+                    if (list.isNotEmpty() || _rawConversations.value.isEmpty()) {
+                        _rawConversations.value = sortConversations(list)
+                    }
+                    _isLoading.value = false
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun observeRepositoryConversations() {
+        viewModelScope.launch {
+            repository.conversations.collect { convs ->
+                if (convs.isNotEmpty() || _rawConversations.value.isEmpty()) {
+                    _rawConversations.value = sortConversations(convs)
+                    _isLoading.value = false
+                }
+            }
+        }
+    }
+
     private fun loadConversations() {
         viewModelScope.launch {
-            _isLoading.value = true
+            if (_rawConversations.value.isEmpty()) {
+                _isLoading.value = true
+            }
             _errorMessage.value = null
             try {
-                val list = repository.getConversations()
-                // Sort by last message time descending
-                _rawConversations.value = sortConversations(list)
+                val list = repository.refreshConversations()
+                // Keep conversations intact and update seamlessly
+                if (list.isNotEmpty() || _rawConversations.value.isEmpty()) {
+                    _rawConversations.value = sortConversations(list)
+                }
             } catch (e: Exception) {
                 Log.e("ConversationsListVM", "Failed to load conversations", e)
-                _errorMessage.value = e.localizedMessage ?: "Impossible de charger les conversations"
+                if (_rawConversations.value.isEmpty()) {
+                    _errorMessage.value = e.localizedMessage ?: "Impossible de charger les conversations"
+                }
             } finally {
                 _isLoading.value = false
             }
@@ -125,9 +163,10 @@ class ConversationsListViewModel(
 
     private fun connectSocketIfLoggedIn() {
         viewModelScope.launch {
-            val user = repository.currentUser.firstOrNull()
-            if (user != null) {
-                socketClient.connect(user.id)
+            repository.currentUser.collect { user ->
+                if (user != null && user.id.isNotBlank()) {
+                    socketClient.connect(user.id)
+                }
             }
         }
     }
@@ -138,9 +177,17 @@ class ConversationsListViewModel(
                 when (event) {
                     is WebSocketEvent.NewMessage -> {
                         handleNewMessageEvent(event)
+                        // Trigger background sync to capture official server state
+                        viewModelScope.launch {
+                            try {
+                                val list = repository.refreshConversations()
+                                if (list.isNotEmpty() || _rawConversations.value.isEmpty()) {
+                                    _rawConversations.value = sortConversations(list)
+                                }
+                            } catch (_: Exception) {}
+                        }
                     }
                     is WebSocketEvent.MessageDeleted -> {
-                        // Refresh to reflect updated message snippet if needed
                         loadConversations()
                     }
                     else -> {}

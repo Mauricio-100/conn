@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ArrowBack
@@ -41,17 +42,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.ui.AuthViewModel
 import com.example.ui.IddetViewModel
 import com.example.ui.theme.AppTheme
+import com.example.ui.components.ZodiacHelper
 import com.example.utils.CatSoundPlayer
 import com.example.utils.NotificationHelper
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.Cake
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
 import kotlinx.coroutines.launch
+
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(viewModel: IddetViewModel, navController: NavController) {
+fun SettingsScreen(viewModel: IddetViewModel, authViewModel: AuthViewModel, navController: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    
+    val isEmailVerified by authViewModel.isEmailVerified.collectAsState(initial = false)
     
     val prefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
     
@@ -104,6 +118,7 @@ fun SettingsScreen(viewModel: IddetViewModel, navController: NavController) {
 
     LaunchedEffect(Unit) {
         viewModel.loadCategories()
+        viewModel.refreshProfile()
     }
 
     LaunchedEffect(preferredCats) {
@@ -135,6 +150,289 @@ fun SettingsScreen(viewModel: IddetViewModel, navController: NavController) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
+            // Iddet Plus Section
+            if (!isEmailVerified) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Non vérifié",
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Email non vérifié",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                text = "Veuillez vérifier votre email pour sécuriser votre compte.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                        Button(
+                            onClick = { authViewModel.resendVerificationEmail { success -> 
+                                Toast.makeText(context, if (success) "Email de vérification envoyé !" else "Erreur d'envoi", Toast.LENGTH_SHORT).show()
+                            }},
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError)
+                        ) {
+                            Text("Vérifier")
+                        }
+                    }
+                }
+            }
+
+            // --- Section Maintenance du Compte, Followers & Serveur ---
+            val currentUser by viewModel.currentUser.collectAsState()
+            var emailState by remember(currentUser?.email) { mutableStateOf(currentUser?.email ?: "") }
+            var phoneState by remember(currentUser?.phoneNumber) { mutableStateOf(currentUser?.phoneNumber ?: "") }
+            var birthDateState by remember(currentUser?.birthDate) { mutableStateOf(currentUser?.birthDate ?: "") }
+            var countryState by remember(currentUser?.country) { mutableStateOf(currentUser?.country ?: "") }
+            var isSavingProfile by remember { mutableStateOf(false) }
+            var isSyncingFollowers by remember { mutableStateOf(false) }
+
+            val dynamicZodiacSign = remember(birthDateState) {
+                ZodiacHelper.parseFromDateString(birthDateState)
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Compte & Synchronisation Serveur",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Serveur : hoosthubs-g.onrender.com",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Statut Followers / Suivis en direct
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "${currentUser?.followersCount ?: 0}",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "Abonnés",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "${currentUser?.followingCount ?: 0}",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                    Text(
+                                        text = "Abonnements",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            FilledTonalButton(
+                                onClick = {
+                                    isSyncingFollowers = true
+                                    scope.launch {
+                                        viewModel.refreshProfile()
+                                        kotlinx.coroutines.delay(600)
+                                        isSyncingFollowers = false
+                                        Toast.makeText(context, "Données actualisées depuis le serveur !", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                if (isSyncingFollowers) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Actualiser", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    // Champ Email (vrai ou faux email de test)
+                    OutlinedTextField(
+                        value = emailState,
+                        onValueChange = { emailState = it },
+                        label = { Text("Adresse Email") },
+                        placeholder = { Text("ex: fake@test.com ou votre email réel") },
+                        leadingIcon = { Icon(Icons.Outlined.Email, contentDescription = null) },
+                        supportingText = { Text("Fonctionnel avec emails réels ou faux emails de maintenance") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Champ Numéro de téléphone
+                    OutlinedTextField(
+                        value = phoneState,
+                        onValueChange = { phoneState = it },
+                        label = { Text("Numéro de téléphone") },
+                        placeholder = { Text("ex: +243812345678 ou +33612345678") },
+                        leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null) },
+                        supportingText = { Text("Votre numéro complet avec indicatif pays") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Champ Date de naissance
+                    OutlinedTextField(
+                        value = birthDateState,
+                        onValueChange = { birthDateState = it },
+                        label = { Text("Date de naissance") },
+                        placeholder = { Text("JJ/MM/AAAA ou AAAA-MM-JJ") },
+                        leadingIcon = { Icon(Icons.Outlined.Cake, contentDescription = null) },
+                        trailingIcon = {
+                            if (dynamicZodiacSign != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Text(
+                                        text = dynamicZodiacSign,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        },
+                        supportingText = { Text("Calcul automatique du signe astrologique") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Champ Pays d'origine
+                    OutlinedTextField(
+                        value = countryState,
+                        onValueChange = { countryState = it },
+                        label = { Text("Pays d'origine") },
+                        placeholder = { Text("ex: RDC, Congo, France, Canada...") },
+                        leadingIcon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // Sélecteur rapide de pays
+                    val suggestedCountries = listOf("🇨🇩 RDC", "🇨🇬 Congo", "🇫🇷 France", "🇧🇪 Belgique", "🇨🇦 Canada", "🇨🇮 Côte d'Ivoire", "🇸🇳 Sénégal", "🇨🇲 Cameroun", "🇺🇸 USA", "🇨🇭 Suisse")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        suggestedCountries.forEach { c ->
+                            val cleanName = c.substringAfter(" ")
+                            FilterChip(
+                                selected = countryState.equals(cleanName, ignoreCase = true) || countryState.equals(c, ignoreCase = true),
+                                onClick = { countryState = cleanName },
+                                label = { Text(c, fontSize = 11.sp) },
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
+                    }
+
+                    // Bouton Enregistrer & Sauvegarder sur le serveur
+                    Button(
+                        onClick = {
+                            isSavingProfile = true
+                            scope.launch {
+                                viewModel.updateProfile(
+                                    email = emailState.trim().ifEmpty { null },
+                                    phoneNumber = phoneState.trim().ifEmpty { null },
+                                    birthDate = birthDateState.trim().ifEmpty { null },
+                                    zodiacSign = dynamicZodiacSign,
+                                    country = countryState.trim().ifEmpty { null }
+                                )
+                                kotlinx.coroutines.delay(700)
+                                viewModel.refreshProfile()
+                                isSavingProfile = false
+                                Toast.makeText(context, "Profil sauvegardé et synchronisé sur le serveur !", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = !isSavingProfile
+                    ) {
+                        if (isSavingProfile) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Sauvegarde sur le serveur...")
+                        } else {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Enregistrer sur le serveur")
+                        }
+                    }
+                }
+            }
 
             // Iddet Plus Section
             Card(

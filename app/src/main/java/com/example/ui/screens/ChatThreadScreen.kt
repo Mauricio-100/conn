@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -115,6 +116,8 @@ fun ChatThreadScreen(
     // Swipe-to-reply state
     var replyingToMessage by remember { mutableStateOf<ChatMessageUiModel?>(null) }
     var showThemeRingtoneSheet by remember { mutableStateOf(false) }
+    val disappearingTimer by viewModel.disappearingTimer.collectAsState()
+    var showDisappearingDialog by remember { mutableStateOf(false) }
 
     // Context menu / Bottom sheet state for long-pressed message
     var selectedMessageForMenu by remember { mutableStateOf<ChatMessageUiModel?>(null) }
@@ -275,6 +278,18 @@ fun ChatThreadScreen(
                     }
                 },
                 actions = {
+                    // Disappearing Messages Timer
+                    IconButton(
+                        onClick = { showDisappearingDialog = true },
+                        modifier = Modifier.testTag("chat_timer_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.HourglassEmpty,
+                            contentDescription = "Messages éphémères",
+                            tint = if (disappearingTimer > 0) Color(0xFF3A76F0) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     // Chat Theme & Ringtone picker
                     IconButton(
                         onClick = { showThemeRingtoneSheet = true },
@@ -536,6 +551,82 @@ fun ChatThreadScreen(
                             )
                         }
                     }
+                }
+
+                // Signal End-to-End Encryption Security Banner
+                Surface(
+                    color = Color(0xFF1E2633).copy(alpha = 0.9f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = Color(0xFF3A76F0),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Messages et appels sécurisés de bout en bout (Signal E2EE)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF94A3B8),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                if (showDisappearingDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showDisappearingDialog = false },
+                        title = { Text("Messages éphémères (Signal)") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("Choisissez la durée après laquelle les nouveaux messages disparaîtront de cette discussion :")
+                                Spacer(modifier = Modifier.height(4.dp))
+                                val options = listOf(
+                                    "Désactivé" to 0L,
+                                    "5 secondes" to 5000L,
+                                    "1 minute" to 60000L,
+                                    "1 heure" to 3600000L,
+                                    "1 jour" to 86400000L
+                                )
+                                options.forEach { (label, duration) ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                viewModel.setDisappearingTimer(duration)
+                                                showDisappearingDialog = false
+                                                Toast.makeText(context, "Messages éphémères: $label", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
+                                            selected = disappearingTimer == duration,
+                                            onClick = {
+                                                viewModel.setDisappearingTimer(duration)
+                                                showDisappearingDialog = false
+                                            }
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(label)
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showDisappearingDialog = false }) {
+                                Text("Fermer")
+                            }
+                        }
+                    )
                 }
 
                 // Messages View

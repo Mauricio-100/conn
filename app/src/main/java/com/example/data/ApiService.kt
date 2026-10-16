@@ -126,7 +126,14 @@ data class IddetPlusCheckoutStatusResponse(
     val created_at: String,
     val confirmed_at: String? = null
 )
-data class TokenResponse(val access_token: String, val token_type: String)
+data class TokenResponse(
+    val access_token: String,
+    val token_type: String = "bearer",
+    val user_id: String? = null,
+    val username: String? = null,
+    val avatar_url: String? = null,
+    val is_verified: Boolean = false
+)
 
 data class CategoriesResponse(val categories: List<String>)
 data class PreferredCategoriesResponse(val preferred_categories: List<String>)
@@ -200,14 +207,19 @@ data class UserProfileNetwork(
     val is_online: Boolean = false,
     val email: String? = null,
     val phone_number: String? = null,
+    val phone: String? = null,
     val birth_date: String? = null,
+    val birthdate: String? = null,
     val zodiac_sign: String? = null,
     val country: String? = null,
     val created_at: String? = null,
     val last_seen: String? = null,
     val is_iddet_plus: Boolean = false,
     val card_style: String? = null
-)
+) {
+    val actualPhone: String? get() = phone_number ?: phone
+    val actualBirthDate: String? get() = birth_date ?: birthdate
+}
 
 data class SearchResult(
     val results: List<SearchResultItem>
@@ -235,27 +247,27 @@ data class MessageReactionsResponse(
 )
 
 data class ConversationNetwork(
-    val id: String,
-    val user_id: String,
-    val username: String,
-    val avatar_url: String?,
-    val last_message: String?,
-    val last_message_time: String?,
+    val id: String? = null,
+    val user_id: String = "",
+    val username: String = "",
+    val avatar_url: String? = null,
+    val last_message: String? = null,
+    val last_message_time: String? = null,
     val unread_count: Int? = 0,
-    val is_online: Boolean,
+    val is_online: Boolean = false,
     val is_verified: Boolean = false,
     @Json(name = "is_iddet_plus") val is_iddet_plus: Boolean = false,
     @Json(name = "card_style") val card_style: String? = null
 )
 
 data class MessageNetwork(
-    val id: String,
-    val content: String,
-    val type: String,
-    val sender_id: String,
-    val receiver_id: String,
-    val read: Boolean,
-    val created_at: String,
+    val id: String = "",
+    val content: String = "",
+    val type: String = "text",
+    val sender_id: String = "",
+    val receiver_id: String = "",
+    val read: Boolean = false,
+    val created_at: String = "",
     val sender_username: String? = null,
     val sender_avatar: String? = null,
     val reaction: String? = null,
@@ -317,9 +329,11 @@ data class UpdateProfileRequest(
     val username: String? = null,
     val preferred_category: String? = null,
     val phone_number: String? = null,
+    val phone: String? = null,
     val privacy_setting: String? = null,
     val email: String? = null,
     val birth_date: String? = null,
+    val birthdate: String? = null,
     val zodiac_sign: String? = null,
     val country: String? = null
 )
@@ -521,13 +535,25 @@ interface ApiService {
     suspend fun followUser(
         @retrofit2.http.Header("Authorization") token: String?,
         @retrofit2.http.Path("id") id: String
-    ): Map<String, Boolean>
+    ): Map<String, @JvmSuppressWildcards Any>
 
     @POST("/api/users/{id}/unfollow")
     suspend fun unfollowUser(
         @retrofit2.http.Header("Authorization") token: String?,
         @retrofit2.http.Path("id") id: String
-    ): Map<String, Boolean>
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @DELETE("/api/users/{id}/follow")
+    suspend fun unfollowUserDelete(
+        @retrofit2.http.Header("Authorization") token: String?,
+        @retrofit2.http.Path("id") id: String
+    ): Map<String, @JvmSuppressWildcards Any>
+
+    @PUT("/api/users/me")
+    suspend fun updateMyProfilePut(
+        @retrofit2.http.Header("Authorization") token: String,
+        @Body request: UpdateProfileRequest
+    ): UserProfileNetwork
 
     @retrofit2.http.GET("/api/search")
     suspend fun search(
@@ -1208,10 +1234,18 @@ object RetrofitClient {
         val moshi = Moshi.Builder()
             .add(KotlinJsonAdapterFactory())
             .build()
+        val okHttpClient = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
         Retrofit.Builder()
             .baseUrl(BASE_URL)
+            .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(ApiService::class.java)
     }
 }
+
