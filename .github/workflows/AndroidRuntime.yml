@@ -15,7 +15,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK 21
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: '21'
@@ -25,63 +25,59 @@ jobs:
       with:
         gradle-version: '8.11.1'
 
-    - name: Run Scripts and Apply Patches
-      run: |
-        echo "🚀 Running shell scripts..."
-        for f in *.sh; do
-          if [ -f "$f" ]; then
-            echo "Executing $f..."
-            chmod +x "$f"
-            ./"$f" || echo "⚠️ Warning: Script $f exited with non-zero status"
-          fi
-        done
-        
-        echo "🚀 Applying patch files..."
-        for f in *.patch; do
-          if [ -f "$f" ]; then
-            echo "Applying patch $f..."
-            if git apply --check "$f" 2>/dev/null; then
-              git apply "$f"
-              echo "✅ Patch $f applied successfully using git apply"
-            else
-              echo "⚠️ Git apply check failed for $f. Attempting a fallback manual patch..."
-              patch -p0 < "$f" || echo "⚠️ Warning: Could not apply patch $f"
-            fi
-          fi
-        done
-
     - name: Decode Debug Keystore
       run: |
         if [ -f debug.keystore.base64 ]; then
           echo "✅ Decoding debug.keystore.base64 from repository..."
-          base64 --decode debug.keystore.base64 > debug.keystore
+          base64 -d debug.keystore.base64 > debug.keystore
         else
-          echo "⚠️ No debug.keystore.base64 file found! Generating a temporary development keystore as a fallback..."
+          echo "⚠️ No debug.keystore.base64 file found! Generating development keystore..."
           keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
         fi
 
     - name: Build Debug APK
       run: |
-         if [ -f gradlew ]; then
-           chmod +x gradlew
-           ./gradlew assembleDebug
-         else
-           echo "Building with configured Gradle 8.11.1..."
-           gradle assembleDebug
-         fi
-
-    - name: Prepare Artifact
-      run: |
-        mkdir -p build-output
-        if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
-          cp app/build/outputs/apk/debug/app-debug.apk build-output/iddet-cmo-debug.apk
+        if [ -f gradlew ]; then
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
         else
-          echo "⚠️ Debug APK not found at standard path! Searching for generated APKs..."
-          find app/build/outputs/ -name "*.apk" -exec cp {} build-output/iddet-cmo-debug.apk \;
+          echo "Building with configured Gradle 8.11.1..."
+          gradle assembleDebug --stacktrace
         fi
 
-    - name: Upload IDDET-CMO APK
+    - name: Prepare Clean Artifacts
+      run: |
+        mkdir -p build-output
+        APK_FILE=$(find app/build/outputs/apk/debug -name "*debug.apk" | head -n 1)
+        if [ -z "$APK_FILE" ]; then
+          APK_FILE=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+        fi
+
+        if [ -f "$APK_FILE" ]; then
+          echo "✅ Found APK at: $APK_FILE"
+          cp "$APK_FILE" build-output/iddet-cmo-debug.apk
+          
+          # Create direct zip archive with high compression and integrity check
+          cd build-output
+          zip -9 -v iddet-cmo-debug.zip iddet-cmo-debug.apk
+          sha256sum iddet-cmo-debug.apk iddet-cmo-debug.zip > SHA256SUMS.txt
+          echo "Artifacts generated successfully:"
+          ls -la
+          cat SHA256SUMS.txt
+          cd ..
+        else
+          echo "❌ Error: No APK file was found in app/build/outputs!"
+          exit 1
+        fi
+
+    - name: Upload IDDET-CMO APK & ZIP
       uses: actions/upload-artifact@v4
       with:
         name: iddet-cmo-apk
-        path: build-output/iddet-cmo-debug.apk
+        path: |
+          build-output/iddet-cmo-debug.apk
+          build-output/iddet-cmo-debug.zip
+          build-output/SHA256SUMS.txt
+        if-no-files-found: error
+        retention-days: 14
+        compression-level: 6
